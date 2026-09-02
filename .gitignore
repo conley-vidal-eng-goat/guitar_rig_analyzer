@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Arduino / arduino-cli build output
+build/
+*.hex
+*.elf
+
+# Bench test capture logs
+.serial-logs/
