@@ -8,3 +8,6 @@ build/
 
 # Bench test capture logs
 .serial-logs/
+
+# Local MCP config (absolute machine-specific paths)
+.mcp.json
