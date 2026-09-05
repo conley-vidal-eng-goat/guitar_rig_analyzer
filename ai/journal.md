@@ -11,6 +11,43 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (3) — Option 3 (rebias to ~1 V) adopted as the documented temporary bring-up config. Design work done: 1.0 V is the WRONG target, and the usable window is far tighter than assumed
+
+**Why this entry exists:** Conley decided to proceed with the Option 3 stopgap to get a working prototype for the MIT Maker Portfolio while the PCB architecture (TODO-21) is settled in parallel. That is **compliant with the decision gate in entry (2)** — the gate explicitly permits "an explicitly documented temporary bring-up configuration," and this entry is that documentation. This entry records the actual design calculation, which turned up two problems with the plan as proposed.
+
+**Finding 1 — 1.0 V is below the op-amp's own output floor. Do not bias there.** TI specifies the OPA1642's output as swinging **to within 1.2 V of each rail** (at R<sub>L</sub> = 2 kΩ to midsupply). On a 5 V rail that puts the output floor at **1.2 V**. A unity-gain follower's output must sit at its input bias, so **a 1.0 V bias asks the output to sit somewhere it cannot go.** The proposed 1.0 V target is not viable as stated.
+
+**Finding 2 — the usable window is the intersection of two constraints, and it is narrow.** For a follower, the signal *is* the common-mode voltage, so the instantaneous input must stay inside the CM range while the output stays inside its swing range:
+
+| Constraint | Range at V+ = 5 V |
+|---|---|
+| Input common-mode (TI) | −0.1 V … **1.5 V** |
+| Output swing, R<sub>L</sub> = 2 kΩ (TI) | **1.2 V** … 3.8 V |
+| **Usable intersection** | **1.2 V … 1.5 V — only 0.3 V wide** |
+
+At the rated load that is a **0.3 V<sub>pp</sub> ceiling (~106 mV<sub>rms</sub>)**, centred at ~1.35 V. Not a bias-point choice — **no bias point does better**, because the window itself is only 0.3 V wide. This is an inherent consequence of running this part on 5 V, and it is the strongest evidence yet that the OPA1642 is genuinely the wrong part for a 5 V rail rather than merely mis-biased.
+
+**The saving grace, and it must be measured, not assumed.** That 1.2 V output figure is specified at R<sub>L</sub> = 2 kΩ. **The real load here is far lighter** — a 10 µF cap into the codec's line-in, and later a rig input through the relay, both high-impedance. Output swing improves substantially with light loads, typically to within a few hundred millivolts of the rails. If the real floor is ~0.3 V, the window opens to 0.3–1.5 V (**1.2 V wide, ±0.6 V peak**) and the stopgap is comfortably demo-valid. **The entire viability of Option 3 rests on this one unmeasured number.**
+
+**So the first bench task is characterisation, not construction:** bias pin 3 at ~1.35 V, drive a small signal, and find where the output actually clips. That measurement — 15 minutes, no new parts — converts the go/no-go from a guess into data. It is also exactly the kind of evidence the portfolio benefits from.
+
+**Buildable divider, from stock on hand.** The parts list holds 1 kΩ (60), 10 kΩ (60), 47 kΩ (40), 100 kΩ (50) — **no 1 MΩ**, and the list itself annotates the 100 kΩ as "substitute for 1 MΩ", confirming TODO-23's low input impedance was a deliberate substitution rather than an oversight. Replacing the single 100 kΩ-to-VGND bias with a divider from +5 V:
+
+| Target | Build | V<sub>bias</sub> | R<sub>th</sub> (= input Z) |
+|---|---|---|---|
+| **Recommended** | 3× 100 kΩ series (+5 V→pin 3) · 100 kΩ + 10 kΩ series (pin 3→GND) | **1.34 V** | 80.5 kΩ |
+| Simpler | 3× 100 kΩ series (+5 V→pin 3) · 1× 100 kΩ (pin 3→GND) | **1.25 V** | 75 kΩ |
+
+The 1.34 V option is preferred: it sits above even the worst-case 1.2 V output floor, while staying 0.16 V below the CM ceiling. Both keep input impedance in the same 75–80 kΩ neighbourhood as the existing 100 kΩ, so the AC-coupling corner shifts only slightly (TODO-19 unaffected in kind).
+
+**⚠️ Finding 3 — pin 5 has the same defect and everyone has missed it.** Phase 4 Step 10a ties **pin 5 (+in B) to VGND ≈ 2.5 V**. That is the *same* common-mode violation, on the unused half. The runbook terminates channel B specifically to stop it oscillating; a channel B whose input sits outside its CM range is not reliably terminated, and an oscillating unused half radiates through the shared supply pins into channel A — the exact failure the termination exists to prevent. **The rebias must move pin 5 to the same new bias node as pin 3**, not leave it on VGND. Rebiasing only pin 3 leaves the fix half-done.
+
+**Portfolio framing (Conley's stated goal).** This is a legitimate and, if anything, stronger story than a clean build: a spec violation found by measurement, the part exonerated rather than swapped on suspicion, a quantified headroom limit derived from two datasheet constraints, and a temporary configuration adopted deliberately with its limits documented and its replacement already scoped. **The one thing that would undermine it is presenting the stopgap as the final architecture.** Label it as bring-up in any writeup.
+
+**Next:** build the 1.34 V divider (pin 3 **and** pin 5), then measure the actual clipping points before trusting any capture. TODO-21's architecture decision remains open and unaffected.
+
+---
+
 ## 2026-09-05 (2) — Decision gate adopted for the Phase 4 fix; the "raise the supply" recommendation is withdrawn as premature
 
 **Why this entry exists:** entry (1) below found the defect and closed with a recommendation. Conley pushed back on that recommendation and added a process constraint. Both are adopted here, and the reasoning is worth preserving because the *shape* of the mistake is one this project keeps having to guard against.
