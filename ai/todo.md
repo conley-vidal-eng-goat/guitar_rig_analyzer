@@ -57,7 +57,7 @@ Verified from TI's datasheet: output swings to within **0.2 V** (R<sub>L</sub>=1
 **Why biased from a decoupled node rather than a divider at pin 3:** keeps input impedance at exactly 100 kΩ (set by the series resistor), so **the C1 corner does not move** and TODO-19 is unchanged in kind; keeps TODO-23's 1 MΩ swap a single-part change; and stops +5 V rail noise entering the signal path through an undecoupled divider. JFET inputs draw picoamps, so those 100 kΩ resistors drop no DC.
 **Headroom at 0.877 V:** ±0.53 V peak worst-case (2 kΩ), ±0.62 V at the real light load ⇒ ~1.1–1.2 V<sub>pp</sub>. Comfortably demo-valid. **Still characterise it** — drive a controlled signal and find the actual clipping point rather than assuming the datasheet boundary is the installed-circuit limit.
 **Stock:** 1 kΩ ×60 · 10 kΩ ×60 · 47 kΩ ×40 · 100 kΩ ×50 · 10 µF ×10 · 0.1 µF ×20. **Nothing to order.**
-**First bench task is characterisation, not construction:** bias at 1.34 V, drive a small signal, find where the output actually clips. 15 minutes, no new parts, converts go/no-go from guess to data.
+**First bench task is characterisation, not construction:** bias at 0.877 V, drive a small signal, find where the output actually clips. 15 minutes, no new parts, converts go/no-go from guess to data.
 **Proof for this config:** measured clipping points recorded, and the intended demo signal level shown to sit inside them with margin — not merely "the spectrum moves."
 **Why:** First real analog signal path (unity-gain JFET buffer) on the breadboard.
 **What:** Build per `docs/breadboard_bringup_v3.md` § Phase 4. **Step 1 is: unplug USB.** Place the OPA1642 exactly as the runbook specifies — do not improvise placement or substitute the part.
