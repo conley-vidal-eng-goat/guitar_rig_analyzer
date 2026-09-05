@@ -58,9 +58,21 @@ Verified from TI's datasheet: output swings to within **0.2 V** (R<sub>L</sub>=1
 **Headroom at 0.877 V:** ±0.53 V peak worst-case (2 kΩ), ±0.62 V at the real light load ⇒ ~1.1–1.2 V<sub>pp</sub>. Comfortably demo-valid. **Still characterise it** — drive a controlled signal and find the actual clipping point rather than assuming the datasheet boundary is the installed-circuit limit.
 **Stock:** 1 kΩ ×60 · 10 kΩ ×60 · 47 kΩ ×40 · 100 kΩ ×50 · 10 µF ×10 · 0.1 µF ×20. **Nothing to order.**
 **✅ BUILT AND VALIDATED AT SMALL SIGNAL 2026-09-05** — see journal.md 2026-09-05 (5). OPA_BIAS = 0.874 V (designed 0.877). Pin 3 = 0.868 V, pin 1 = 0.875 V, pin 5 = 0.876 V. **Droop on pin 3 fell from 327 mV to 6 mV — a 54× reduction, and definitive proof the common-mode defect is fixed.** TODO-21's ≤30 mV proof criterion is met (9 mV).
-**⚠️ Headroom NOT yet characterised, and the first test ran past the limit.** At 0.648 V<sub>rms</sub> the signal demands −0.04 V to +1.79 V around a 0.874 V bias — below the output floor and 0.29 V above the 1.5 V CM ceiling. Two signatures confirm compression, not insertion loss: gain was **0.946 (−0.48 dB)** where a follower should be unity, and output DC **shifted 15 mV under drive** (0.875→0.890 V), which a linear stage does not do.
-**Next bench task — headroom sweep, starting LOW:** begin near **0.1 V<sub>rms</sub>** and step up, logging input vs output at each step, so the knee isn't already behind the starting point. Predicted knee ≈ **0.4–0.45 V<sub>rms</sub>**; a materially different result is itself the useful finding, since it calibrates the installed circuit against the datasheet prediction.
-**Until the knee is known, treat no capture from this buffer as quantitatively trustworthy** — a front end that is compressing produces artifacts of itself.
+**✅ HEADROOM CHARACTERISED 2026-09-05** — see journal.md 2026-09-05 (6). 1 kHz sweep at 0.874 V bias:
+
+| In V<sub>rms</sub> | Out V<sub>rms</sub> | Gain | Verdict |
+|---|---|---|---|
+| 0.460 | 0.453 | 0.9848 | linear |
+| 0.648 | 0.613 | 0.9460 | compressing |
+| 0.686 | 0.639 | 0.9315 | clearly compressing |
+| 0.460 *(repeat)* | 0.453 | 0.9848 | **linear — repeatable** |
+
+**Practical linear ceiling ≈ 0.5 V<sub>rms</sub>**, against a predicted 0.4–0.45 — the installed circuit beats the datasheet-derived worst case, as expected (real load far lighter than the 2 kΩ swing spec assumes; CM range is a guaranteed minimum). Prediction and measurement agreeing to ~10% on a limit derived from two independent datasheet constraints is the portfolio-grade result here.
+**Bonus finding — the 1.5% loss at 0.460 V is entirely the coupling cap, not the op-amp.** C1 = 10 nF into 100 kΩ gives f<sub>c</sub> = 159.2 Hz and a predicted 1 kHz response of 0.9867; measured 0.9848, a 0.19% discrepancy inside meter accuracy. So **the buffer's own gain is unity to within measurement error**, and the C1/R network is independently validated at its designed corner — confirming the entry-(4) topology kept input impedance at exactly 100 kΩ.
+**Two caveats, so this isn't over-claimed:** (1) the knee is interpolated across a 49% gap (0.460→0.686); two safe readings at ~0.55 and ~0.62 V would pin it properly — 5 minutes for materially better evidence. (2) By the standard **P1dB** criterion the knee has *not* been reached — the worst point is only 0.49 dB down — so "≈0.5 V<sub>rms</sub>" is an onset-of-compression figure (~0.5 dB), and should be labelled as such, not called the 1 dB point.
+**Do not drive higher.** At 0.686 V<sub>rms</sub> the negative peak is −0.096 V, essentially at the −0.1 V CM floor; beyond that the input protection conducts and the input stops being high-impedance. Graceful (the OPA164x suppresses phase reversal) but nothing to learn up there.
+**⚠️ Operating limit for trustworthy captures — stricter than "under the knee":** THD rises well before gain visibly compresses. Target **≤ 0.23 V<sub>rms</sub> (−6 dB)**, preferably **~0.15 V<sub>rms</sub> (−10 dB)**, for any measurement whose numbers matter. 0.460 V proves signal flow; it is not where quantitative captures should be taken.
+**Next bench task:** reconnect the Audio Shield path and confirm the signal reaches SOURCE_NODE in firmware. `serial-mcp` is already installed and approved, so the `[Main]` output can be captured directly rather than read off a monitor by eye.
 **Proof for this config:** measured clipping points recorded, and the intended demo signal level shown to sit inside them with margin — not merely "the spectrum moves."
 **Why:** First real analog signal path (unity-gain JFET buffer) on the breadboard.
 **What:** Build per `docs/breadboard_bringup_v3.md` § Phase 4. **Step 1 is: unplug USB.** Place the OPA1642 exactly as the runbook specifies — do not improvise placement or substitute the part.

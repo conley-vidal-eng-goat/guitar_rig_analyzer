@@ -11,6 +11,52 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (6) — BENCH: headroom characterised. Linear ceiling ≈ 0.5 V<sub>rms</sub>, and at 0.460 V the *entire* measured loss is the coupling cap — the buffer itself is unity
+
+**Why this entry exists:** completes the headroom sweep started in entry (5). The buffer is now characterised, not assumed. One reading turns out to validate a second, unrelated part of the design for free.
+
+**The sweep (1 kHz, bias 0.874 V):**
+
+| Input V<sub>rms</sub> | Output V<sub>rms</sub> | Gain | dB | Verdict |
+|---|---|---|---|---|
+| 0.460 | 0.453 | 0.9848 | −0.133 | linear |
+| 0.648 | 0.613 | 0.9460 | −0.482 | compressing |
+| 0.686 | 0.639 | 0.9315 | −0.616 | clearly compressing |
+| 0.460 *(repeat)* | 0.453 | 0.9848 | −0.133 | **linear — repeatable** |
+
+Monotonic across all four points, and the return to 0.460 V reproduced 0.453 V exactly. **The compression is real and repeatable, not drift** — the below-knee / above-knee / below-knee-again structure is what makes this a characterisation rather than an anecdote.
+
+**✅ The best result here is the one that looks like a small loss.** At 0.460 V the gain is 0.9848 — 1.5% down. That is *not* op-amp compression. The input high-pass formed by C1 = 10 nF into the 100 kΩ bias resistor has a corner at **f<sub>c</sub> = 1/(2π·100k·10n) = 159.2 Hz**, and at 1 kHz its predicted response is:
+
+> |H| = (f/f<sub>c</sub>) / √(1 + (f/f<sub>c</sub>)²) = 6.28 / √40.5 = **0.9867  (−0.116 dB)**
+
+Measured 0.9848 against a predicted 0.9867 — a **0.19% discrepancy, inside meter accuracy.** Two conclusions, both useful:
+1. **The buffer's own small-signal gain is unity to within measurement error.** The op-amp is contributing no measurable loss at 0.460 V.
+2. **The C1/R input network is independently validated at its designed 159 Hz corner.** That was never separately tested, and it now is — for free, from a reading taken for another purpose. It also confirms the entry (4) topology choice worked: biasing through a series resistor kept input impedance at exactly 100 kΩ, so the corner did not move.
+
+**Why the knee falls where it does.** Converting each level to instantaneous excursion around the 0.874 V bias (peak = V<sub>rms</sub> × √2):
+
+| Input V<sub>rms</sub> | Peak | Excursion | Against the limits |
+|---|---|---|---|
+| 0.460 | 0.651 V | 0.224 … **1.525 V** | grazing both — 25 mV over the 1.5 V CM ceiling |
+| 0.686 | 0.970 V | **−0.096** … **1.844 V** | below the output floor *and* 0.34 V over the CM ceiling |
+
+So the circuit runs out of room at both ends nearly simultaneously — which is expected, since the bias was deliberately placed near the centre of the usable window.
+
+**The installed circuit slightly outperforms the datasheet-derived worst case.** Entry (4) predicted a knee at 0.4–0.45 V<sub>rms</sub>; measured is ≈ 0.5 V<sub>rms</sub>. Two reasons, both anticipated: the real load (10 µF into a high-impedance codec input) is far lighter than the 2 kΩ the output-swing spec assumes, so the output floor sits nearer 0.2 V than 0.35 V; and the datasheet's common-mode range is a guaranteed limit that typical parts exceed. **Prediction and measurement agreeing to ~10% on a limit derived from two independent datasheet constraints is a strong result** — that is the part worth putting in the portfolio.
+
+**Two caveats on the characterisation, stated so it isn't over-claimed:**
+1. **The knee is interpolated across a 49% gap** (0.460 → 0.686 V<sub>rms</sub>). "≈ 0.5 V<sub>rms</sub>" is an inference between two points, not a measured knee. Two more readings in that gap — say 0.55 and 0.62 V — would pin it, and that region is *safe* to test (unlike going higher). Five minutes for materially better evidence.
+2. **By the standard 1 dB compression criterion (P1dB), the knee has not actually been reached.** Referenced to the C1-corrected small-signal gain of 0.9867, 1 dB down is 0.879; the worst measured point is 0.9315, only **0.49 dB** down. So "≈ 0.5 V<sub>rms</sub>" is the onset of *visible* compression, roughly a 0.5 dB point — a more conservative and more useful number for this application than P1dB, but it should be labelled as such rather than called the 1 dB point.
+
+**Agreed: do not drive higher.** At 0.686 V<sub>rms</sub> the negative peak is already at **−0.096 V**, essentially exactly the −0.1 V common-mode floor. Beyond that the input protection structures begin to conduct and the input stops being a high-impedance node. The datasheet notes the OPA164x suppresses phase reversal under common-mode overdrive (the rail limits the output instead), so this is graceful rather than destructive — but there is no information to be gained above this level and some risk in seeking it.
+
+**Operating recommendation, and it is stricter than "stay under the knee."** For a *measurement* instrument, running just below the compression knee is not good enough: THD rises well before gain visibly compresses. **Target ≤ 0.23 V<sub>rms</sub> (6 dB below the knee), preferably ~0.15 V<sub>rms</sub> (10 dB below)**, for any capture whose numbers are meant to be trusted. 0.460 V is fine for proving signal flow; it is not where quantitative measurements should be taken.
+
+**Next:** reconnect the Audio Shield path and confirm the signal reaches SOURCE_NODE in firmware. Note the bench tooling for this is already installed — the `serial-mcp` server is configured and approved, so the Teensy's `[Main]` output can be captured directly rather than read off a monitor by eye.
+
+---
+
 ## 2026-09-05 (5) — BENCH: OPA_BIAS built, common-mode fix CONFIRMED by measurement, buffer passing signal. But the test level is already ~50% past the linear limit
 
 **Why this entry exists:** first bench results after building the temporary OPA_BIAS configuration from entry (4). The fix works and is proven by the numbers. A second reading of the same numbers shows the test signal is already into compression, which matters for the headroom test planned next.
