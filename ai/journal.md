@@ -11,6 +11,48 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (5) — BENCH: OPA_BIAS built, common-mode fix CONFIRMED by measurement, buffer passing signal. But the test level is already ~50% past the linear limit
+
+**Why this entry exists:** first bench results after building the temporary OPA_BIAS configuration from entry (4). The fix works and is proven by the numbers. A second reading of the same numbers shows the test signal is already into compression, which matters for the headroom test planned next.
+
+**Measured:**
+
+| Node | Reading |
+|---|---|
+| OPA_BIAS node | 0.874 V |
+| Pin 3 (+in A) | 0.868 V |
+| Pin 1 (out A), idle | 0.875 V |
+| Pin 5 (+in B) | 0.876 V |
+| Input AC (1 kHz) | 0.648 V |
+| Op-amp output AC | 0.613 V |
+| Post-cap output AC | 0.603 V |
+| Output DC **while driven** | 0.890 V |
+
+**✅ The common-mode defect is fixed, and the evidence is unambiguous.** Compare the droop on pin 3 before and after:
+
+| | Bias source | Pin 3 | Droop |
+|---|---|---|---|
+| **Before** (VGND 2.5 V) | 2.480 V | 2.153 V | **327 mV** |
+| **After** (OPA_BIAS 0.877 V) | 0.874 V | 0.868 V | **6 mV** |
+
+A **54× reduction in droop.** The input stage has stopped drawing the current it was drawing when operated out of range — which is exactly what the fix predicted. Pin 1 tracks pin 3 to within 7 mV, so the follower is behaving as a follower. **TODO-21's proof criterion ("pin 3 within 30 mV of its intended bias with the op-amp installed") is met** — 0.868 V against a designed 0.877 V is 9 mV. The as-built divider landed within 3 mV of its calculated 0.877 V, so the resistor arithmetic was right too. **Pin 5 sits at 0.876 V**, confirming the channel-B half of the fix landed as well.
+
+**⚠️ But the drive level is already past the linear region — the "buffer is alive" reading is not a clean linear measurement.** At 0.648 V<sub>rms</sub>, a sine has 0.916 V peak. Around a 0.874 V bias that demands an excursion from **−0.04 V to +1.79 V**, which violates *both* limits at once: the negative peak goes below the output floor (0.2–0.35 V) and below the CM floor (−0.1 V), while the positive peak exceeds the **1.5 V CM ceiling** by 0.29 V. Predicted linear ceiling for this configuration is ~0.44 V<sub>rms</sub>, so the test ran roughly **50% above it.**
+
+Two independent signatures in the data confirm this rather than it being a prediction:
+1. **Gain is 0.946 (−0.48 dB), not unity.** A follower does not lose 5.4%. The high-pass from C1 into 100 kΩ accounts for only ~0.1 dB at 1 kHz. The remainder is compression.
+2. **Output DC shifts 15 mV under drive** (0.875 → 0.890 V). A linear stage shows *no* DC shift with signal applied. Asymmetric clipping rectifies the waveform and pulls the average — this is a textbook clipping tell, and it moved in the expected direction.
+
+**Consequence for the next test:** the headroom sweep must **start well below** this level and work *up*, or the knee will already be behind the starting point and the result will read as "output stops tracking immediately." Suggested: begin near **0.1 V<sub>rms</sub>**, step up, and record input vs output at each step. The knee should appear near **0.4–0.45 V<sub>rms</sub>**; finding it materially lower or higher than that is itself informative, since it calibrates the real installed-circuit limit against the datasheet-derived prediction — which was the entire point of characterising rather than assuming.
+
+**Minor, not alarming:** post-cap output (0.603 V) sits 1.6% below the op-amp output (0.613 V). At 1 kHz the 10 µF coupling cap has X<sub>C</sub> ≈ 16 Ω, which should be negligible into a high-impedance load, so this is most likely meter scatter. Worth a second look only if it grows at low frequencies, where it would indicate the coupling cap is working into a lower load than assumed.
+
+**Status:** the temporary Phase 4 configuration is **electrically validated at small signal**. It is not yet characterised for headroom, and until it is, no capture from it should be treated as quantitatively trustworthy — a measurement instrument whose front end is compressing produces artifacts of its own front end.
+
+**Next:** headroom sweep from 0.1 V<sub>rms</sub> upward, logging input vs output, to locate the actual knee. Then compare against the 0.4–0.45 V<sub>rms</sub> prediction and record both in TODO-4's proof.
+
+---
+
 ## 2026-09-05 (4) — CORRECTION: entry (3)'s 1.2 V output-floor figure was wrong. Verified from TI's datasheet; final bias design is ~0.88 V on a decoupled OPA_BIAS node
 
 **Why this entry exists:** entry (3) below built its headroom analysis and its 1.34 V bias recommendation on an output-swing figure of "1.2 V from each rail." **That figure is wrong.** It came from a web search result summarising a third-party blog, not from TI. ChatGPT flagged it; the datasheet was then pulled and parsed directly to settle it. Entry (3) is left in place per this file's rules — this entry supersedes its numbers and its recommendation.
