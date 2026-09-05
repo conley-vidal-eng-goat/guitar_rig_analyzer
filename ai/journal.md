@@ -11,6 +11,28 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (2) — Decision gate adopted for the Phase 4 fix; the "raise the supply" recommendation is withdrawn as premature
+
+**Why this entry exists:** entry (1) below found the defect and closed with a recommendation. Conley pushed back on that recommendation and added a process constraint. Both are adopted here, and the reasoning is worth preserving because the *shape* of the mistake is one this project keeps having to guard against.
+
+**Process decision — a gate before the bench, not after it.** Adopted verbatim in intent:
+
+> Determine whether the production analyzer is required to operate from the existing 5 V USB-derived analog rail. **Do not modify Phase 4 hardware until that requirement is settled.** The selected solution must be the intended PCB architecture, except for an explicitly documented temporary bring-up configuration.
+
+**Bench state until the gate clears: breadboard unpowered, OPA1642 removed.**
+
+**Why the gate matters.** The pull will be toward the Option 3 stopgap (re-bias to ~1.0 V) simply to keep making visible progress. That would create a *second* electrical configuration which can silently diverge from the eventual PCB — and once the breadboard stops matching the intended product, every bench result it produces stops being evidence for that product. This is the same failure mode this project already has a rule for: the source-of-truth precedence rule exists because a document describing intent got mistaken for a verified tree. A stopgap breadboard is that mistake in hardware form.
+
+**Recommendation withdrawn, and why it was wrong.** Entry (1) recommended raising the analog supply, reasoning that noise and distortion matter for a measurement instrument and the OPA1642 is the better part. That call was made at the wrong altitude: **it compared op-amp datasheets and never priced the system.** Adding a second analog rail to a Teensy-based field instrument pulls in boost/regulator circuitry, converter switching noise landing next to an audio front end, an analog grounding strategy, power sequencing, protection between the analog and 3.3/5 V domains, PCB area, and BOM. A 5 V rail-to-rail-input buffer can be the cleaner *product* even with a somewhat worse standalone noise figure. The correct framing is Conley's: **is single-USB-power part of the product architecture?** Everything else follows from that answer.
+
+**A technical point that pushes further in the same direction — flagged for verification, not asserted as settled.** The main argument for keeping the OPA1642 is its ~5 nV/√Hz voltage noise. But at this stage's source impedance that advantage is largely invisible. Once TODO-23 raises the input impedance toward 1 MΩ, the effective noise resistance seen at the input — that bias resistor in parallel with a 6–250 kΩ pickup — lands in the tens-to-low-hundreds of kΩ, and √(4kTR) at 200 kΩ is already **≈ 57 nV/√Hz**. That is roughly 10× the op-amp's own contribution, so **the gap between a 5 nV/√Hz JFET part and a 10–15 nV/√Hz CMOS RRI part largely disappears into the source's own thermal noise.** What still genuinely separates candidates is **THD+N**, which does matter for a measurement instrument, and **current noise**, which gets multiplied by that same large source impedance — meaning any candidate must be CMOS or JFET input and **a bipolar-input part is disqualified outright at these impedances.** If this arithmetic survives checking with real datasheet numbers, the noise case for the extra rail mostly evaporates.
+
+**Next engineering task — explicitly not breadboarding.** A short component/architecture comparison: *OPA1642 + higher analog rail* vs. *best-qualified 5 V RRI replacement*, compared on input common-mode range at 5 V, output swing at the required load, input bias current, voltage noise, current noise, THD+N, GBW, unity-gain stability, supply current, package compatibility, and availability/cost — plus behaviour at the ~1 MΩ input impedance TODO-23 will require. Decide once, update `docs/breadboard_bringup_v3.md`, then resume Phase 4.
+
+**Also affirmed:** entry (1)'s proof criterion — *pin 3 measures within 30 mV of its intended bias with the op-amp installed* — is kept as written. It directly detects the exact failure that started this, which is what a proof criterion is for.
+
+---
+
 ## 2026-09-05 (1) — ROOT CAUSE: Phase 4's circuit is invalid by design. The OPA1642 cannot be biased at midsupply on a 5 V single rail — TI's common-mode input range forbids it. The chip is not damaged.
 
 **Why this entry exists:** supersedes the hardware-fault hypotheses in the 2026-09-03 entry below with a *design* defect in the runbook itself, verified against the manufacturer's datasheet. This is the highest-value engineering finding on the project so far and is written up accordingly. Entry (1) of 2026-09-03 is left in place per this file's rules; its "OPA1642 is reverse-powered" hypothesis is **rejected** — see below.
