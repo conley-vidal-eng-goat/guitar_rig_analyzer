@@ -30,9 +30,22 @@ Monotonic across all four points, and the return to 0.460 V reproduced 0.453 V e
 
 > |H| = (f/f<sub>c</sub>) / √(1 + (f/f<sub>c</sub>)²) = 6.28 / √40.5 = **0.9867  (−0.116 dB)**
 
-Measured 0.9848 against a predicted 0.9867 — a **0.19% discrepancy, inside meter accuracy.** Two conclusions, both useful:
-1. **The buffer's own small-signal gain is unity to within measurement error.** The op-amp is contributing no measurable loss at 0.460 V.
-2. **The C1/R input network is independently validated at its designed 159 Hz corner.** That was never separately tested, and it now is — for free, from a reading taken for another purpose. It also confirms the entry (4) topology choice worked: biasing through a series resistor kept input impedance at exactly 100 kΩ, so the corner did not move.
+Measured 0.9848 against a predicted 0.9867 — a **0.19% discrepancy, inside meter accuracy.**
+
+**Conclusion that holds:** the buffer's own small-signal gain is **unity to within measurement error**. The op-amp contributes no measurable loss at 0.460 V, and the 1.5% is the coupling network, not compression.
+
+**Conclusion that does NOT hold — corrected here before it propagated.** A first draft of this entry claimed the reading "independently validates the C1/R network at its designed 159 Hz corner." **It does not.** It is *consistent with* a 159 Hz corner, which is a much weaker statement, and the difference matters. At 1 kHz the high-pass is only −0.116 dB down, so the measurement barely constrains f<sub>c</sub> at all:
+
+| Assumed f<sub>c</sub> | Predicted \|H\| at 1 kHz |
+|---|---|
+| 100 Hz | 0.9950 |
+| **159 Hz** | **0.9867** |
+| 200 Hz | 0.9806 |
+| 300 Hz | 0.9578 |
+
+With ±0.5% meter accuracy, the measured 0.9848 is consistent with **any corner from roughly 125 Hz to 205 Hz** — a ±25% window. Measuring a high-pass a full 6× above its corner is close to the least informative place to probe it. **Validating the corner requires a frequency sweep, not a single point:** readings at ~40, 80, 159, 320 and 640 Hz, checking for −3 dB at the corner and a 6 dB/octave slope below it. That sweep is worth doing anyway — it is exactly the evidence TODO-19 needs to decide whether C1 stays at 10 nF or moves to 0.1 µF, so it should be run once and used for both purposes.
+
+The entry (4) topology point does still stand on its own: biasing through a series resistor kept input impedance at exactly 100 kΩ by construction, so the corner did not move — but that follows from the circuit, not from this measurement.
 
 **Why the knee falls where it does.** Converting each level to instantaneous excursion around the 0.874 V bias (peak = V<sub>rms</sub> × √2):
 
@@ -43,7 +56,9 @@ Measured 0.9848 against a predicted 0.9867 — a **0.19% discrepancy, inside met
 
 So the circuit runs out of room at both ends nearly simultaneously — which is expected, since the bias was deliberately placed near the centre of the usable window.
 
-**The installed circuit slightly outperforms the datasheet-derived worst case.** Entry (4) predicted a knee at 0.4–0.45 V<sub>rms</sub>; measured is ≈ 0.5 V<sub>rms</sub>. Two reasons, both anticipated: the real load (10 µF into a high-impedance codec input) is far lighter than the 2 kΩ the output-swing spec assumes, so the output floor sits nearer 0.2 V than 0.35 V; and the datasheet's common-mode range is a guaranteed limit that typical parts exceed. **Prediction and measurement agreeing to ~10% on a limit derived from two independent datasheet constraints is a strong result** — that is the part worth putting in the portfolio.
+**The finding, stated at the precision actually measured:** *onset of measurable compression occurs somewhere above 0.460 V<sub>rms</sub> and by 0.686 V<sub>rms</sub>.* That bracket is what the data supports. Any single figure inside it — including the "≈ 0.5 V<sub>rms</sub>" used in earlier drafts of this entry — is an interpolation across a 49% gap, not a measurement, and should be written as the bracket unless two more points are taken to close it.
+
+**The installed circuit outperforms the datasheet-derived worst case.** Entry (4) predicted the knee at 0.4–0.45 V<sub>rms</sub>; the measured bracket sits entirely above that. Two reasons, both anticipated: the real load (10 µF into a high-impedance codec input) is far lighter than the 2 kΩ the output-swing spec assumes, so the output floor sits nearer 0.2 V than 0.35 V; and the datasheet's common-mode range is a guaranteed limit that typical parts exceed. **Prediction and measurement agreeing to ~10% on a limit derived from two independent datasheet constraints is a strong result** — that is the part worth putting in the portfolio.
 
 **Two caveats on the characterisation, stated so it isn't over-claimed:**
 1. **The knee is interpolated across a 49% gap** (0.460 → 0.686 V<sub>rms</sub>). "≈ 0.5 V<sub>rms</sub>" is an inference between two points, not a measured knee. Two more readings in that gap — say 0.55 and 0.62 V — would pin it, and that region is *safe* to test (unlike going higher). Five minutes for materially better evidence.
@@ -51,7 +66,7 @@ So the circuit runs out of room at both ends nearly simultaneously — which is 
 
 **Agreed: do not drive higher.** At 0.686 V<sub>rms</sub> the negative peak is already at **−0.096 V**, essentially exactly the −0.1 V common-mode floor. Beyond that the input protection structures begin to conduct and the input stops being a high-impedance node. The datasheet notes the OPA164x suppresses phase reversal under common-mode overdrive (the rail limits the output instead), so this is graceful rather than destructive — but there is no information to be gained above this level and some risk in seeking it.
 
-**Operating recommendation, and it is stricter than "stay under the knee."** For a *measurement* instrument, running just below the compression knee is not good enough: THD rises well before gain visibly compresses. **Target ≤ 0.23 V<sub>rms</sub> (6 dB below the knee), preferably ~0.15 V<sub>rms</sub> (10 dB below)**, for any capture whose numbers are meant to be trusted. 0.460 V is fine for proving signal flow; it is not where quantitative measurements should be taken.
+**Operating recommendation, anchored to a measured point rather than an interpolated one.** For a *measurement* instrument, running just below the compression onset is not good enough: THD rises well before gain visibly compresses. Take **0.460 V<sub>rms</sub> — the highest level actually measured as linear** — as the reference, and work down from there: **target ≤ 0.23 V<sub>rms</sub> (−6 dB), preferably ~0.15 V<sub>rms</sub> (−10 dB)** for any capture whose numbers are meant to be trusted. Deriving the limit from the measured point rather than the interpolated knee means it stays valid regardless of where the knee actually falls in the bracket. 0.460 V is fine for proving signal flow; it is not where quantitative measurements should be taken.
 
 **Next:** reconnect the Audio Shield path and confirm the signal reaches SOURCE_NODE in firmware. Note the bench tooling for this is already installed — the `serial-mcp` server is configured and approved, so the Teensy's `[Main]` output can be captured directly rather than read off a monitor by eye.
 
