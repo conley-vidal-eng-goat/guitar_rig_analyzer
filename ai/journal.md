@@ -11,6 +11,162 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (1) — ROOT CAUSE: Phase 4's circuit is invalid by design. The OPA1642 cannot be biased at midsupply on a 5 V single rail — TI's common-mode input range forbids it. The chip is not damaged.
+
+**Why this entry exists:** supersedes the hardware-fault hypotheses in the 2026-09-03 entry below with a *design* defect in the runbook itself, verified against the manufacturer's datasheet. This is the highest-value engineering finding on the project so far and is written up accordingly. Entry (1) of 2026-09-03 is left in place per this file's rules; its "OPA1642 is reverse-powered" hypothesis is **rejected** — see below.
+
+**The finding.** `docs/breadboard_bringup_v3.md` § Phase 4 biases the OPA1642's non-inverting input (pin 3) to VGND ≈ 2.5 V while powering the part from a single +5 V rail (Step 3: pin 4 → GND; Step 4: pin 8 → +5 V). **That operating point is outside the device's specified input common-mode range.**
+
+TI's OPA164x datasheet specifies:
+
+> V<sub>CM</sub> = (V−) − 0.1 V to (V+) − 3.5 V
+
+**Independently verified against TI's published datasheet, not taken on assertion.** The datasheet further states explicitly that *for V<sub>S</sub> less than ±3.5 V, the common-mode input range does not include midsupply.*
+
+Applied to this circuit — V+ = 5 V, V− = 0 V — the legal common-mode window is **−0.1 V to +1.5 V**. Phase 4 biases at 2.5 V, **a full volt above the ceiling.** Critically, 5 V *is* a legal total supply for the part (absolute range 4.5–36 V), which is exactly what makes this defect easy to miss: the supply is valid, the *input bias point at that supply* is not. Choosing a JFET part for its picoamp bias current, then operating its inputs outside their valid window, defeats the reason it was chosen.
+
+**Bench evidence, and it fits cleanly:**
+
+| Observation | Reading | Interpretation |
+|---|---|---|
+| VGND rail, op-amp removed | **2.480 V** | divider healthy, unloaded |
+| Pin 3, op-amp removed | **2.480 V** | bias path correct — no fault upstream |
+| Pin 3, op-amp installed | **2.153 V** | input stage outside CM range, loading the bias node |
+| Pin 1 (output) | **~2.153 V** | follower tracking a corrupted input, as expected |
+| Pin 3 → pin 4 resistance | **159 kΩ** | **not a short** — chip is not damaged |
+| +5 V rail | **4.99 V** | supply healthy |
+
+The ~327 mV droop on a node that measures 2.480 V unloaded is the signature: the input stage is drawing current it should not, because it is being operated past its specified limit. A damaged part would show a low resistance and a collapsed rail. Neither is present.
+
+**Rejected hypothesis — "the OPA1642 is reverse-powered."** The 2026-09-03 entry ranked this first. It is wrong, and the 159 kΩ pin 3→pin 4 measurement plus the healthy 4.99 V rail refute it directly: a reverse-powered op-amp conducts hard through its substrate and crushes the supply. **Do not flip, replace, or re-seat the chip on the strength of that entry.** The part is fine and should stay in service.
+
+**✅ RESOLVED — the 0 V rail was an unpowered board. USB was not plugged in.** Confirmed by Conley 2026-09-05. There was never an electrical fault, no intermittent, and nothing to chase: **the rail reads 0 V because nothing was powering it.** The healthy 4.99 V now is simply the same rail with USB connected.
+
+**This vindicates the original hypothesis and reinstates the runbook defect as the real cause of the detour.** The first analysis on 2026-09-03 identified exactly this — Phase 4 says "Unplug USB" at Step 1 (line 884) and **never says to plug it back in**, yet its end-of-phase verify at line 1027+ demands five live DMM readings. That hypothesis was then withdrawn on a report that the 0 V had been measured with power connected, which turned out to be mistaken. The correct chain is the simple one: *the runbook told him to unplug USB, never told him to plug it back in, and then asked him to measure voltages.*
+
+**Everything the withdrawal produced was wrong and is retracted:**
+- The "this is a REGRESSION" framing in the 2026-09-03 entry — **there was no regression.** The rail never failed.
+- The "OPA1642 is reverse-powered" hypothesis — already refuted by the 159 kΩ measurement, now doubly moot.
+- The escalation flag over the Teensy not enumerating on 2026-09-03 at 11:14 PDT — **same cause.** An unplugged Teensy does not enumerate. Not evidence of overcurrent or damage.
+- The VUSB-vs-VIN concern is **no longer implicated in any fault.** It remains a genuine documentation inconsistency worth settling (the runbook specifies the `VUSB` pad and never mentions VIN in 1860 lines, while the debugging session probed "5V/VIN"), but nothing is broken because of it. Demoted to housekeeping.
+
+**The lesson, and it is the valuable part of this whole episode:** a documentation gap consumed roughly two days of hardware debugging across two AI sessions, produced two false hardware hypotheses, and nearly resulted in a good op-amp being replaced on suspicion. **Fixing TODO-18 is not cosmetic.** Cheapest test first, always: confirm the supply is connected before testing the load.
+
+**Note on what survives.** The common-mode finding in this entry is **entirely independent of the 0 V episode** and stands unchanged. It was found by correct measurement (2.480 V chip-out vs 2.153 V chip-in) against a powered board, and it is a real defect in the design. The 0 V rail was a red herring running alongside it, not part of it.
+
+**Blast radius — confined to one stage, but that stage is load-bearing.** Checked every phase for op-amp usage: only Phase 4 instantiates a buffer. Phase 7 does **not** add a second op-amp — it branches the *existing* buffer output at `48e` into RELAY_SEND NC_1 while keeping the permanent SOURCE_NODE tap to Line-In L. So one fix corrects the whole design, but until it lands, **every downstream phase that depends on SOURCE_NODE is built on an invalid buffer** — Phase 7's routing and Phase 9's validation tests 1–4 included. Phases 5–9 should not be treated as verifiable until this is corrected.
+
+**Three legitimate fixes, with the engineering trade-off stated. Not decided here — this is Conley's call.**
+
+1. **Raise the analog supply (preserves the OPA1642).** For a 2.5 V bias, V+ must be ≥ 6.0 V absolute minimum; realistically 9 V for margin. Cleanest form: a separate 9 V feed for the analog section sharing GND, with **VGND re-centred to ~4.5 V** so the swing is symmetric — 4.5 V sits comfortably inside the 9 V window's 5.5 V ceiling. Output AC-coupling already blocks the DC difference, so nothing downstream cares about the new midpoint. **Best audio performance** — keeps a part chosen for genuinely good reasons (low noise, low distortion, picoamp bias current suited to high-impedance pickups), and preserves the Phase 0.5 SMD soldering already done, with 5 spares in hand. **Cost:** a supply rail the USB-powered product does not currently have, which the eventual PCB must then carry (boost converter or external supply).
+2. **Swap to an op-amp whose CM range includes 2.5 V at 5 V — i.e. rail-to-rail input.** Keeps the single USB-derived 5 V rail and needs no new supply. Requires a CMOS/JFET input to retain low bias current for high-impedance sources. Candidates to evaluate against their datasheets, **not to be adopted on this list alone:** TLV9062, OPA2320, MCP6022. **Cost:** new parts to order, the OPA1642 spares and soldered adapters wasted, and RRIO CMOS parts are typically noisier with worse distortion than the OPA1642 — a real concern for an instrument whose purpose is *measurement*.
+3. **Stopgap — bias below 1.5 V, keep everything else.** Not in the original framing, worth recording as the only zero-new-parts option. Re-reference pin 3 to ~1.0 V (inside the −0.1 to 1.5 V window) via a divider rather than the 2.5 V VGND rail. Unblocks the bench *today*. **But** the OPA1642's output does not swing rail-to-rail (roughly V− + 0.6 V to V+ − 0.6 V), so an output sitting at 1.0 V has only ~0.4 V of downward headroom — tight and asymmetric. Adequate for phone-level Phase 4 validation, marginal for a hot pickup. **Also changes the input RC corner**, so it interacts with TODO-19. Treat as a bring-up expedient, never as the final design.
+
+**Recommendation, stated as opinion:** for a *measurement* instrument, option 1 is technically strongest — noise and distortion are the product's whole point, and the OPA1642 is the right part operated correctly. Option 2 is the right answer only if keeping a single USB-derived rail is a hard product constraint. The deciding question is what the eventual PCB's power architecture looks like; fixing the breadboard one way and the PCB another wastes the work.
+
+**Secondary finding, same phase, worth checking before Phase 5.** The input bias resistor to VGND is 100 kΩ (confirmed by the runbook's own corner-frequency arithmetic in its Phase 4 Background, which uses R = 100 000). That sets the buffer's input impedance at roughly 100 kΩ. The runbook's own Background justifies the JFET choice by noting *"guitar pickups are high-impedance (6–250 kΩ)"* — but a 100 kΩ input then loads that pickup heavily, rolling off highs and reducing output. Standard guitar-amp input impedance is ~1 MΩ. **The runbook argues for a high-impedance front end and then builds a comparatively low-impedance one.** Harmless for Phase 4 (a phone is a low-impedance source), but it lands directly on Phase 5's first real instrument jack. Tracked as TODO-23.
+
+**Portfolio note (explicitly requested).** This entry is written to stand as engineering evidence: a bench anomaly was traced past two plausible-but-wrong hardware hypotheses to a specification violation in the design itself, verified against the manufacturer's datasheet rather than assumed, with the failing part exonerated by measurement (159 kΩ, no short) instead of being replaced on suspicion. The cheap wrong answer — "swap the chip" — would have destroyed the evidence and left the defect in the design.
+
+**Next:** decide the fix direction (options 1–3 above), then correct `docs/breadboard_bringup_v3.md` § Phase 4 for **both** defects it now carries — the invalid common-mode operating point, and the missing "reconnect USB" step before the end-of-phase verify (TODO-18, now confirmed to have caused a two-day debugging detour).
+
+---
+
+## 2026-09-03 (1) — Phase 4 built through Step 11; +5V rail reads 0 V **with USB connected** — UNRESOLVED, real fault. Leading hypothesis: the supply wire is on VIN, but the runbook specifies VUSB
+
+**Why this entry exists:** records Phase 4 physical progress made in a ChatGPT-driven session, logs an open electrical fault that is **not yet solved**, and captures a separate runbook defect found while investigating it. Nothing here is a fix — the fault is live as of this entry.
+
+> **⛔ SUPERSEDED BY 2026-09-05 (1) — READ THAT FIRST. Do not action anything below.** The 0 V rail this entry investigates was an **unpowered board — USB was not plugged in.** There was no fault, no regression, and no damaged part. This entry's core premise ("0 V measured with power connected") was mistaken, so its regression framing, its reverse-powered-OPA1642 hypothesis, and its enumeration escalation are all void. Retained unedited per this file's never-delete rule, as the record of how a documentation gap (TODO-18) produced two days of false hardware hypotheses.
+
+> **Corrected in-session (2026-09-03), before this entry was ever acted on.** The first draft of this entry recorded the decisive voltage measurement as "not yet taken" and led with the theory that the rail was simply unpowered because the runbook forgets to say "reconnect USB." Conley then confirmed **he was reading 0 V with power plugged in**, which falsifies that theory outright. The affected sections are rewritten below rather than appended to, because the draft asserted a *measurement had not happened when it had* — leaving a false evidence claim at the top of this file would undermine the exact discipline the file exists to enforce. The superseded theory is retained in full under "Rejected hypothesis" below so the reasoning trail survives. The runbook gap it identified is real and is still tracked (TODO-18), it is just **not the cause of this fault.**
+
+**Phase 4 physical build — completed steps (per the runbook's numbering):**
+- Step 9 — feedback jumper — done.
+- Step 10a — pin 5 (+in B) → VGND, jumper `38f` → bottom-red rail — done.
+- Step 10b — pin 6 (−in B) → pin 7 (out B), jumper `37f` → `36f` — done. Unused op-amp half now terminated as a unity-gain follower (prevents the channel-B oscillation the runbook warns about).
+- Step 11 — output AC-coupling cap, 10 µF electrolytic, long leg (+) → `35e`, short leg (−) → `48e` — done. **Polarity is correct**: `35e` is the op-amp output sitting at ~2.5 V VGND, `48e` is the downstream side near 0 V DC, so the + terminal is on the higher-DC node as required.
+- Steps 12–13 (3.5 mm breakout to LINE-IN-L; test source prep) — status not clearly recorded in the source transcript. **Verify before proceeding.** One related observation was logged: on the breakout cable in use, **white is the tip conductor** (left audio).
+
+**THE OPEN FAULT — do not treat as solved.** At the Phase 4 end-of-phase DMM checks, the +5 V rail read **0 V** against an expected 4.85–5.10 V, **with USB power connected.** This is a real fault, not a measurement setup error.
+
+Diagnostics run so far, and what each one ruled out:
+
+| Test | Result | Rules out |
+|---|---|---|
+| Voltage, +5 V rail → GND, **USB connected** | **0 V** | — this is the fault |
+| Continuity, +5 V rail → GND | **no beep** | hard short across the supply |
+| Continuity, "5V/VIN" pin → top-red +5 V rail | **beep** | broken/missing supply jumper |
+
+**THIS IS A REGRESSION, and the suspect window is narrow.** Conley confirmed Phase 1 passed — the +5 V rail **did** work. It has no journal record only because this journal was created *after* Phase 1 was completed; absence of a record here is a bookkeeping artifact, not absence of a passing test. Do not treat the rail as never-proven.
+
+The last independently-confirmed *powered and healthy* state is **Phase 3**, and its evidence is strong: pin 16 measured **3.293 V** at idle. That reading is the Teensy's own internal pull-up — it cannot exist unless the board is powered and the 3.3 V regulator is working. Phase 4's Step 1 then unplugs USB, and every subsequent step is unpowered construction.
+
+**So everything between "Phase 3 measured fine" and "Phase 4 verify reads 0 V" is suspect, and that window contains exactly one thing: the Phase 4 OPA1642 build.** Phases 2 and 3 are behind the last-good marker. Focus there and nowhere else.
+
+**⚠️ Host-side enumeration check, run 2026-09-03 11:14 PDT — the Teensy is NOT enumerating.** `ls /dev/cu.usbmodem*` returns no matches and `arduino-cli board list` shows no Teensy. On **2026-09-01**, the same two checks returned `Teensyduino USB Serial, VID:16C0 PID:0483, serial 19596920` on `/dev/cu.usbmodem195969201` and a Teensy 4.1 at `usb:130000`. **This is ambiguous and must be disambiguated before it is interpreted** — Phase 4 instructs USB unplugged, so if the cable is simply out, this means nothing. **But if USB is currently connected and the board still does not enumerate, that is a major escalation**: it would mean VBUS has collapsed or the board is no longer running, consistent with an overcurrent condition on the breadboard pulling the USB port into current limit. Check the cable state first, then re-run `arduino-cli board list`.
+
+**Second-opinion analysis — leading hypothesis: the supply wire is on the wrong pin. The runbook says VUSB. The debugging session tested VIN. On a Teensy 4.1 these are not the same net.**
+
+Verified directly against `docs/breadboard_bringup_v3.md`:
+- Phase 1, Step 2 (line 561): *"Run a red wire from Teensy **`VUSB`** pad → top-red rail. The VUSB pad on the Teensy 4.1 is at the very edge of the board, near the USB-C connector."*
+- Grepping the entire 1860-line runbook for VUSB/VIN returns **two hits, both VUSB** (lines 554 and 561). **The runbook never mentions VIN at all.**
+- The source debugging session, however, tested continuity to *"Teensy breakout 5V/VIN pin"* and then instructed measuring *"Teensy 5V/VIN → GND."* That pin was assumed equivalent to the documented VUSB source. It is not.
+
+On the Teensy 4.1, **VUSB** carries USB VBUS directly, whereas **VIN** is the external-supply *input* pin. They are linked only through a cuttable trace on the underside of the board. If that link is cut — or if the breakout's screw terminal labeled "5V/VIN" is wired as an input-only path — then VIN sits at 0 V even with USB fully powered and the board running. That produces exactly the observed symptom, and it is consistent with every test above: the wire is intact (beep), nothing is shorted (no beep), the Teensy is alive (enumerates), and yet the rail is dead.
+
+**Ranked hypotheses and the single test that discriminates each.** Re-ranked once the regression was established — a wiring-was-always-wrong theory can no longer be leading, because the same supply wiring delivered 4.85–5.10 V at Phase 1 and a working 3.293 V pull-up at Phase 3.
+
+1. **The OPA1642 is reverse-powered — inserted rotated 180°, or offset by a row/column** *(leading)*. This is the single highest-probability failure in the suspect window, and it fits every symptom at once: a reverse-powered op-amp conducts hard through its substrate, crushing the rail to near 0 V; the resulting path is a diode drop plus current limiting, typically tens-to-hundreds of ohms, **which does not beep on a continuity test**; and the excess draw can push the USB port into current limit, which would explain the board no longer enumerating. The runbook's placement is genuinely easy to get wrong — pins 1–4 run *down* the `e` row (`35e`→`38e`) and pins 5–8 run *back up* the `f` row (`38f`→`35f`), so **pin 8 (V+) is at `35f` and pin 4 (V−) is at `38e`**. A 180° rotation swaps V+ and V− exactly. **Tests, all with USB unplugged:** confirm the notch/pin-1 marker is on the **left**; confirm the adapter straddles the center gap on columns 35–38 with no row offset; then **power up and immediately feel the chip — a reverse-powered op-amp gets hot fast.** Fastest decisive test: **pull the OPA1642 out entirely, power up, and measure the rail.** If it returns to ~5 V, the chip or its wiring is the fault and everything upstream is fine.
+2. **A wiring error introduced in Phase 4 shorts or loads the rail** — the phase added the VGND jumper (`38f`→bottom-red), the feedback jumper, the `37f`→`36f` link, and the output cap. Check especially that the pin 4 (V−, GND) connection at `38e` was not accidentally run to the bottom-red **VGND** rail instead of GND; `38e` and `38f` sit on opposite sides of the center gap and are easy to transpose. Test: with USB unplugged, measure top-red↔top-blue in **ohms**, not continuity mode.
+3. **Reversed or failed 10 µF electrolytic** — Phase 1 Step 4 places one with (+) in top-red, (−) in top-blue; Phase 4 Step 11 places another. Reversed, an electrolytic conducts and can crush the rail at tens-to-hundreds of ohms — again, **below a dead short, so no beep.** The Phase 1 one is less suspect now (it survived Phase 1's verify) but could have degraded. Feel both for warmth; the runbook's Phase 1 verify warns "nothing should hum, smoke, or get warm." *(Note: the Phase 4 output cap's polarity was checked and is correct — (+) on `35e` at ~2.5 V, (−) on `48e`.)*
+4. **Supply wire lands on VIN rather than the documented VUSB pad** *(demoted — was leading before the regression was known)*. The runbook specifies the **`VUSB`** pad (Phase 1 Step 2, line 561) and never mentions VIN anywhere in its 1860 lines, while the debugging session tested "5V/VIN." On a Teensy 4.1, VUSB carries USB VBUS and VIN is the external-supply input, joined only by a cuttable underside trace. **This cannot be the root cause of a regression** — the wire has not moved and it worked at Phases 1 and 3. It remains worth resolving as a *measurement* error: if the probe was on VIN rather than the rail's actual source, the 0 V reading may be describing the wrong net entirely. Probe the VUSB pad directly to settle it, and standardize on the documented pin from here on.
+
+**Rejected hypothesis (retained for the trail).** The first draft of this entry led with: Phase 4 says "Unplug USB" at Step 1 and never says to reconnect, so the 0 V reading was simply an unpowered board. That gap in the runbook is **real and verified** — Phase 4 (lines 848–1056) contains exactly one power instruction, line 884's "Unplug USB", no upload step, and no reconnect, yet its verify table at line 1027+ demands five live readings. Phase 4 is the only phase with this hole (Phase 1 says "Plug in USB"; Phase 2 restores power implicitly via `arduino-cli upload`; Phase 3 asserts USB is plugged in). **But it is not the cause here**, because the 0 V was measured with power connected. Kept as TODO-18 on its own merits — it will bite someone later even though it did not cause this.
+
+**Process note worth keeping.** Two lessons, both cheap: (1) confirm the supply is connected before testing the load — the source session ruled out breadboard faults before establishing whether power was applied; (2) **when a runbook names a specific pin, probe that pin.** Substituting "5V/VIN" for the documented VUSB silently changed which net was under test, and every subsequent measurement inherited that substitution. The continuity beep that appeared to confirm the supply path was, under this hypothesis, confirming a wire to the wrong pin.
+
+**Deferred decision surfaced by the runbook's own Background section (not acted on):** input coupling cap C1 = 10 nF gives a high-pass corner of ~160 Hz, which sits *above* the low-E fundamental at 82 Hz. The runbook flags this and suggests swapping C1 to a 0.1 µF ceramic (20 on hand) for a ~16 Hz corner. Fine to leave at 10 nF for topology validation — but this must be resolved before any bass-inclusive measurement is trusted, and it interacts with the existing TODO-4 note that Test 1's pass band starts at 200 Hz.
+
+**Next, in this order — stop as soon as one explains it:**
+1. **Is USB actually plugged in right now?** If yes, re-run `arduino-cli board list`. Still no Teensy ⇒ escalate: VBUS has collapsed or the board is not running, pointing hard at overcurrent from the breadboard.
+2. **Pull the OPA1642 out of the breadboard**, power up, measure the rail. Rail returns to ~4.85–5.10 V ⇒ the chip or its immediate wiring is the fault and everything upstream is exonerated in one move. This is the highest-information single test available; do it before any fine-grained probing.
+3. If the rail is still dead with the chip out: measure top-red ↔ top-blue in **ohms** (not continuity), and feel both 10 µF electrolytics for warmth.
+4. If the rail is fine with the chip out: re-seat the OPA1642 with the **notch on the left**, straddling the gap at columns 35–38, no row offset — then power up and immediately check the chip for heat.
+5. Separately, probe the **VUSB pad** directly (board edge by the USB-C connector) to settle whether earlier readings were even taken on the right net, and use the documented pin from here on.
+
+**Backfill owed:** Phase 1's verify passed but predates this journal, so its actual numbers were never recorded. Log them retroactively if they can be recovered — see TODO-20.
+
+---
+
+## 2026-09-01 (3) — Phase 3 DMM evidence added; entry (2)'s "PASSED" is narrowed to *electrical* pass, router event integration explicitly deferred
+
+**Why this entry exists:** entry (2) below recorded Phase 3 as satisfying "the Phase 3 sign-off checklist line in full." That was measured against one line of the checklist, not the runbook's actual four-row end-of-phase verify table. This entry adds the DMM evidence collected afterward and corrects the scope of the claim. Per this file's rule, entry (2) is left unedited — this supersedes its status wording.
+
+**New electrical evidence (DMM, pin 16):**
+- Idle, not grounded: **3.293 V** — internal pull-up confirmed active.
+- Tapped to GND: **0.0–0.1 V**, fluctuating between the two. Consistent with the runbook's `< 0.1 V` target at the meter's display resolution; the fluctuation is meter quantization, not a floating or partially-pulled node.
+
+Combined with entry (2)'s observation that pins 16, 17, 22, and 24 all showed clean LOW-on-tap / HIGH-on-release transitions in the temporary standalone test firmware, the GPIO layer and the debounce logic are electrically proven.
+
+**The discrepancy, stated plainly.** `docs/breadboard_bringup_v3.md` § Phase 3's end-of-phase verify table has **four** rows, not one:
+
+| Runbook check | Status |
+|---|---|
+| Each of pins 16, 17, 22, 24 generates a `JACK_CHANGED` event when tapped to GND | **NOT met** — no router in the live path |
+| Pin 22 (TS) or pin 24 (XLR) also generates a `ROUTE_CHANGED` event | **NOT met** — same reason |
+| DMM with no tap shows ~3.3 V (INPUT_PULLUP active) | **MET** — 3.293 V |
+| DMM with pin tapped to GND shows < 0.1 V | **MET** — 0.0–0.1 V |
+
+The two event rows cannot have been satisfied by what was actually run. The temporary test block polled the four pins directly with `digitalRead()` + `JACK_DEBOUNCE_MS`; it never called `signalRouter_init()` / `signalRouter_update()`, which are what emit `JACK_CHANGED` and `ROUTE_CHANGED`. Those functions have never been integrated into the live path in the active tree — that was the deliberate scope call recorded in entry (1) below (running the full router before the audio stack init would have silently expanded the test past Phase 3), and it remains true after the test block's removal.
+
+**Root cause of the confusion, worth flagging for future phases:** the runbook's Phase 3 Step 1 states *"No code changes for this phase — `signalRouter_init()` already configures these pins as `INPUT_PULLUP`"* (`docs/breadboard_bringup_v3.md` line 785). That premise is false for the active tree and always has been. The runbook was written against the intended post-promotion firmware, not against what is actually built today. **Expect the same class of mismatch in later phases** — Phase 5 (line 1200), Phase 7 (line 1531), and Phase 8 (line 1638) all likewise expect live `JACK_CHANGED` / `ROUTE_CHANGED` / `ROUTE_INVALID` output from the router. Read each phase's expectations against the active tree before running it, per this file's source-of-truth precedence rule.
+
+**Decision (Conley's call, adopted):** record Phase 3 as **"GPIO/debounce electrical test passed; full router event integration deferred"** rather than claiming the end-of-phase table was met. What was rejected: marking Phase 3 fully signed off on the strength of the electrical rows alone, which would have put an unearned tick in the sign-off checklist that TODO-10 later depends on. The deferred half does not block Phase 4 — the OPA1642 buffer is an analog signal-path build that does not touch jack-detect events — but it must be closed before TODO-10 breadboard sign-off, and it is genuinely the same work as TODO-11's promotion steps.
+
+**Next:** Phase 4, Step 1 — unplug USB, then place the OPA1642 exactly as `docs/breadboard_bringup_v3.md` § Phase 4 specifies. Note the runbook's own heads-up carried in TODO-4: Test 1's pass band starts at 200 Hz, so extra rolloff below ~300 Hz at this phase is the 10 nF AC-coupling cap, not a fault.
+
+---
+
 ## 2026-09-01 (2) — Phase 3 jack-detect GPIO test PASSED on all four pins; temporary test block removed
 
 **Why this entry exists:** closes out Phase 3 from entry (1) below with the hardware result, and records the cleanup that follows a pass per the runbook's own convention (temporary bring-up code is removed once its phase is proven, same pattern as Phase 2).
