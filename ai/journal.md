@@ -11,7 +11,55 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (4) — CORRECTION: entry (3)'s 1.2 V output-floor figure was wrong. Verified from TI's datasheet; final bias design is ~0.88 V on a decoupled OPA_BIAS node
+
+**Why this entry exists:** entry (3) below built its headroom analysis and its 1.34 V bias recommendation on an output-swing figure of "1.2 V from each rail." **That figure is wrong.** It came from a web search result summarising a third-party blog, not from TI. ChatGPT flagged it; the datasheet was then pulled and parsed directly to settle it. Entry (3) is left in place per this file's rules — this entry supersedes its numbers and its recommendation.
+
+**Verified, extracted from TI's OPA164x datasheet (SBOS484) Electrical Characteristics table:**
+
+```
+VO   Voltage output swing from rail
+     RL = 10 kΩ, AOL ≥ 120 dB     (V–)+0.2     (V+)–0.2
+     RL = 2 kΩ,  AOL ≥ 114 dB     (V–)+0.35    (V+)–0.35
+VCM  Common-mode voltage range    (V–)–0.1     (V+)–3.5
+```
+
+So the output swings to within **0.2 V** (10 kΩ) or **0.35 V** (2 kΩ) of the rails — not 1.2 V. **Sourcing discipline note for future sessions: a search-result summary is not a datasheet.** A number that drives a build recommendation must come from the primary document. This one was off by 6× and would have produced a materially worse circuit.
+
+**Corrected headroom analysis.** For a unity-gain follower the signal *is* the common-mode voltage, so the usable window is the intersection:
+
+| Constraint | Range at V+ = 5 V |
+|---|---|
+| Input common-mode | −0.1 … **1.5 V** |
+| Output swing, R<sub>L</sub> = 2 kΩ | **0.35** … 4.65 V |
+| Output swing, R<sub>L</sub> = 10 kΩ | **0.20** … 4.80 V |
+| **Usable (conservative, 2 kΩ)** | **0.35 – 1.50 V — 1.15 V wide** |
+
+That is **~4× wider than entry (3) claimed**, and it makes the stopgap comfortably viable rather than marginal. The optimum bias is the window's centre, ≈ **0.925 V** (2 kΩ) or ≈ 0.85 V (10 kΩ) — so the originally proposed ~1.0 V was close to right, and **entry (3)'s 1.34 V was actively worse**: it leaves only 0.16 V of upward room before the common-mode ceiling. Correction accepted in full.
+
+**Topology change — bias from a decoupled node, not from a divider sitting on the input.** Both earlier proposals put the divider directly at pin 3, which makes the divider's Thévenin resistance the input impedance *and* leaves the bias node undecoupled, feeding +5 V rail noise straight into the signal path attenuated only by the divider ratio. The original circuit did not have this problem: it biased from **VGND, which Phase 1 decouples** (10 µF + 0.1 µF), through a single 100 kΩ series resistor. Preserve that structure:
+
+1. **Build a separate `OPA_BIAS` rail** — 47 kΩ (+5 V → node) + 10 kΩ (node → GND) ⇒ **0.877 V**, R<sub>th</sub> = 8.25 kΩ, draw 88 µA.
+2. **Decouple it** — 10 µF electrolytic (+ to OPA_BIAS, − to GND) plus 0.1 µF ceramic, mirroring Phase 1 Steps 8–9.
+3. **100 kΩ from OPA_BIAS → pin 3** — this is the *existing* bias resistor, simply moved off VGND.
+4. **100 kΩ from OPA_BIAS → pin 5**, replacing Step 10a's jumper to VGND (entry (3)'s pin 5 finding, which ChatGPT confirmed).
+5. **Leave VGND completely untouched** — it stays 2.5 V for everything else.
+
+**Why 0.877 V and not 1.000 V:** two resistors instead of five, and it sits nearer the window centre. Worst-case (2 kΩ) headroom is ±0.53 V peak; at the real light load, ±0.62 V. Round 1.000 V is available as 4× 10 kΩ + 1× 10 kΩ if a clean number is preferred — the difference is ~1 dB, not worth three extra parts.
+
+**Why this topology is better than either earlier proposal:** input impedance stays exactly 100 kΩ (set by the series resistor, not the divider), so **the C1 corner does not move** and TODO-19 is unchanged in kind; TODO-23's eventual 1 MΩ swap stays a single-part change; and the bias node is properly decoupled. The JFET inputs draw picoamps, so those 100 kΩ resistors carry no DC current and drop no voltage — the 8.25 kΩ source is stiff enough with nothing further needed.
+
+**Stock check (from the runbook's master parts list):** 1 kΩ ×60 · 10 kΩ ×60 · 47 kΩ ×40 · 100 kΩ ×50 · 10 µF ×10 · 0.1 µF ×20 · 10 nF ×10. Everything above is on hand; **no order needed.**
+
+**Unchanged from entry (3):** the pin 5 finding stands and is now confirmed by both reviewers. The characterisation-before-trust principle stands — bias it, drive a controlled signal, find the real clipping point rather than assuming the datasheet boundary is the installed-circuit limit. Bench state remains OPA out, USB unplugged, VGND untouched until the new bias node is built and measured.
+
+**Next:** build OPA_BIAS (steps 1–5 above), verify it reads ~0.88 V unloaded, install the OPA1642, confirm pin 3 and pin 1 both sit within 30 mV of it, then characterise the clipping points.
+
+---
+
 ## 2026-09-05 (3) — Option 3 (rebias to ~1 V) adopted as the documented temporary bring-up config. Design work done: 1.0 V is the WRONG target, and the usable window is far tighter than assumed
+
+> **⛔ NUMBERS SUPERSEDED BY 2026-09-05 (4) — READ THAT FIRST.** This entry's "output swings to within 1.2 V of each rail" is **wrong** — it came from a search-result summary, not TI. The datasheet says 0.2 V (10 kΩ) / 0.35 V (2 kΩ). Consequently this entry's 0.3 V window and its 1.34 V bias recommendation are both void; the correct target is ~0.88–1.0 V. The **pin 5 finding below is correct and stands.** Retained unedited per the never-delete rule.
 
 **Why this entry exists:** Conley decided to proceed with the Option 3 stopgap to get a working prototype for the MIT Maker Portfolio while the PCB architecture (TODO-21) is settled in parallel. That is **compliant with the decision gate in entry (2)** — the gate explicitly permits "an explicitly documented temporary bring-up configuration," and this entry is that documentation. This entry records the actual design calculation, which turned up two problems with the plan as proposed.
 
