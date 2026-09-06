@@ -11,6 +11,38 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (12) — DECISIVE: SOURCE_NODE stays at +0.0 dBFS with the analog input physically disconnected. The analog front end is exonerated; the fault is in the codec/I2S data path
+
+**The test.** With everything powered and running, the red signal wire from `48e` → LINE-IN-L was removed. All shield↔Teensy wiring, shield ground, the op-amp circuit and the 1 kHz source were left in place — deliberately starving the codec of input while keeping the digital path fully alive. Captured over `serial-mcp`:
+
+```
+[Main] --- 5s diagnostics (uptime 610s) ---
+[Main] Block:      107 in 5000ms = 46.7 ms/block
+[Main] Loop:         11358732 iterations/5s = ~2271746/sec
+[Main] SOURCE_NODE peak: +0.0 dBFS          |   RETURN_NODE peak: -1.1 dBFS
+[Main] TF confidence: 100%   persistence: ACTIVE
+[Main] TF spot-check:   120Hz=-2.0dB  500Hz=-1.7dB  1kHz=-0.5dB  5kHz=-1.8dB  10kHz=-1.2dB
+```
+`CLIP_SOURCE` and `CLIP_RETURN` continue firing throughout.
+
+**✅ Result: SOURCE_NODE remains pegged at `+0.0 dBFS` with no analog signal reaching the codec at all.** This is conclusive. **The analog front end — the OPA1642 buffer, the 0.877 V bias, the coupling caps — is not the cause and is exonerated by this test.** The full-scale condition originates downstream, in the codec, the I2S transport, or the software that consumes it. All the analog work from entries (4)–(6) stands; it was simply never visible through a broken digital path.
+
+**Three observations that narrow it much further:**
+
+1. **Data is flowing at exactly the right rate.** 107 blocks in 5000 ms = 46.7 ms/block, matching the corrected 46.44 ms FFT hop expectation (TODO-27). `AudioAnalyzeFFT1024` only emits when it has been fed real blocks, so **the I2S bus is delivering samples on time.** This rules out a dead bus, a missing clock, and a disconnected data line. The transport works; its *content* is wrong.
+
+2. **The values are not stuck — they move.** RETURN went from `+0.0` to `-1.1 dBFS` when the wire came out. A hard-stuck pattern (all-ones, latched bits) would read exactly 0.0 dBFS forever. Fluctuation near full scale means the samples vary but are saturated — closer to "garbage at full amplitude" than "frozen register".
+
+3. **⚠️ Disconnecting the LEFT input changed the RIGHT channel's reading.** SOURCE_NODE is L, RETURN_NODE is R. Pulling the L wire moved RETURN from `+0.0` to `-1.1 dBFS`. **The two channels are not independent.** In a correctly framed I2S stream they would be. This is the single most diagnostic fact in the capture, and it points hard at **I2S frame alignment** — L and R sample data being interleaved or shifted so that one channel's content leaks into the other.
+
+**Leading hypothesis: an I2S format/alignment mismatch, not a wiring fault.** Bit-length or frame-sync misalignment produces exactly this triad — correct sample *rate*, saturated *values*, and cross-channel contamination. The wiring is pin-for-pin correct for a Rev D shield on a Teensy 4.x (verified against the Audio library source in entry (7)), and the codec answers on I2C, so the remaining suspects are how the codec is framing the data versus how `AudioInputI2S` expects to read it. Worth checking in order: whether the shield is genuinely Rev D rather than a Rev C wired by pin number; whether LRCLK (20) and BCLK (21) are transposed at one end; and the codec's I2S format registers as actually written by `AudioControlSGTL5000::enable()`.
+
+**What this does NOT mean.** It is not evidence the buffer is good — it is evidence the buffer has not yet been *tested*. SOURCE_NODE has never carried a trustworthy number. Phase 4's criterion (SOURCE_NODE visibly and correctly receiving the injected signal) remains unmet, and the expected correct reading is still ≈ **−10.4 dBFS** for the present 0.143 V<sub>rms</sub> input at `LINE_IN_LEVEL 5`.
+
+**Next:** reconnect the LINE-IN-L wire (nothing is gained by leaving it out), then attack the I2S framing question rather than the analog side.
+
+---
+
 ## 2026-09-05 (11) — CORRECTION: the I2S interconnect was already wired. Floating-RX hypothesis void; loop rate up 59×; generator and gain both ruled out
 
 **❌ Correcting entry (9) and (10).** Both claimed the I2S lines had never been wired, and built a "floating RX_DATA0" explanation for the `+0.0 dBFS` readings on top of it. **That was wrong, and it was written from stale context** — the interconnect had already been installed and verified: **18→18, 19→19, 23→23, 21→21, 20→20, 8→8, 7→7**, plus power and ground. Pin 8 is connected, so a floating RX line cannot be the cause. The wiring must not be redone or disturbed.
