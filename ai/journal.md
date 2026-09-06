@@ -11,6 +11,42 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (10) — Display guard CONFIRMED on hardware: 2194 → 46.3 ms/block, a 47× recovery. And the "expected 92.9 ms" constant is itself wrong by 2×
+
+**Why this entry exists:** on-hardware verification of TODO-25's guard (committed `8548c4c`, uploaded and run). The pass criterion was a measurement, not a compile, and it passed decisively. Investigating the residual discrepancy then turned up a separate firmware bug.
+
+**✅ The guard works. Measured, before and after:**
+
+| | Blocks | Window | Period |
+|---|---|---|---|
+| Before (`9037726`) | 3 | 6583 ms | **2194.3 ms/block** |
+| After (`8548c4c`) | **108** | 5000 ms | **46.3 ms/block** |
+
+A **47× improvement**, and stable across consecutive diagnostic windows (uptime 20 s and 25 s both report 108 blocks / 46.3 ms). The unguarded `waitPoll()` spin against the absent RA8875 was the entire bottleneck, exactly as diagnosed in entry (9). TODO-25's proof criterion is met.
+
+**🐛 New finding — the firmware's own expectation is miscalculated, and it makes a correct system look broken.** The diagnostic now reports `46.3 ms/block (expected 92.9 ms, delta -46.6 ms)` — apparently running 2× *too fast*. It is not. **The constant is wrong.**
+
+`guitar_rig_analyzer.ino:99`:
+```c
+static const float EXPECTED_BLOCK_MS =
+    1000.0f * FFT_AVERAGE_COUNT * FFT_SIZE / (float)SAMPLE_RATE;
+    // = 1000 × 4 × 1024 / 44100 ≈ 92.9 ms
+```
+
+That assumes `AudioAnalyzeFFT1024` consumes 1024 fresh samples per result. **It does not — it runs 50 % overlap.** Verified in the Audio library source (`analyze_fft1024.cpp`): after setting `outputflag = true` it resets `state = 4`, retaining the most recent 4 blocks (4 × 128 = 512 samples) and needing only 512 new samples for the next FFT. The true emission period is therefore the **hop size**, not the window:
+
+> 1000 × FFT_AVERAGE_COUNT × (FFT_SIZE / 2) / SAMPLE_RATE = 1000 × 4 × 512 / 44100 = **46.44 ms**
+
+Measured **46.3 ms** — agreement to 0.3 %. **The hardware is running at exactly the correct rate; the expectation is off by a factor of two.** `EXPECTED_BLOCK_MS` should use `FFT_SIZE / 2`. It is diagnostic-only (the printf at line 186 and the delta at line 555), so behaviour is unaffected — but left as-is, every diagnostic report forever shows a phantom −46.6 ms anomaly, which is precisely the kind of false signal that costs this project days. Tracked as TODO-27.
+
+**🚨 Unchanged, and expected to be: both nodes still read `+0.0 dBFS` with continuous `CLIP_SOURCE`/`CLIP_RETURN`.** The display guard was never going to affect this, and it didn't. This remains TODO-26 — the I2S data path. Note the clip spam is now *denser* than before simply because the pipeline runs 47× faster, so it fills the capture buffer quickly; that is a symptom of the fix working, not a new problem.
+
+**⚠️ Boot banner still not captured.** The 60 s capture window opened right after the upload, and the first diagnostic already reports uptime 20 s — so the board had booted (at upload) and printed its banner before the port was open, and no reset occurred during the window. The init sequence, including whatever `audioCap_init()` reports about the codec and whether the new `[DisplayEngine] ERROR: RA8875 not found` line appears, is still unobserved. **A reset with the port already open is still owed.**
+
+**Next:** (1) wire the I2S interconnect (TODO-26) — the one thing standing between this bench and a real measurement; (2) fix `EXPECTED_BLOCK_MS` (TODO-27); (3) capture a genuine boot banner.
+
+---
+
 ## 2026-09-05 (9) — Display init non-fatal: boot now reaches audio and the codec initialises. But the live path is 23.6× too slow, and BOTH nodes read +0.0 dBFS — including the one with nothing plugged into it
 
 **Why this entry exists:** records the first successful run of the full pipeline on this bench, and two serious problems the run exposed. Captured over `serial-mcp` rather than transcribed by eye.
