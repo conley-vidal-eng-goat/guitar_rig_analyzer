@@ -195,12 +195,7 @@ EXPECTED_BLOCK_MS);
     // if codec init fails.
     Serial.println("[Main] Initialising display...");
     if (!displayEngine_init()) {
-           Serial.println("[Main] FATAL: Display init failed. Halting.");
-           pinMode(LED_BUILTIN, OUTPUT);
-           while (true) {
-               digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-               delay(150);
-           }
+           Serial.println("[Main] WARNING: Display init failed. Continuing without display.");
     }
     displayEngine_drawStatusMessage("Initialising audio...");
 
