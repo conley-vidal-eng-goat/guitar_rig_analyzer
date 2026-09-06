@@ -11,6 +11,54 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (16) — Raw I2S samples captured: the stream is systematically corrupted. Static I2S format comparison is a clean NEGATIVE — both ends agree exactly
+
+**Why this entry exists:** the diagnosis finally moved from inference to direct evidence. Raw `int16` samples were dumped from the existing `AudioRecordQueue` objects, and the SGTL5000 and Teensy SAI1 register configurations were read from the library sources this build actually compiles. Two substantial results, one positive and one negative.
+
+### The raw sample evidence
+
+A temporary periodic diagnostic (every 5 s: arm → wait for both queues → print 32+32 `int16` → disarm) was added to `audio_capture.cpp`. **It took several attempts to make it observable at all** — a one-shot startup dump is invisible because the Teensy discards serial output before a USB host attaches, and pressing reset re-enumerates the device, tearing down any already-open connection. A periodic print sidesteps both. Four dumps, spanning 150 s of runtime, all with the 1 kHz tone connected:
+
+| Dump | Node | pos of 32 | median(neg) | max |
+|---|---|---|---|---|
+| 1 | SOURCE | 6 | −3412 | 28229 |
+| 1 | RETURN | 6 | −3705 | 23936 |
+| 2 | SOURCE | 12 | −3420 | 30589 |
+| 2 | RETURN | 9 | −3008 | **32767** |
+| 3 | SOURCE | 7 | −3114 | 31635 |
+| 3 | RETURN | 8 | −2798 | 22917 |
+| 4 | SOURCE | 6 | −2900 | 23457 |
+| 4 | RETURN | 6 | −2892 | 26670 |
+
+Across all 196 negative samples: **median −3042, IQR −3781 … −2853.**
+
+**What the sequences show:**
+1. **No 1 kHz progression, ever.** A 1 kHz sine at 44.1 kHz must trace a smooth ordered arc over ~44 samples. Not one such run appears in 256 samples. *(Note: an earlier draft argued this from a "maximum adjacent step of ~4670 counts" figure — that bound only holds for a full-scale sinusoid and was overstated as proof. The morphology argument stands on its own and is the correct one.)*
+2. **A stable negative DC baseline** near −2900 to −3400, consistent across dumps and **near-identical on both channels**.
+3. **Recurring discrete levels** — values repeat closely within and across dumps: ≈−2880, ≈−6530, ≈−8480 (e.g. dump 3 RETURN holds −6528/−6530/−6530/−6523/−6562). A small set of quantised levels, not a continuum.
+4. **Burst corruption, not uniform noise.** Dump 4 contains an 11-sample run (SOURCE) and a 12-sample run (RETURN) within ±100 counts of −2880 — long quiet stretches punctuated by wild excursions. Dumps 1–3 have almost none.
+5. **Dump 2 RETURN contains exactly `32767`** — the literal maximum, which is what pins the peak meter at `+0.0 dBFS`.
+
+**Bounded conclusion, worded carefully.** The corruption is present in the raw `int16` samples **before any FFT, peak, or mixer arithmetic**, so this is not a level problem and not an interpretation problem. **The external analog front end is strongly ruled out as the cause of this symptom** — it is *not* fully exonerated, because the SGTL5000's own ADC and input circuitry remain upstream of these samples, and codec conversion has not yet been separated from I2S transport.
+
+### The format comparison — a clean negative
+
+Both ends were read from the library source this build compiles (`.../teensy/hardware/avr/1.62.0/libraries/Audio/`), not from documentation or memory.
+
+**SGTL5000** — `audio_capture.cpp:340` calls the no-arg `enable()`, which at `control_sgtl5000.cpp:512-517` delegates to `enable(0)` on a non-KINETISL target, taking the **slave** branch at `control_sgtl5000.cpp:580`: `write(CHIP_I2S_CTRL, 0x0030)`. Decoded against the field table at `control_sgtl5000.cpp:69-103`: SCLKFREQ=0 (**64 Fs**), MS=0 (**slave**), SCLK_INV=0 (**rising edge**), DLEN=0x3 (**16 bit**), I2S_MODE=0x0, **LRALIGN=0 (data starts 1 SCLK after LRCLK — I2S format)**, LRPOL=0.
+
+**Teensy 4.1 SAI1 RX** — `output_i2s.cpp:471-476`, `__IMXRT1062__` branch, reached from `input_i2s.cpp:49`: `FRSZ=1` (2 words/frame), `SYWD=31` (32-bit-clock sync), `MF` (MSB first), **`FSE` (frame sync early — the one-bit delay)**, `FSP`, `FSD` (master), `W0W=WNW=31`, `FBT=31`, `BCP` (samples on rising edge).
+
+**They agree on every parameter:** I2S format with the one-bit delay at both ends, 64 clocks per frame, matching sync width and polarity, matching bit-clock edge, correct master/slave pairing with no contention. The apparent 16-bit vs 32-bit discrepancy is not one — `input_i2s.cpp:73` sets `SADDR = &I2S1_RDR0 + 2` with 16-bit DMA transfers, taking the upper half-word of each 32-bit slot, exactly where an MSB-first 16-bit sample lands. This is the stock arrangement.
+
+**Record this precisely: the static I2S configuration mismatch hypothesis is substantially ruled out** — codec and Teensy are configured as the stock 44.1 kHz / 64-Fs / 16-bit-in-32-bit-slot I2S arrangement with matching roles, polarity, edge and alignment. **Do not record this as "I2S is correct."** The runtime electrical bus can still be wrong even when both register configurations agree; register agreement constrains only the static intent, not what the wires actually carry.
+
+**Next — scope, not firmware.** Stop changing firmware. Measure the bus with the OWON HDS272S, starting with **LRCLK alone** (Teensy pin 20 / shield pin 20): scope ground on breadboard top-blue GND, DC coupling, ~1 V/div, ~10 µs/div. Expect a 0–3.3 V square wave at ≈44.1 kHz, one cycle ≈ **22.7 µs**. LRCLK first because it is the slowest of the three clocks and therefore the cleanest sanity check. Record measured frequency/period, high/low levels, and whether the waveform is clean and repetitive before moving to BCLK.
+
+**Working tree note:** the temporary periodic RAWDUMP block in `audio_capture.cpp` is **uncommitted** and currently flashed to the board. It must be removed once this question is answered — it is marked `TEMPORARY DIAGNOSTIC` with a removal note.
+
+---
+
 ## 2026-09-05 (15) — Fork resolved: `available()` is TRUE every window. The analyzers are receiving real, genuinely full-scale samples. The peak bug was real but incidental
 
 **Run:** TODO-28 build (`b6f3dc1`) uploaded and captured. *(The board dropped off USB before the first upload attempt and the upload aborted without writing; it came back after a reconnect and the second attempt succeeded. No wiring was touched.)*
