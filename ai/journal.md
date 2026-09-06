@@ -11,6 +11,47 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (9) — Display init non-fatal: boot now reaches audio and the codec initialises. But the live path is 23.6× too slow, and BOTH nodes read +0.0 dBFS — including the one with nothing plugged into it
+
+**Why this entry exists:** records the first successful run of the full pipeline on this bench, and two serious problems the run exposed. Captured over `serial-mcp` rather than transcribed by eye.
+
+**✅ The primary question is answered: YES.** `displayEngine_init()` failing no longer halts the sketch. The board reaches `audioCap_init()` and `audioEngine_init()`, both succeed, and it is running in `loop()` — captured at uptime 82–115 s, emitting its 5 s diagnostics and reporting `Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R`. **The SGTL5000 initialised**, which also means the I2C control path (pins 18/19) is working. Phase 4's firmware blockers are cleared.
+
+**🚨 PROBLEM 1 — the live path runs 23.6× slower than designed, and the display is the cause.**
+
+```
+[Main] Block:   3 in 6583ms = 2194.3 ms/block (expected 92.9 ms, delta +2101.5 ms)
+[Main] Display: 3 updates    = 2194.3 ms/update (expected 92.9 ms)
+[Main] Loop:    192127 iterations/5s = ~38425/sec
+```
+
+Three audio blocks in 6.58 s where ~70 were expected. **Block count and display count are identical (3 and 3)** — and `guitar_rig_analyzer.ino:504` calls `displayEngine_update()` once per processed block (`s_total_blocks % DISPLAY_UPDATE_EVERY_N_FRAMES == 0`). So each block is paying ~2.2 s of display time. The loop itself spins fine at ~38 k iterations/s, so nothing is deadlocked — the time is being burned *inside* the display call.
+
+**This is the risk flagged in entry (8), materialised in its milder form.** `display_engine.cpp` has no `s_initialised` guard, so every `displayEngine_*` call still drives SPI at an RA8875 that is not there. `Adafruit_RA8875::waitPoll()` spins on a status register; with no device the read never satisfies the exit condition promptly, so instead of the predicted infinite hang it burns roughly two seconds per call and returns. Prediction was directionally right, severity was wrong — worth noting, because "it didn't hang" could easily have been mistaken for "the display is harmless."
+
+**Fix:** add an `s_display_ok` guard in `display_engine.cpp`, set from `displayEngine_init()`'s result, and early-return from every public entry point when false. That is the change entry (8) deliberately did not make pre-emptively; the evidence now justifies it. Tracked as TODO-25.
+
+**🚨 PROBLEM 2 — both nodes are pegged at full scale, and one of them has nothing connected.**
+
+```
+[Main] SOURCE_NODE peak: +0.0 dBFS   |   RETURN_NODE peak: +0.0 dBFS
+[Main] audioCap: CLIP_RETURN detected
+[Main] audioCap: CLIP_SOURCE detected      (repeating continuously)
+[Main] TF confidence: 100%   TF spot-check: 120Hz=+1.0dB 500Hz=+0.3dB 1kHz=+1.3dB 5kHz=+0.8dB 10kHz=-0.1dB
+```
+
+**RETURN_NODE reads +0.0 dBFS with nothing wired to it.** That single fact rules out a real-signal explanation — an unconnected input cannot legitimately sit at digital full scale. Two corroborating details point the same way: both channels clip continuously and in lockstep, and the transfer function is flat within ±1 dB at 100 % confidence across 120 Hz–10 kHz, which is what you get when **both channels are reading the same saturated data**, not what a real acoustic measurement looks like.
+
+**Leading hypothesis: the I2S data path is not wired, so RX_DATA0 floats and reads as garbage at full scale.** The session record shows LINE-IN-L and shield ground connected and soldered, and power verified — but **no step ever wired the I2S lines (7, 8, 20, 21, 23)**, because Phase 4 never specifies the interconnect at all (runbook gap #3, entry (7)). I2C clearly *is* connected, since the codec initialised. That combination — control path alive, data path absent — matches the symptoms exactly.
+
+**Critically, this means the analog front end has NOT been vindicated or condemned by this run.** SOURCE_NODE at +0.0 dBFS is not evidence the buffer works; it is evidence the digital path is untrustworthy. **Do not interpret any of these numbers as a measurement.** Phase 4 remains open, exactly as stated: SOURCE_NODE must *visibly and correctly* receive the injected signal.
+
+**Not captured — the boot banner.** The board had been up 82 s before the serial connection was opened, so the capture begins mid-`loop()`. Everything above is inferred from the running diagnostics rather than read from the init sequence. A reset with the port already open will retain the full `[Main]` banner in the ring; worth doing to confirm the exact init lines, including whatever `audioCap_init()` reports about the codec.
+
+**Next:** (1) wire the I2S interconnect — TX 7, **RX 8**, LRCLK 20, BCLK 21, MCLK 23, plus 3.3 V and GND, per entry (7)'s verified table; (2) add the `s_display_ok` guard; (3) reset with the port open and capture the true boot banner.
+
+---
+
 ## 2026-09-05 (8) — `RA8875_RESET_PIN` moved 8 → 5. Pin conflict resolved in source; the boot-order halt is NOT
 
 **Change made:** `config.h:79` — `#define RA8875_RESET_PIN 8` → `5`, with an inline comment recording why and warning against reverting. **Compile-verified clean** for `teensy:avr:teensy41` (FLASH 157572 / RAM1 218720, unchanged, as expected for a pin renumber). No wiring touched, per instruction — pin 5 becomes the display reset when the RA8875 is eventually mounted; Audio Shield pin 8 stays on Teensy pin 8 for I2S input.
