@@ -11,6 +11,35 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (11) — CORRECTION: the I2S interconnect was already wired. Floating-RX hypothesis void; loop rate up 59×; generator and gain both ruled out
+
+**❌ Correcting entry (9) and (10).** Both claimed the I2S lines had never been wired, and built a "floating RX_DATA0" explanation for the `+0.0 dBFS` readings on top of it. **That was wrong, and it was written from stale context** — the interconnect had already been installed and verified: **18→18, 19→19, 23→23, 21→21, 20→20, 8→8, 7→7**, plus power and ground. Pin 8 is connected, so a floating RX line cannot be the cause. The wiring must not be redone or disturbed.
+
+**Why the error is worth recording rather than quietly fixing:** it is the same failure this journal already has a standing rule against — reasoning from a document (my own earlier note) instead of from the current state of the bench. The rule exists because it has cost this project days once already, and it caught me here too.
+
+**New evidence from a fresh capture (uptime 430 s, guard build):**
+
+```
+[Main] Block:   107 in 5000ms = 46.7 ms/block (expected 92.9 ms, delta -46.2 ms)
+[Main] Loop:    11355891 iterations/5s = ~2271178/sec
+[Main] SOURCE_NODE peak: +0.0 dBFS   |   RETURN_NODE peak: +0.0 dBFS
+[Main] TF confidence: 100%   persistence: none (all bins live)
+```
+
+**The display guard's effect is larger than entry (10) recorded.** Loop rate is now **~2.27 M iterations/s against ~38 k/s before** — a **59× increase**, on top of the 47× block-period recovery. The unguarded SPI was consuming essentially the entire main loop. Block period holds at 46.7 ms, consistent with the 46.3 ms in entry (10) and with the corrected 46.44 ms expectation (TODO-27).
+
+**Boot lines finally observed** (recovered from the buffer rather than a clean reset): `[Validation] Harness ready (v0.5.0)`, analysis band 200–10000 Hz, `[CalStore] SD not available` and `[ExportEngine] SD not available` (expected — no card), and the SigGen block.
+
+**Two candidate explanations ruled out by reading the tree:**
+1. **Generator bleeding into RETURN.** `[SigGen] Output wired to monitoring R (headphone right) via s_mixer_ret slot 2` is a genuinely suspicious line — RETURN_NODE *is* the R channel. But the default route mutes it: `audio_capture.cpp:280` sets `s_mixer_ret.gain(2, 0.0f)`, and `signal_generator.cpp:331/335` initialise both oscillator amplitudes to 0.0. Not the cause.
+2. **Input gain too high.** `SGTL5000_LINE_IN_LEVEL` is **5**, the library default = **1.33 V<sub>pp</sub> full scale**. The present analog input is ~0.143 V<sub>rms</sub> = 0.404 V<sub>pp</sub>, which should read ≈ **−10.4 dBFS**. Not the cause either — and this is a useful number to keep, because it says what a *correct* reading would look like.
+
+**Where that leaves the diagnosis.** `s_peak_src` and `s_peak_ret` sit directly after the channel-select mixers (`audio_capture.cpp:150`) with the route `SOURCE_NODE=L, RETURN_NODE=R`, so these values are the I2S L and R channels. **Both reading exactly full scale, in lockstep, with a flat 0 dB TF at 100 % confidence, is a digital signature rather than an analog one** — that is what identical saturated data on both channels looks like. Leading hypotheses are now an I2S clocking fault despite the wires being present (BCLK/LRCLK on 21/20 transposed, or a marginal MCLK joint on 23) or the codec's ADC emitting a stuck pattern. **The codec answering on I2C proves nothing about the I2S bus** — that distinction is the thing to hold onto.
+
+**Next:** the disconnect-LINE-IN-L test (TODO-26) is exactly the right discriminator and should be run before anything else — it separates "analog input is overdriving" from "the digital path is producing garbage" with one wire and one diagnostic window.
+
+---
+
 ## 2026-09-05 (10) — Display guard CONFIRMED on hardware: 2194 → 46.3 ms/block, a 47× recovery. And the "expected 92.9 ms" constant is itself wrong by 2×
 
 **Why this entry exists:** on-hardware verification of TODO-25's guard (committed `8548c4c`, uploaded and run). The pass criterion was a measurement, not a compile, and it passed decisively. Investigating the residual discrepancy then turned up a separate firmware bug.
