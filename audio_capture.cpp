@@ -506,17 +506,51 @@ if (s_accum_count >= FFT_AVERAGE_COUNT) {
     // Read peaks over the full averaging window.
     // AudioAnalyzePeak.read() returns peak since last call, then resets.
     // Call BEFORE the block is posted so peak_*_dbfs reflects this window.
-    float peak_src_lin   = s_peak_src.read();
-    float peak_ret_lin   = s_peak_ret.read();
-    float peak_src_dbfs = linearToDbfs(peak_src_lin);
-    float peak_ret_dbfs = linearToDbfs(peak_ret_lin);
+    //
+    // TODO-28 (2026-09-05): read() MUST be guarded by available(). With no
+    // audio since the previous read, the analyzer's reset values survive and
+    // abs(-32768)/32767 = 1.00003 is returned — exactly full scale, exactly
+    // +0.0 dBFS. That is indistinguishable from genuine saturation and latches
+    // a false clip every window. Never read an unavailable analyzer; carry the
+    // last valid value forward instead, and never derive clipping from one.
+    const bool src_peak_valid = s_peak_src.available();
+    const bool ret_peak_valid = s_peak_ret.available();
+
+
+    // Last known-good peak/clip state, carried across unavailable windows.
+    // Initialised to linearToDbfs()'s existing silence floor only because a
+    // value is required before the first valid read — never written on an
+    // unavailable window, so starvation cannot masquerade as silence.
+    static float s_last_peak_src_dbfs = -120.0f;
+    static float s_last_peak_ret_dbfs = -120.0f;
+    static bool  s_last_src_clipping  = false;
+    static bool  s_last_ret_clipping  = false;
+
+
+    if (src_peak_valid) {
+        s_last_peak_src_dbfs = linearToDbfs(s_peak_src.read());
+        s_last_src_clipping  = (s_last_peak_src_dbfs >= CLIP_THRESHOLD_DBFS);
+    } else {
+        Serial.println("[audioCap] peak unavailable: SOURCE");
+    }
+    if (ret_peak_valid) {
+        s_last_peak_ret_dbfs = linearToDbfs(s_peak_ret.read());
+        s_last_ret_clipping  = (s_last_peak_ret_dbfs >= CLIP_THRESHOLD_DBFS);
+    } else {
+        Serial.println("[audioCap] peak unavailable: RETURN");
+    }
+
+
+    const float peak_src_dbfs = s_last_peak_src_dbfs;
+    const float peak_ret_dbfs = s_last_peak_ret_dbfs;
 
 
     // Latch clipping events BEFORE posting block.
     // This ensures the main loop can react to clipping in the same
     // iteration it receives the block, not one iteration later.
-    if (peak_src_dbfs >= CLIP_THRESHOLD_DBFS) s_clip_source_pending = true;
-    if (peak_ret_dbfs >= CLIP_THRESHOLD_DBFS) s_clip_return_pending      = true;
+    // Latched only from a peak that was actually available this window.
+    if (src_peak_valid && s_last_src_clipping) s_clip_source_pending = true;
+    if (ret_peak_valid && s_last_ret_clipping) s_clip_return_pending      = true;
 
 
     // Build the block once; copy into all consumer slots.
@@ -533,8 +567,10 @@ if (s_accum_count >= FFT_AVERAGE_COUNT) {
     new_block.frames_averaged      = (uint8_t)s_accum_count;
     new_block.peak_source_dbfs     = peak_src_dbfs;
     new_block.peak_return_dbfs     = peak_ret_dbfs;
-    new_block.source_clipping      = (peak_src_dbfs >= CLIP_THRESHOLD_DBFS);
-    new_block.return_clipping      = (peak_ret_dbfs >= CLIP_THRESHOLD_DBFS);
+    // Carried with their peak values so each block stays self-consistent —
+    // never re-derived from a peak that was unavailable this window.
+    new_block.source_clipping      = s_last_src_clipping;
+    new_block.return_clipping      = s_last_ret_clipping;
 
 
     for (int k = 0; k < FFT_BINS; k++) {
