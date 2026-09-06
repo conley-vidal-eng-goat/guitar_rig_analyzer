@@ -141,7 +141,8 @@ Compare each candidate on, at minimum: **input common-mode range at 5 V · outpu
 **What:** add a file-static `s_display_ok`, set from `displayEngine_init()`'s return, and early-return from every public entry point when false. Deliberately not done pre-emptively — the change was scoped to failure behaviour only. The evidence now justifies it.
 **Proof:** with the display absent, block period returns to ~92.9 ms and the display/block counts decouple.
 
-### TODO-28 — `AudioAnalyzePeak::read()` called without `available()` — its no-data return is exactly +0.0 dBFS 🔴 **fix first: it is why TODO-26 can't be resolved**
+### TODO-28 — `AudioAnalyzePeak::read()` called without `available()` 🟢 **DONE — fixed, uploaded, verified `b6f3dc1`. Real bug, but NOT the cause**
+**Verified on hardware 2026-09-05:** `available()` returns **true every window** — neither `[audioCap] peak unavailable` line ever appears. The analyzers are being fed, `read()` now only ever runs on genuine data, and **the `+0.0 dBFS` is real full-scale sample data**. The defect was genuine and is correctly fixed, but it was masking the fact that the saturation is real rather than causing it. See journal.md 2026-09-05 (15).
 **Why:** `audio_capture.cpp:507–508` calls `s_peak_src.read()` / `s_peak_ret.read()` unguarded. From `analyze_peak.h`, when no audio has arrived since the last read the reset values (`min_sample=32767`, `max_sample=-32768`) survive, and `abs(-32768)=32768` ⇒ `32768/32767 = 1.00003` ⇒ **exactly `+0.0 dBFS`**, with `CLIP_*` latching every window because the threshold test trivially passes.
 **The real damage:** `+0.0 dBFS` is produced *both* by a codec delivering full-scale garbage **and** by a peak object receiving nothing. **The meter cannot distinguish "saturated" from "silent"**, so no bench test can separate those two cases while this stands. That is precisely why TODO-26 has stalled.
 **Caveat, stated honestly:** the FFT emits at the correct 46.3 ms cadence and `AudioAnalyzeFFT1024::update()` returns early on a NULL input block, so blocks probably *do* reach the graph — both the FFT and the peaks hang off the same mixer outputs (`audio_capture.cpp:149–150`). That makes "genuine garbage" the more likely case and this bug incidental. But the reasoning is indirect, and indirect reasoning about this pipeline has already been wrong twice this week.
@@ -167,7 +168,18 @@ Compare each candidate on, at minimum: **input common-mode range at 5 V · outpu
 3. **⚠️ Disconnecting the LEFT input changed the RIGHT channel.** SOURCE=L, RETURN=R. Pulling L moved RETURN by 1.1 dB. **The channels are not independent** — in a correctly framed I2S stream they would be. This is the most diagnostic fact available.
 **Tried 2026-09-05, no change:** BCLK wire (21) redone; shield confirmed **Rev D** (so pin-for-pin wiring is correct and the Rev C theory is dead); LINE-IN-L reconnected. Readings identical — both nodes `+0.0 dBFS`, still clipping.
 **🔺 Leading hypothesis now: DOUT (pin 8) is not electrically delivering data** — wired, but possibly a cold joint, or the codec isn't driving it. An open DOUT reads as garbage at full amplitude on both channels, which is exactly the observation, and the withdrawal of fact #1 above removes the reason this was ruled out. The frame-alignment theory is weakened too: "disconnecting L moved R by 1.1 dB" is equally explained by noise on a floating pin, without needing misalignment.
-**➡️ NEXT TEST — cheapest, highest information, no code:** power down and **continuity-test all seven signal wires end to end, shield pad → Teensy pin**: 7, **8**, 18, 19, 20, 21, **23**, plus ground. Probe **pad-to-pin**, not wire-end-to-wire-end — the solder joint is the suspect, not the copper. A cold joint on **8 (DOUT)** or **23 (MCLK)** explains every symptom seen so far.
+**Continuity tested 2026-09-05: all seven wires good.** Wiring is no longer a credible suspect — but continuity proves the wires *connect*, not that a *clock is running on them*.
+**➡️ NEXT TEST — DMM in DC volts on the clock lines, powered and running.** A DMM reads the time-average of a square wave, so a healthy ~50 %-duty clock on 3.3 V measures ≈**1.6–1.7 V**; a stuck line reads **0 V or 3.3 V**. No scope, no code:
+
+| Pin | Signal | Healthy (DC avg) | Fault |
+|---|---|---|---|
+| **23** | MCLK ~11.29 MHz | ~1.6 V | 0 V / 3.3 V ⇒ no clock |
+| **21** | BCLK ~1.41 MHz | ~1.6 V | 0 V / 3.3 V ⇒ no clock |
+| **20** | LRCLK 44.1 kHz | ~1.6 V | 0 V / 3.3 V ⇒ no clock |
+| **8** | DOUT (codec→Teensy) | mid-ish, varies | pinned 3.3 V / 0 V ⇒ codec not driving real data |
+| **7** | DIN (Teensy→codec) | varies | — |
+
+**🔺 MCLK (23) is the prime suspect.** `AudioControlSGTL5000::enable()` writes `CHIP_CLK_CTRL` for 256×Fs — the codec expects an **externally supplied MCLK** to clock its ADC. **I2C configuration succeeds regardless of MCLK**, which is exactly why `enable()` returned true and told us nothing. If MCLK is absent or wrong, the ADC has no valid conversion clock and its I2S output is meaningless — while every other check we have run still passes. That single condition explains every observation.
 **Correct reading to expect once fixed:** ≈ **−10.4 dBFS** for the present 0.143 V<sub>rms</sub> input at `LINE_IN_LEVEL 5`.
 **⚠️ Until this is done, no number from the firmware is a measurement.** SOURCE_NODE at +0.0 dBFS is *not* evidence the analog buffer works; it is evidence the digital path is untrustworthy. Do not read the current diagnostics as validating or condemning the front end.
 **Proof:** RETURN_NODE reads near the noise floor with nothing connected, and SOURCE_NODE tracks the injected signal level rather than sitting at full scale.

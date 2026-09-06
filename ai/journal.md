@@ -11,6 +11,47 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (15) — Fork resolved: `available()` is TRUE every window. The analyzers are receiving real, genuinely full-scale samples. The peak bug was real but incidental
+
+**Run:** TODO-28 build (`b6f3dc1`) uploaded and captured. *(The board dropped off USB before the first upload attempt and the upload aborted without writing; it came back after a reconnect and the second attempt succeeded. No wiring was touched.)*
+
+```
+[Main] --- 5s diagnostics (uptime 15s) ---
+[Main] Block:      107 in 5000ms = 46.7 ms/block
+[Main] Loop:         9986771 iterations/5s = ~1997354/sec
+[Main] SOURCE_NODE peak: +0.0 dBFS          |   RETURN_NODE peak: +0.0 dBFS
+[Main] TF confidence: 100%   persistence: none (all bins live)
+[Main] TF spot-check: 120Hz=-0.4dB 500Hz=-0.6dB 1kHz=+1.2dB 5kHz=+0.3dB 10kHz=-0.0dB
+```
+
+**The five answers:**
+
+| Question | Answer |
+|---|---|
+| `[audioCap] peak unavailable: SOURCE` | **Never appears** |
+| `[audioCap] peak unavailable: RETURN` | **Never appears** |
+| SOURCE_NODE peak | `+0.0 dBFS` |
+| RETURN_NODE peak | `+0.0 dBFS` |
+| `CLIP_SOURCE` / `CLIP_RETURN` | **Still firing continuously** |
+
+**✅ This takes the second branch of the fork.** `available()` returns true on every window, so the peak analyzers **are** being fed by the Audio Library graph, and `read()` is now only ever called on genuine data. **The `+0.0 dBFS` is real: actual full-scale samples are arriving at the analyzers.** The `AudioAnalyzePeak` bug was a genuine defect and is correctly fixed, but **it was not the cause** — it was masking the fact that the saturation is real.
+
+**Combined with the disconnect test in entry (12), the picture is now tightly bounded.** The codec emits full-scale samples on **both** channels **even with the analog input physically removed**. The Audio Library graph is healthy, the analyzers are fed, the transport carries real data, the analog front end is out of the loop. **The fault is inside the codec or in how it is being clocked.**
+
+**Next test — and a DMM can actually do this.** Continuity proved the wires connect, but it says nothing about whether a *clock is running on them*. A DMM in **DC volts** reads the time-average of a square wave, so a healthy ~50 %-duty clock on a 3.3 V rail measures around **1.6–1.7 V**, while a stuck line reads **0 V or 3.3 V**. That distinguishes "wire connected" from "clock present" with no scope and no code:
+
+| Pin | Signal | Healthy (DC average) | Fault indication |
+|---|---|---|---|
+| **23** | MCLK (~11.29 MHz) | ~1.6 V | 0 V or 3.3 V ⇒ no clock |
+| **21** | BCLK (~1.41 MHz) | ~1.6 V | 0 V or 3.3 V ⇒ no clock |
+| **20** | LRCLK (44.1 kHz) | ~1.6 V | 0 V or 3.3 V ⇒ no clock |
+| **8** | DOUT (codec → Teensy) | mid-ish, varies | pinned at 3.3 V or 0 V ⇒ codec not driving real data |
+| **7** | DIN (Teensy → codec) | varies with content | — |
+
+**Why MCLK is the prime suspect.** `AudioControlSGTL5000::enable()` writes `CHIP_CLK_CTRL` for 256×Fs, meaning the codec expects an **externally supplied MCLK** to derive its ADC clocking. I2C configuration succeeds independently of MCLK — which is exactly why `enable()` returned true and told us nothing. **If MCLK is absent or wrong, the codec's ADC has no valid conversion clock and its I2S output is meaningless, while every other check we have run still passes.** That single condition explains every observation in this entry and entry (12).
+
+---
+
 ## 2026-09-05 (14) — Continuity clean on all 7 wires. Found a firmware bug: `AudioAnalyzePeak::read()` is called without `available()`, and its no-data return value is exactly +0.0 dBFS
 
 **Bench:** continuity verified good on all seven signal wires, pad to pin. Combined with Rev D confirmed and the BCLK wire redone, **the interconnect is no longer a credible suspect.** Firmware init order also checked and is textbook-correct: `AudioMemory(128)` → `Wire.begin()` → `enable()` → `inputSelect(AUDIO_INPUT_LINEIN)` → `lineInLevel(5)` → `volume(0.5)` (`audio_capture.cpp:332–362`). MCLK generation confirmed active for the master path — the commented-out `CORE_PIN23_CONFIG` at `output_i2s.cpp:589` is inside `config_i2s_slave()` ("not using MCLK in slave mode"), while the master path this firmware uses sets it at lines 418/450.
