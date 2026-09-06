@@ -11,6 +11,20 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (8) — `RA8875_RESET_PIN` moved 8 → 5. Pin conflict resolved in source; the boot-order halt is NOT
+
+**Change made:** `config.h:79` — `#define RA8875_RESET_PIN 8` → `5`, with an inline comment recording why and warning against reverting. **Compile-verified clean** for `teensy:avr:teensy41` (FLASH 157572 / RAM1 218720, unchanged, as expected for a pin renumber). No wiring touched, per instruction — pin 5 becomes the display reset when the RA8875 is eventually mounted; Audio Shield pin 8 stays on Teensy pin 8 for I2S input.
+
+**Why one line was sufficient:** the pin is referenced only through the macro — `display_engine.cpp:36` (`Adafruit_RA8875 tft(RA8875_CS_PIN, RA8875_RESET_PIN)`) and `display_engine.cpp:440` (a diagnostic printf). Grepped the whole tree for hardcoded `8`s in this role and found none, so there is no second place to update.
+
+**⚠️ This resolves TODO-24's pin conflict but does NOT unblock the SOURCE_NODE test.** The two blockers in entry (7) were independent, and only one is now fixed. `guitar_rig_analyzer.ino:197` still calls `displayEngine_init()` before `audioCap_init()` and still halts forever on failure, and the RA8875 is still not on the bench — so the firmware will still halt before audio initialises. **Expect the board to blink-halt on reset until display init is made non-fatal.** That is the remaining step, and it is a separate edit.
+
+**Worth noting:** with the reset moved, the display no longer sidesteps the conflict by accident — pin 8 is now free for I2S regardless of whether display init runs. That is strictly better than relying on skipping display init to keep pin 8 clear, and it means the eventual product can have both.
+
+**Next:** make display init non-fatal, then reset and capture the boot output. The serial connection is held open, so the banner will be retained in the RX ring.
+
+---
+
 ## 2026-09-05 (7) — Audio Shield wired; power checks pass. But TWO firmware blockers make the SOURCE_NODE test impossible as things stand — a boot-order halt, and a hard pin-8 collision between the display and I2S RX
 
 **Why this entry exists:** records shield wiring progress and its power verification, and documents two firmware-level blockers found by reading the active tree before the test was run. Neither is an analog problem. Both would have presented as "no signal at SOURCE_NODE," which is exactly the symptom that sent this project on a two-day hunt once already.

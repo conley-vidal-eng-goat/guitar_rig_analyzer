@@ -76,7 +76,13 @@
 // -----------------------------------------------------------------------------
 #define RA8875_CS_PIN       10   // RA8875 chip select (active LOW)
 #define RA8875_INT_PIN       9   // RA8875 touch interrupt output (future use)
-#define RA8875_RESET_PIN     8   // RA8875 hardware reset (active LOW)
+#define RA8875_RESET_PIN     5   // RA8875 hardware reset (active LOW)
+                                 // MOVED 8 -> 5 (2026-09-05): pin 8 is I2S
+                                 // RX_DATA0 on Teensy 4.x (Audio library
+                                 // input_i2s.cpp, __IMXRT1062__ branch) and
+                                 // carries Audio Shield line-in INTO the
+                                 // Teensy. Display reset and I2S RX cannot
+                                 // share it. Do NOT move this back to 8.
 
 
 // =============================================================================
