@@ -51,6 +51,14 @@ static bool      s_prev_tf_valid[GRAPH_W];   // Whether each pixel of previous c
 static bool s_confidence_warning_visible = false;
 static bool s_first_update = true;
 
+// Absent-display guard (added 2026-09-05). False until displayEngine_init()
+// has fully succeeded; every public entry point that talks to the RA8875
+// no-ops while it is false. Without this, an absent panel still gets driven
+// over SPI and Adafruit_RA8875::waitPoll() spins on a status register that
+// never satisfies — measured at ~2.2 s per displayEngine_update() call,
+// throttling the live audio path 23.6x (see ai/journal.md 2026-09-05 (9)).
+static bool s_display_ok = false;
+
 
 // =============================================================================
 // COORDINATE MAPPING HELPERS
@@ -434,6 +442,8 @@ memcpy(s_prev_tf_valid, new_tf_valid, sizeof(new_tf_valid));
 bool displayEngine_init() {
 
 
+    s_display_ok = false;   // Stays false on every failure path below.
+
     if (!tft.begin(RA8875_800x480)) {
         Serial.println("[DisplayEngine] ERROR: RA8875 not found on SPI.");
         Serial.printf ("[DisplayEngine] Check CS=%d, RESET=%d, SCK=13, MOSI=11, MISO=12\n",
@@ -472,12 +482,14 @@ bool displayEngine_init() {
     s_confidence_warning_visible = false;
 
 
+    s_display_ok = true;    // Only set once the panel is fully up and drawn.
     Serial.println("[DisplayEngine] RA8875 ready. Layout drawn.");
     return true;
 }
 
 
 void displayEngine_update(const AudioFrame* frame) {
+    if (!s_display_ok) return;
     if (frame == nullptr) return;
     updateMeters(frame);
     updateSpectrumCurves(frame);
@@ -487,6 +499,7 @@ void displayEngine_update(const AudioFrame* frame) {
 
 
 void displayEngine_drawStatusMessage(const char* msg) {
+    if (!s_display_ok) return;
     // Clear a fixed region in the centre of the meter panel (top band).
     // SOURCE and RETURN labels (far left/right) are left untouched.
     char safe_msg[48];
@@ -656,6 +669,7 @@ static void drawInsightPanel(const InsightList& insights) {
 // =============================================================================
 void displayEngine_showResult(const MeasurementResult& result,
                                   const InsightList& insights) {
+    if (!s_display_ok) return;
     // --- Meter panel: quality badge and calibration status ---
     const char* qname =
         (result.result_quality == ResultQuality::EXCELLENT) ? "EXCELLENT" :
@@ -731,6 +745,7 @@ drawRigChangeChrome();     // redraws grid lines and 0 dB reference
 // PUBLIC: displayEngine_showAborted()
 // =============================================================================
 void displayEngine_showAborted(const char* reason) {
+    if (!s_display_ok) return;
     // Only update the meter panel — leave spectra/TF visible for context
     tft.fillRect(0, METER_PANEL_Y, DISPLAY_WIDTH, METER_PANEL_H, COL_BLACK);
     tft.textMode();
@@ -751,6 +766,7 @@ void displayEngine_showAborted(const char* reason) {
 // PUBLIC: displayEngine_restoreLive()
 // =============================================================================
 void displayEngine_restoreLive() {
+    if (!s_display_ok) return;
     // Redraw full static chrome for live mode
     tft.fillScreen(COL_BLACK);
     drawPanelDividers();
