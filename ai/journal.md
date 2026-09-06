@@ -11,6 +11,33 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (13) — CORRECTION to my own inference: block rate proves NOTHING about data arriving. Teensy is I2S master. Bad DOUT connection is back at the top
+
+**Bench state:** wire 21 (BCLK) redone, shield confirmed **Rev D** (so pin-for-pin wiring is correct), LINE-IN-L reconnected. **No change:**
+
+```
+[Main] --- 5s diagnostics (uptime 55s) ---
+[Main] Block:      108 in 5000ms = 46.3 ms/block
+[Main] SOURCE_NODE peak: +0.0 dBFS   |   RETURN_NODE peak: +0.0 dBFS
+[Main] TF spot-check: 120Hz=-0.7dB 500Hz=+1.9dB 1kHz=+0.3dB 5kHz=+0.3dB 10kHz=+1.2dB
+```
+
+**❌ Correcting entry (12)'s observation #1.** It argued: *"107 blocks in 5000 ms … `AudioAnalyzeFFT1024` only emits when it has been fed real blocks, so the I2S bus is delivering samples on time. This rules out a dead bus, a missing clock, and a disconnected data line."* **That reasoning is invalid.**
+
+`audio_capture.cpp:85` instantiates **`AudioInputI2S`**, not `AudioInputI2Sslave`. Verified in the library: `AudioInputI2S::begin()` calls `AudioOutputI2S::config_i2s()` (`input_i2s.cpp:49`) — the **Teensy is the I2S master**. It generates MCLK, BCLK and LRCLK itself and clocks samples in on its own schedule **whether or not the codec drives DOUT**. A completely open pin 8 still yields blocks at exactly the correct rate, filled with whatever the floating input reads.
+
+So the 46.3 ms figure confirms only that the Teensy's own clock generation is healthy. **It rules out nothing on the codec side.** Entry (12)'s conclusion — that the analog front end is exonerated — still stands, because that rested on the disconnect test, not on this. Only the "transport works" sub-claim is withdrawn.
+
+**Consequence: "pin 8 is not actually delivering data" returns as the leading hypothesis** — not *unwired* (it is wired, and that correction in entry (11) stands), but potentially **not electrically good**, or the codec is not driving it. A floating or open DOUT reads as garbage at full amplitude on both channels, which is exactly the observation.
+
+This also **weakens entry (12)'s alignment hypothesis**. The "disconnecting L changed R by 1.1 dB" clue is equally well explained by noise on a floating pin drifting between samples — it does not require frame misalignment. Both remain possible; the open-connection explanation is now simpler and fits more of the evidence.
+
+**Method note worth keeping.** This is the second time in two days that a plausible-sounding inference about the *cause* was built on an unverified assumption about the *mechanism*. The fix both times was reading the actual source rather than reasoning from how the system ought to behave. `AudioInputI2S` vs `AudioInputI2Sslave` is one identifier, and it inverts the meaning of the single most-cited number in the diagnosis.
+
+**Next — cheapest test with the highest information, and it needs no code:** power down and **continuity-test all seven signal wires end to end**, shield pad to Teensy pin: 7, **8**, 18, 19, 20, 21, **23**, plus ground. A cold joint on **8 (DOUT)** or **23 (MCLK)** explains every symptom. Test pad-to-pin, not wire-end-to-wire-end — the joint is the suspect, not the copper.
+
+---
+
 ## 2026-09-05 (12) — DECISIVE: SOURCE_NODE stays at +0.0 dBFS with the analog input physically disconnected. The analog front end is exonerated; the fault is in the codec/I2S data path
 
 **The test.** With everything powered and running, the red signal wire from `48e` → LINE-IN-L was removed. All shield↔Teensy wiring, shield ground, the op-amp circuit and the 1 kHz source were left in place — deliberately starving the codec of input while keeping the digital path fully alive. Captured over `serial-mcp`:
