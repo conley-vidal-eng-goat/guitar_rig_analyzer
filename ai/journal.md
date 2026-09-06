@@ -11,6 +11,47 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (14) — Continuity clean on all 7 wires. Found a firmware bug: `AudioAnalyzePeak::read()` is called without `available()`, and its no-data return value is exactly +0.0 dBFS
+
+**Bench:** continuity verified good on all seven signal wires, pad to pin. Combined with Rev D confirmed and the BCLK wire redone, **the interconnect is no longer a credible suspect.** Firmware init order also checked and is textbook-correct: `AudioMemory(128)` → `Wire.begin()` → `enable()` → `inputSelect(AUDIO_INPUT_LINEIN)` → `lineInLevel(5)` → `volume(0.5)` (`audio_capture.cpp:332–362`). MCLK generation confirmed active for the master path — the commented-out `CORE_PIN23_CONFIG` at `output_i2s.cpp:589` is inside `config_i2s_slave()` ("not using MCLK in slave mode"), while the master path this firmware uses sets it at lines 418/450.
+
+**🐛 The find.** `audio_capture.cpp:507–508` reads the peak meters directly:
+
+```c
+float peak_src_lin = s_peak_src.read();
+float peak_ret_lin = s_peak_ret.read();
+```
+
+**Neither call is guarded by `available()`.** From the library (`analyze_peak.h`):
+
+```c
+float read(void) {
+    int min = min_sample;   // reset value:  32767
+    int max = max_sample;   // reset value: -32768
+    min_sample = 32767;  max_sample = -32768;
+    min = abs(min);         // 32767
+    max = abs(max);         // abs(-32768) = 32768
+    if (min > max) max = min;       // 32767 > 32768 is false
+    return (float)max / 32767.0f;   // 32768 / 32767 = 1.00003
+}
+```
+
+**When no audio has reached the peak object since the previous `read()`, the function returns 1.00003 — i.e. full scale, i.e. exactly `+0.0 dBFS`.** Not a plausible-looking large number: the precise value that has been on screen for two days, on both channels, with `CLIP_*` latching every window because `peak_dbfs >= CLIP_THRESHOLD_DBFS` trivially holds.
+
+**Why this matters more than a normal bug — it makes the two competing hypotheses indistinguishable.** `+0.0 dBFS` is produced by *both*:
+1. the codec genuinely delivering full-scale garbage, **and**
+2. the peak object receiving no data at all.
+
+Every reading taken so far is consistent with either. **The measurement instrument's own meter cannot currently tell "saturated" from "silent".** That is why the diagnosis has stalled: more bench tests cannot separate these two cases while the meter collapses them.
+
+**Honest caveat — this is not yet proof the codec is fine.** The FFT does emit at the correct 46.3 ms cadence, and `AudioAnalyzeFFT1024::update()` returns early when `receiveReadOnly()` yields NULL, which suggests blocks *are* reaching that branch of the graph. If blocks reach the FFT they should also reach the peak objects, since both hang off the same mixer outputs (`audio_capture.cpp:149–150`). By that reasoning case 1 is more likely and the bug is incidental. But the reasoning is indirect, and entry (13) is a fresh reminder of what indirect reasoning about this pipeline is worth. **The fix is worth making purely to remove the ambiguity, regardless of which case turns out to hold.**
+
+**Proposed fix (not yet implemented):** guard both reads with `available()`, and when it is false, do not fabricate a level — carry the previous value forward or mark the window invalid, and do **not** latch `CLIP_*` from it. That converts the symptom from "always exactly 0 dBFS" into a signal that actually distinguishes the two cases on the very next run. Tracked as TODO-28.
+
+**Also worth noting for later:** this same defect would silently corrupt real measurements once the path works — any window where a peak object is starved reports full scale and a false clip, which would poison validation tests 1–4 (TODO-9) and any calibration derived from them.
+
+---
+
 ## 2026-09-05 (13) — CORRECTION to my own inference: block rate proves NOTHING about data arriving. Teensy is I2S master. Bad DOUT connection is back at the top
 
 **Bench state:** wire 21 (BCLK) redone, shield confirmed **Rev D** (so pin-for-pin wiring is correct), LINE-IN-L reconnected. **No change:**
