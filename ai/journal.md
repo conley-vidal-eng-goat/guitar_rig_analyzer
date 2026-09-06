@@ -11,6 +11,63 @@ How to use this file:
 
 ---
 
+## 2026-09-05 (7) — Audio Shield wired; power checks pass. But TWO firmware blockers make the SOURCE_NODE test impossible as things stand — a boot-order halt, and a hard pin-8 collision between the display and I2S RX
+
+**Why this entry exists:** records shield wiring progress and its power verification, and documents two firmware-level blockers found by reading the active tree before the test was run. Neither is an analog problem. Both would have presented as "no signal at SOURCE_NODE," which is exactly the symptom that sent this project on a two-day hunt once already.
+
+**Progress:** LINE-IN-L wire and shield ground connected and soldered. Power isolation and rails verified with the shield attached:
+
+| Check | Reading | Verdict |
+|---|---|---|
+| +5 V → GND resistance | 13.99 kΩ | no short |
+| 3.3 V → GND resistance | 8.06 kΩ | no short |
+| 3.3 V rail, powered | 3.3 V | ✅ |
+| +5 V rail, powered | 4.99 V | ✅ |
+
+**Runbook gap #3 in Phase 4 — credit to ChatGPT for catching it.** Phase 4 goes straight from wiring LINE-IN-L to expecting the Teensy to see SOURCE_NODE, but **never specifies how the Audio Shield connects to the Teensy at all** — no I2S, I2C, or power interconnect is given anywhere in the phase. That is the third independent defect in Phase 4 (after the invalid common-mode bias and the missing USB reconnect).
+
+**The interconnect, verified from the Teensy Audio library source rather than from memory** (`.../teensy/hardware/avr/1.62.0/libraries/Audio/`, `__IMXRT1062__` branch — the Teensy 4.x path):
+
+| Signal | Pin | Source |
+|---|---|---|
+| I2S TX_DATA0 (Teensy → shield) | **7** | `output_i2s.cpp:83` |
+| **I2S RX_DATA0 (shield → Teensy)** | **8** | `input_i2s.cpp:222` |
+| LRCLK / RX_SYNC | **20** | `input_i2s.cpp:451` |
+| BCLK / RX_BCLK | **21** | `input_i2s.cpp:453` |
+| MCLK | **23** | `input_i2s.cpp:450` |
+| SDA / SCL (codec control) | 18 / 19 | Wire default, Teensy 4.x |
+| Power | 3.3 V, GND | — |
+
+Note the earlier working list of "7, 18, 19, 20, 21, 23, 3.3 V, 5 V, GND" **omits pin 8 and includes 5 V.** Pin 8 is the line carrying line-in audio *into* the Teensy — without it SOURCE_NODE is silent by construction. The shield runs from 3.3 V; it does not need 5 V.
+
+**🚨 BLOCKER 1 — pin 8 is assigned to the display's reset line.** `config.h:79` declares `#define RA8875_RESET_PIN 8`, and `display_engine.cpp:36` passes it to `Adafruit_RA8875 tft(RA8875_CS_PIN, RA8875_RESET_PIN)`. **Pin 8 cannot be both the RA8875 reset and I2S RX_DATA0.** Whichever initialises last wins the pin mux: if the display claims it, no audio input reaches the Teensy at all; if `AudioInputI2S` claims it, the display's reset line is driven by I2S data. This is a genuine design conflict in the active tree, not a wiring mistake.
+
+**🚨 BLOCKER 2 — and it masks blocker 1.** `guitar_rig_analyzer.ino:197` calls `displayEngine_init()` **before** `audioCap_init()`, and on failure halts permanently:
+
+```
+if (!displayEngine_init()) {
+    Serial.println("[Main] FATAL: Display init failed. Halting.");
+    pinMode(LED_BUILTIN, OUTPUT);
+    while (true) { digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); delay(150); }
+}
+```
+
+**The RA8875 is not on the bench** — journal 2026-09-01 (1) already recorded the board halting here, described at the time as expected. So today the firmware halts in a blink loop *before audio is ever initialised*. **The SOURCE_NODE test cannot pass, no matter how good the analog front end is**, and the failure would look identical to a dead buffer.
+
+**Fixes, and they are different in scope:**
+- **To run the test today:** make display init non-fatal (log and continue instead of halting), or temporarily skip it, so `setup()` reaches `audioCap_init()`. This resolves blocker 2 *and* sidesteps blocker 1 in one move — if `displayEngine_init()` never runs, the Adafruit library never claims pin 8, so I2S RX is free. Minimal change, matches the existing convention of temporary bring-up code.
+- **Before the display and audio ever coexist:** `RA8875_RESET_PIN` must move off pin 8 permanently. Free pins on this design are **2, 3, 4, 5** (0/1 are `Serial1` for `data_sender`; 6 is the shield's MEMCS and best avoided; 9–24 are all allocated). **Pin 5 recommended.** This is a real product-level fix, not a bring-up expedient. Tracked as TODO-24.
+
+**Also checked, and it is fine:** `RA8875_CS_PIN` is 10, which is also the shield's SD chip-select — but `calibration_store.cpp:404` uses `SD.begin(BUILTIN_SDCARD)`, the Teensy 4.1's own slot, so the shield's SD is unused. **Leave the shield's SD socket empty** and the shared pin 10 is harmless.
+
+**Not recorded — the headroom bracket is still open.** A reading at ~0.55 V<sub>rms</sub> was requested to close the 0.460→0.686 gap but does not appear in the session record. The bracket stands as *onset of measurable compression somewhere above 0.460 and by 0.686 V<sub>rms</sub>*.
+
+**Bench tooling now live.** `serial-mcp` is connected to `/dev/cu.usbmodem195969201` at 115200 with the connection held open, so its RX ring will retain the boot banner whenever the Teensy is reset — the `[Main]` output can then be read back in full rather than transcribed by eye. A read taken before any reset returned zero bytes, consistent with a sketch that prints its banner once in `setup()` and then only on events.
+
+**Next:** decide the display-init bypass, reset the board, and capture the actual boot output. That output will show whether it halts at display init as predicted, and if bypassed, whether `audioCap_init()` finds the SGTL5000.
+
+---
+
 ## 2026-09-05 (6) — BENCH: headroom characterised. Linear ceiling ≈ 0.5 V<sub>rms</sub>, and at 0.460 V the *entire* measured loss is the coupling cap — the buffer itself is unity
 
 **Why this entry exists:** completes the headroom sweep started in entry (5). The buffer is now characterised, not assumed. One reading turns out to validate a second, unrelated part of the design for free.
