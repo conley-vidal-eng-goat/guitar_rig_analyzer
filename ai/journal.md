@@ -11,6 +11,48 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (5) — Pin 8 (DOUT) probe test: loading DOUT makes it DRAMATICALLY WORSE, not better. Strong localization to DOUT — and it invalidates the "full scope suppressed it" story
+
+**Two wording corrections adopted first, both raised in review and both right:**
+
+1. **"A framing/format problem cannot produce an isolated bad word" was too strong.** The correct claim is that a **persistent static framing mismatch is ruled out** — a constant one-bit or word-length error would corrupt every word. An isolated bad word does **not** by itself prove the fault is on an I²S jumper; **a transient codec/ADC event could produce a single bad sample too.**
+2. **"Damps ringing and sharpens edges" is electrically wrong.** Probe capacitance **damps ringing and *slows* an edge.** It cannot sharpen one. Any argument built on probe loading must use the correct mechanism.
+
+That second correction turns out to matter enormously, because of what happened next.
+
+**The test:** ground clip retained, **pin 8 (DOUT) probe tip added only** — no BCLK, no LRCLK tips. Tone playing. Three dumps, uptime 1180 / 1200 / 1210 s. All three: `SOURCE_NODE peak: +0.0 dBFS | RETURN_NODE peak: +0.0 dBFS`, clipping continuous, TF confidence a meaningless 100 %.
+
+```
+uptime 1180s
+SOURCE: -1935 -1958 -2019 -2050 31885 23733 -2028 -2240 -7571 23799 -3006 -7610 31737 -1528 665 25142 230 32767 -2458 14338 22503 23695 -7744 -192 -1230 -1662 -1687 -1737 -219 -1540 -2003 -1510
+RETURN: -2188 -2178 -2248 -2178 -2169 28988 -2194 -5879 -2104 -2081 -5892 -2469 -3928 737 24230 3921 -711 -2847 -3637 -659 23442 24116 -2440 -3760 -2135 -1786 -2060 -1943 -2164 -2135 -2161 -2145
+
+uptime 1200s
+SOURCE: 12145 -620 -1797 -1824 -1290 -7604 -1651 -1591 -1167 -587 -4272 -7583 -1808 -1501 -1632 -1852 32767 -2014 -1913 -2083 -2020 -2083 -2072 -2059 -2017 -2019 -2083 -2000 -1992 31582 -2074 -2111
+RETURN: 25517 -1971 -1939 -1487 -1487 -4615 -1943 -1974 -1951 -1928 -1847 -1870 -1914 -1966 -1959 -2014 -2040 -2013 -1991 -1996 -2010 -2031 -2049 -2024 -1978 -2013 -2034 -2058 -2069 -2050 -1978 -2034
+
+uptime 1210s
+SOURCE: -2144 -1971 -2023 -1957 -2115 -2099 -2640 -2504 -2599 -2585 -2518 -2560 -2592 -2633 -2549 -2601 -2456 -2557 -2552 -2547 -2570 -8075 -2570 -2627 -2460 -2425 -2384 -2156 -1890 -1909 -2037 -1945
+RETURN: -1842 -1940 -1805 2362 -2185 -1931 -1867 -2074 -1816 -1900 -1942 -1932 -1909 -1944 -1900 -1897 -1902 -1909 -1913 -1907 -1899 -1908 24725 -5630 -1953 -5620 -1965 -1547 -2965 -1787 3002 25287
+```
+
+**Adding ~10 pF to DOUT reverted the fault to its original severity.** The −2000 DC baseline is back, the wild excursions are back, and — decisively — **the coherent 1 kHz square wave is gone from SOURCE.** Compare the immediately preceding ground-only condition, same session, same tone: peaks −1.7 to −2.3 dBFS with a clean ±280 square wave.
+
+| Condition (same session, same tone) | Peaks | Signal present? |
+|---|---|---|
+| Ground clip only | −2.3 / −1.7 / −2.3 dBFS | ✅ coherent ~1 kHz |
+| **Ground + pin 8 tip** | **+0.0 / +0.0 / +0.0 dBFS** | **❌ gone** |
+
+**This is a strong localization to DOUT (pin 8), and the physics is now the right way round.** Extra capacitance **slows** the DOUT edge. If the data is only just meeting the Teensy's setup time at the sampling clock edge, slowing it pushes the transition past the sampling instant and the bit is read wrong. **DOUT has very little timing margin** — ~10 pF, which is nothing on a healthy line, is enough to break it comprehensively. That is a far more coherent mechanism than the one in the previous entry.
+
+**⚠️ And it invalidates the "full scope suppressed the fault" narrative.** Entry (1) recorded three clean dumps (−38.9 dBFS) with the *full* scope attached — probes on 20, 21 **and 8**. If loading pin 8 breaks the link, the full-scope condition should have been broken too. It wasn't. **Those two observations cannot both be explained by probe loading.** The likeliest reading is that the earlier full-scope "suppression" was **coincidental** — the fault is time-varying, and that window happened to be quiet. **The scope-suppression correlation should be treated as unproven from here on**, and this entry supersedes the weight placed on it in entries (1)–(4).
+
+**What survives all of this, as the firmest result:** loading DOUT with ~10 pF reliably and repeatably destroys the link, across three dumps, against a directly-comparable three-dump baseline taken minutes earlier under otherwise identical conditions. **DOUT is the marginal node.**
+
+**Next:** remove the pin-8 tip and confirm the ground-only baseline returns — that closes the loop and proves the degradation was caused by the load rather than by time. Then, if it does, the question becomes *why* DOUT has so little margin: jumper length, routing next to a clock line, a poor joint at either end, or the codec's drive strength into that wire.
+
+---
+
 ## 2026-09-06 (4) — Ground-clip-only, RE-RUN with the tone confirmed playing. Result stands: ground alone does NOT suppress. And we caught a corruption event in the act — a single-sample impulse 51 dB above its neighbours
 
 **The test, properly run:** scope ground clip alone on the GND rail, no probe tips, no channels, no wiring changes, **1 kHz tone confirmed playing**. Three dumps, uptime 865 s / 890 s / 900 s.
