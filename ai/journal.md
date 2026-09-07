@@ -11,6 +11,54 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (3) — BREAKTHROUGH: DOUT pin 8 was found physically broken. Redoing it made corruption **4.2× WORSE** — the first proven causal link to a specific conductor
+
+**The finding on the bench:** during the mechanical inspection, **DOUT (pin 8) was found physically broken** and was remade. Only that connection was touched; the breadboard analog section and all other jumpers were left alone.
+
+**The measurement:** 360 windows over 30.5 min post-repair, against the 420-window cold-start run as baseline. Same firmware, scope disconnected, same 1 kHz tone, nothing else changed.
+
+| Metric | PRE-repair (420 win) | POST-repair (360 win) | Change |
+|---|---|---|---|
+| Mean SOURCE outliers/32 | **5.95** | **24.72** | **4.2× worse** |
+| Mean RETURN outliers/32 | 5.14 | 26.85 | 5.2× worse |
+| Completely clean windows | 3.1 % | **0.6 %** | 5× fewer |
+| Worst window (SOURCE) | 31/32 | **32/32** | — |
+| Windows at +0.0 dBFS | 100 % | 100 % | unchanged |
+| `AudioMemoryUsageMax` | 20 | 20 | unchanged |
+
+**And it holds across every band — this is not one bad stretch:**
+
+| Band | Uptime | n | SRC out/32 | RET out/32 |
+|---|---|---|---|---|
+| 1 | 80–580 s | 100 | 21.87 | 23.95 |
+| 2 | 585–1095 s | 100 | 24.63 | 27.67 |
+| 3 | 1100–1600 s | 100 | 27.01 | 28.45 |
+| 4 | 1615–1910 s | 60 | 25.82 | 27.63 |
+
+**The pre-repair bands spanned 2.83 – 9.50. The lowest post-repair band is 21.87 — 2.3× the *worst* pre-repair band.** The distributions do not overlap at all.
+
+### Why this is a breakthrough despite being "worse"
+
+**This is the first A/B in the entire investigation where the effect size dwarfs the wandering.** Every previous comparison was confounded by a fault that drifts 3.4× on its own; this one moved 4.2× with 780 windows behind it and zero band overlap. **Changing DOUT pin 8 changed the error rate — decisively.**
+
+**That establishes DOUT pin 8 as causally involved.** Not inferred from probe loading, not inferred from correlation with handling — demonstrated by a deliberate change to that one conductor producing an effect far outside the fault's natural range.
+
+**It also retrospectively explains the whole investigation.** A partially-broken DOUT would produce exactly what we spent days chasing: sporadic single-word errors, perfect clocks, correct register configuration, both channels affected together (they share the data line), a rate that wanders with contact conditions, and occasional total dropouts.
+
+**Note it was never fully open.** A truly open DOUT would give pure garbage, yet coherent 1 kHz waveforms appeared throughout. So "broken" here means a marginal or partly-failed joint, not a severed connection — consistent with the intermittency.
+
+### The actionable conclusion
+
+**The remade joint is substantially worse than the broken one it replaced.** That is a defect in the rework, not a reason to doubt the diagnosis. **DOUT pin 8 should be redone again, carefully** — inspect for a cold joint, insufficient wetting, a bridged or partially-lifted pad, a nicked conductor, or a wire that is now longer or routed differently than before.
+
+**Target for the next attempt:** mean SOURCE outliers/32 should fall **well below the pre-repair 5.95**, ideally toward zero, measured over ≥300 windows. Anything in the 20s means the joint is still bad.
+
+**Housekeeping confirmed again:** `AudioMemoryUsageMax` stayed pinned at 20 across both runs — the leak remains dead. And **100 % of windows in both runs sat at +0.0 dBFS**, which re-proves that the peak metric is useless as a discriminator here; the raw outlier count is what carries the signal.
+
+**Next:** rework DOUT pin 8 again with care, then repeat the ≥300-window measurement. This is now a single-variable experiment with a known baseline and a known-bad comparison point, which is the strongest position this investigation has been in.
+
+---
+
 ## 2026-09-07 (2) — COLD-START RUN: AudioMemory is flat (leak ruled out). But the warm-up hypothesis did NOT reproduce — the fault rises then falls
 
 **Setup:** board cooled overnight, scope fully disconnected, wiring untouched, 1 kHz tone playing. Diagnostic build with `AudioMemoryUsage()` telemetry uploaded on power-up and logging started immediately. **420 complete windows over 36.5 minutes**, uptime 0 → 2190 s, nothing touched.

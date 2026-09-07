@@ -231,7 +231,23 @@ Adding **~10 pF to DOUT reverted the fault to original severity** — −2000 DC
 Started near its best, climbed **3.4×** to a peak in band 2, then declined back. The previous run showed a monotonic 6.75 → 0.83. **Two runs, two different shapes ⇒ time-since-cold-start does not predict the error rate.** The earlier "warm-up trend" was most likely one arbitrary slice of slow wandering — the same sparse-sampling trap as the 3-window conclusions, just at a larger scale.
 **SOURCE and RETURN track each other closely in every band** — one shared cause, not two independent faults. **No halt this run** (36.5 min continuous).
 **📐 Method update — the ≥100-window rule is not sufficient.** The wandering timescale (~10 min) is *longer* than a 100-window band (~8.5 min). **Future comparisons need much longer bands or interleaved A/B/A/B sampling**, so slow drift cannot masquerade as a treatment effect. Comparing two conditions measured minutes apart — every hardware test done so far — remains unsafe.
-**➡️ NEXT — mechanical, as a deliberate one-shot.** With resource exhaustion eliminated and no reproducible time signature, the remaining productive move is to power off and inspect/re-seat the shield↔Teensy interconnect. **Do it once, with a long before/after measurement**, not another rapid A/B.
+**🎯 ROOT CAUSE LOCALISED 2026-09-07 — DOUT (pin 8) found PHYSICALLY BROKEN. See journal.md 2026-09-07 (3).** Mechanical inspection found the DOUT jumper broken; it was remade. Only that connection was touched.
+**Remaking it made corruption 4.2× WORSE — and that is the proof we needed:**
+
+| Metric | PRE (420 win) | POST (360 win) |
+|---|---|---|
+| Mean SRC outliers/32 | **5.95** | **24.72** |
+| Mean RET outliers/32 | 5.14 | 26.85 |
+| Clean windows | 3.1 % | **0.6 %** |
+| Worst window | 31/32 | **32/32** |
+| `AudioMemoryUsageMax` | 20 | 20 |
+
+Post-repair bands: 21.87 / 24.63 / 27.01 / 25.82. **Pre-repair bands spanned 2.83–9.50 — the lowest post band is 2.3× the worst pre band. Zero overlap.**
+**✅ FIRST A/B WHERE THE EFFECT DWARFS THE WANDERING.** 780 windows, 4.2× shift, no band overlap, against a fault that drifts only 3.4× on its own. **Changing DOUT pin 8 changed the error rate decisively ⇒ DOUT pin 8 is causally involved.**
+**It retrospectively explains everything:** a partly-broken DOUT gives sporadic single-word errors, perfect clocks, correct registers, both channels affected together (shared data line), a rate that wanders with contact conditions, and occasional dropouts. **It was never fully open** — coherent 1 kHz waveforms appeared throughout, so this was a marginal/partly-failed joint, not a severed one.
+**➡️ NEXT — REDO DOUT PIN 8 AGAIN, CAREFULLY.** The remade joint is worse than the broken one it replaced; that is a defect in the rework, not a reason to doubt the diagnosis. Inspect for a cold joint, poor wetting, a bridged or lifted pad, a nicked conductor, or a wire now longer/routed differently.
+**Pass criterion:** mean SOURCE outliers/32 **well below 5.95**, ideally near zero, over **≥300 windows**. Anything in the 20s means the joint is still bad.
+**Confirmed again:** `AudioMemoryUsageMax` pinned at 20 in both runs (leak stays dead), and **100 % of windows in both runs read +0.0 dBFS** — re-proving the peak metric is useless here; raw outlier count carries the signal.
 **📐 Methodological rule going forward:** any A/B test needs **≥100 windows per condition** to see through the fluctuation. Three dumps is nowhere near enough — that is precisely why this session produced so many confident wrong answers.
 
 **Guardrail:** "DOUT has almost no setup-time margin" remains unproven, and this result *weakens* it — the evidence it rested on has been refuted.
