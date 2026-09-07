@@ -11,6 +11,76 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (7) — THE UNATTENDED CONTROL. Fault RECOVERS spontaneously — refuting monotonic degradation. And the board halted on its own after 8.5 minutes
+
+**The control this investigation never had.** Scope fully disconnected (tips *and* ground), tone playing, nothing touched, no firmware change. 102 diagnostic windows captured across **510 s (8.5 min)** of continuous unattended running, uptime 1860–2370 s.
+
+### ❌ First: the peak metric has been misleading us
+
+`SOURCE_NODE peak` pegs at 0.0 dBFS whenever **one** sample in the ~2048-sample peak window is corrupted. It cannot distinguish "one bad sample in 2048" from "the stream is destroyed". **Raw outlier count per 32-sample window is the correct metric**, and reclassifying by it changes the conclusions.
+
+### Answer 1 — Do the peaks recover, stay severe, or drift further?
+
+**By peak: fluctuates, never recovers.** 67/102 windows at 0.0 dBFS (66 %), the rest ≈−1.4 to −2.8 dBFS, flipping between the two every few windows. Never returns to −38 dBFS.
+
+**By raw outlier count — it RECOVERED:**
+
+| Outliers per 32 (SOURCE) | Windows |
+|---|---|
+| 0 | **82** |
+| 1 | 19 |
+| 2 | 1 |
+
+**Mean 0.21 outliers per 32 = 0.64 % of samples.** Compare:
+
+| Phase | Outliers/32 | Coherent waveform? |
+|---|---|---|
+| Pin-8 loaded (1180–1210 s) | 9, 6, 1 | ❌ none, −2000 DC baseline |
+| Pin-8 removed (1435–1455 s) | ~7–9 | ❌ none |
+| Ground-only (865–900 s) | 0, 0, 1 | ✅ present |
+| **Unattended (1860–2370 s)** | **mean 0.21** | ✅ present |
+
+### Answer 2 — Does the raw morphology change?
+
+**Yes — it improved markedly.** The coherent ~1 kHz waveform is present throughout and the DC baseline returned to near zero. Example, uptime 2360 s, zero outliers:
+
+```
+217 45 209 -143 -501 -321 -379 -379 -358 -326 -405 -407 -400 -361 -477 -489 -429 -402 -283 -435 -444 -413 -519 -314 92 -108 248 37 218 124 284 60
+```
+
+That is signal, not corruption — against the pin-8-era windows which had no waveform at all.
+
+### Answer 3 — Spontaneous transitions with nobody touching it?
+
+**Constantly.** Peaks flip between 0.0 and ≈−2 dBFS every few windows; outlier counts move 0→1→2→0 window to window. **All with the board completely untouched and the scope entirely absent.**
+
+### ❌❌ This refutes my "monotonic degradation" hypothesis from entry (6)
+
+Entry (6) concluded the fault had "only ever gotten worse, never better" and proposed **cumulative mechanical disturbance** as the explanation. **Both are wrong.** The fault recovered substantially with nobody touching anything — from ~7–9 outliers/32 to 0.21. A cumulative-damage model predicts no recovery, and recovery is exactly what happened.
+
+That reading was built on five widely-spaced samples. 102 closely-spaced samples show something different: **the fault fluctuates in both directions on a timescale of seconds to minutes, spontaneously.** The apparent monotonic trend was an artefact of sparse sampling.
+
+**Consequence, now firmly established: every probe A/B correlation from this session is confounded** — not by a trend, but by rapid bidirectional fluctuation. No conclusion about ground, pin 8, or full-scope suppression survives.
+
+### 🚨 And then it stopped
+
+**The board went completely silent at uptime ≈2370 s and has stayed silent for 12+ minutes.** It is still USB-enumerated (`arduino-cli` sees a Teensy 4.1, `/dev/cu.usbmodem195969201` present, connection `state: open`, no errors), but is transmitting nothing. The 5 s diagnostics come from `loop()`, so **`loop()` has stopped or Serial output has died** — a hang, not a reboot, since no boot banner appeared.
+
+**⚠️ Do not attribute this halt to the hardware fault yet. Our own temporary diagnostic is a credible suspect.** The RAWDUMP block calls `audioCap_beginRawCapture()` / `audioCap_endRawCapture()` **every 5 seconds** — roughly 100 arm/disarm cycles during this run alone, and ~470 since boot. If even one `audio_block_t` leaks per cycle (a block queued between `readBuffer()` and `end()`, say), the 128-block `AudioMemory` pool would be exhausted within a few hundred cycles. That is a firmware-side explanation for a progressive stall that has nothing to do with the connection under investigation.
+
+**The discriminating test is cheap and needs no rebuild: power-cycle and watch the uptime at which it halts again.** A repeatable halt near ~2370 s indicates a deterministic resource leak — almost certainly ours. A halt at a random, different uptime, or no halt at all, points elsewhere.
+
+### Where this leaves the investigation
+
+- **Ruled out:** monotonic degradation; cumulative mechanical disturbance; every probe-loading correlation.
+- **Established:** the fault is spontaneous, bidirectional, and fluctuates over seconds-to-minutes; between events the pipeline decodes the 1 kHz tone correctly.
+- **New and unattributed:** a complete halt after ~40 minutes of uptime, with our own diagnostic a live suspect.
+- **Methodological:** use raw outlier count, not peak dBFS. Any future A/B test needs runs of ≥100 windows per condition to see through the fluctuation — three dumps is nowhere near enough, and that is why this session produced so many confident wrong answers.
+
+**Next:** power-cycle, log uptime-to-halt. Resolve whether the halt is ours before touching the bench mechanically.
+
+---
+
 ## 2026-09-06 (6) — Closure test FAILS: removing the pin-8 tip did NOT restore the clean regime. The fault has degraded MONOTONICALLY all session — every probe correlation so far is confounded
 
 **The test:** pin-8 tip removed only. Ground clip still attached, pins 20/21 untouched, tone playing, no firmware change. Three dumps, uptime 1435 / 1445 / 1455 s.
