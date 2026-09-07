@@ -11,6 +11,44 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (2) — Scope-removed test: the answer is BOTH. Corruption returned, but ~400× rarer than the original fault. The scope was suppressing it AND something got reseated
+
+**The test:** all probe tips and ground clips removed, board wiring untouched, USB and 1 kHz tone still connected. Three dumps at uptime 100 s / 120 s / 130 s.
+
+| | SOURCE peak | RETURN peak | Clipping | Raw 32-sample window |
+|---|---|---|---|---|
+| **Scope connected** (previous session) | −38.9 dBFS | −50.1 dBFS | none | coherent ~1 kHz |
+| | −38.2 dBFS | −49.2 dBFS | none | coherent ~1 kHz |
+| | −39.1 dBFS | −50.1 dBFS | none | coherent ~1 kHz |
+| **Scope removed** (this session) | **+0.0 dBFS** | **+0.0 dBFS** | **continuous** | **coherent ~1 kHz** |
+| | **+0.0 dBFS** | −1.0 dBFS | **continuous** | **coherent ~1 kHz** |
+| | −1.9 dBFS | −2.9 dBFS | **continuous** | **coherent ~1 kHz** |
+
+Representative dump with the scope removed (uptime 100 s):
+```
+[Main] SOURCE_NODE peak: +0.0 dBFS   |   RETURN_NODE peak: +0.0 dBFS
+[RAWDUMP] SOURCE: 271 227 282 291 267 255 244 261 239 272 273 210 231 183 282 -246 -308 -315 -304 -257 -287 -268 -313 -183 -298 -290 -299 -212 -226 -328 -292 -326
+[RAWDUMP] RETURN: 29 29 11 48 9 24 9 4 -3 -5 -7 42 28 -4 -30 -92 -85 -86 -51 -91 -93 -95 -101 -106 -96 -101 -99 -75 -61 -94 -84 -83
+```
+
+**Neither of the two predicted outcomes happened cleanly. Both did, partially.**
+
+**What returned:** full-scale outliers and continuous clipping. With the scope attached, no sample anywhere in the peak window exceeded ≈−38 dBFS across three dumps. With it removed, the peak immediately pegs at 0 dBFS. **The scope connection was demonstrably suppressing something.**
+
+**What did NOT return:** the original fault. That produced a −2880 DC baseline, quantised levels at −2880/−6530/−8480, and 6–12 wild excursions *per 32 samples*. **None of that is present.** All three windows here are clean, coherent ±280-count ~1 kHz square waves — indistinguishable from the scope-connected dumps.
+
+**The corruption rate has collapsed.** Originally ~6–12 corrupted samples per 32 (≈20–35 %). Now the raw windows are clean while the peak meter still sees outliers, which bounds the rate: the peak window is roughly `FFT_AVERAGE_COUNT(4) × 512-sample hop = 2048 samples`, of which the dump shows **32 = 1.6 %**. A rate near 1-in-2048 would be missed by a 32-sample window about 98 % of the time. **That is a reduction on the order of 400× from the original fault, not an elimination.**
+
+**The outliers are definitely not signal.** The coherent waveform sits at −41.4 dBFS; the peak reads 0.0 dBFS. **41 dB above the audio** is not something the analog path can produce at these levels.
+
+**⚠️ Sampling-bias caveat on my own evidence.** The RAWDUMP arms the queue, then reads the *first* block immediately. If corruption is bursty in time rather than uniformly distributed, this could systematically sample quiet moments. The "windows are clean" observation is therefore weaker than it looks, and should not by itself be read as "the data path is fine between events." Widening the dump or sampling at a random offset would settle it — deliberately not done yet, to avoid another firmware cycle mid-diagnosis.
+
+**Revised reading.** Two things appear to be true at once: physical handling during the scope session **substantially improved** the connection (the baseline is far better than before and has stayed better with the scope gone), and the scope's ground clip was **additionally suppressing** the residual fault. That is consistent with a marginal contact whose severity varies with mechanical and electrical conditions — but it still does **not** identify which connection. The suspect set remains the shared ground path and the clock/data jumpers.
+
+**Next: prove which connection is marginal.** Do not add redundancy — a second ground would very likely suppress the symptom again and destroy the evidence. The useful move is to reintroduce the scope's ground clip *alone* (no probe tips, no channels enabled) and re-run the dumps. If the peaks drop back to ≈−38 dBFS with only a ground path added, that isolates the fault to the ground return with a single reversible change and nothing soldered.
+
+---
+
 ## 2026-09-06 (1) — ✅ THE FAULT HAS CLEARED. Scope proved all three clocks correct; the pipeline now decodes a coherent ~1 kHz signal. The fault points to the physical/interconnect layer, not DSP or static I²S config
 
 **This is the breakthrough entry.** After the scope session the corruption stopped, and SOURCE_NODE is now receiving real audio for the first time on this bench.
