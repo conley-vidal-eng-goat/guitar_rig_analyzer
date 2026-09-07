@@ -11,6 +11,44 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (4) — Second DOUT rework FAILS the criterion. Three joint states, three error rates, none working. New hypothesis: pin 8 output contention damage
+
+**Result of the second rework, 360 windows / 30.5 min, measured identically to the previous two runs:**
+
+| Run | DOUT state | n | SRC out/32 | RET out/32 | clean % | worst | bands |
+|---|---|---|---|---|---|---|---|
+| **A** | original (found broken) | 420 | **5.95** | 5.14 | 3.1 % | 31 | 2.83 – 9.50 |
+| **B** | 1st rework | 360 | **24.72** | 26.85 | 0.6 % | 32 | 21.87 – 27.01 |
+| **C** | 2nd rework | 360 | **8.54** | 8.07 | 0.0 % | 20 | 6.93 – 10.03 |
+
+**Pass criterion was "mean SOURCE outliers/32 well below 5.95, ideally near zero". Result: 8.54. FAIL.**
+
+**C is statistically indistinguishable from A.** Run C's bands (6.93–10.03) sit inside run A's range (2.83–9.50). Run B's bands (21.87–27.01) do not overlap either. **So the second rework undid the damage of the first — 2.9× better than B — but did not improve on the original broken joint at all.**
+
+### What three joint states tell us
+
+**DOUT is causally involved** — three different physical states produced three distinguishable error rates, and B's separation from A and C is unambiguous. That result from entry (3) stands.
+
+**But DOUT rework is not sufficient to fix it.** Three attempts at that connection have produced 5.95, 24.72 and 8.54 outliers per 32. **None is a working link.** Even the best of them corrupts **18.6 % of samples**.
+
+**That number is the important one.** A synchronous digital bus running a few centimetres should have *essentially zero* bit errors. 18.6 % is not a marginal connection — it is a systematically broken one. **We have been treating this as a contact-quality problem when the scale of the error rate says something is fundamentally wrong with the DOUT path, not merely imperfect.**
+
+### 🔺 New hypothesis: pin 8 was damaged by output-vs-output contention
+
+**Until 2026-09-05, `RA8875_RESET_PIN` was defined as pin 8** (`config.h`, changed to 5 in commit `eeaec99`). `display_engine.cpp:36` passes it to `Adafruit_RA8875`, whose `begin()` does `pinMode(reset, OUTPUT)` and toggles it — **and it does that even when the display is absent, because the pin setup happens before the chip-ID check fails.**
+
+**Meanwhile the Audio Shield's SGTL5000 was driving that same pin as DOUT.** That is a direct **output-driving-output contention**: the Teensy actively pulling pin 8 while the codec actively drove it, through however many boot cycles occurred while the shield was wired and `RA8875_RESET_PIN` was still 8.
+
+**That is a credible mechanism for permanent damage** to either the Teensy's pin 8 input stage or the SGTL5000's DOUT output driver — and damage of that kind would explain everything the rework attempts cannot: why three separate good-faith joints all fail, why the error rate is enormous rather than marginal, why it wanders with conditions, and why clocks and registers all check out perfectly.
+
+**This is a hypothesis, not a conclusion.** It fits the timeline and the symptom scale, but nothing yet demonstrates the pin or the driver is actually degraded.
+
+**The discriminating measurement is electrical, on the scope, and specific:** probe DOUT (pin 8) while the codec is transmitting and check **logic levels and edge quality** — does it reach a full rail-to-rail swing, and are the edges clean? A damaged output driver or a damaged input stage typically shows reduced swing, asymmetric levels, or visibly slow edges. Earlier scope work confirmed DOUT was *toggling* (1.716 V DC average) but never examined its **levels or edges** — only that it was active.
+
+**Next:** stop reworking the joint. Scope DOUT for amplitude and edge quality against a known-good reference — ideally compare against BCLK on the same probe and settings, since BCLK is driven by the Teensy and known healthy. If DOUT's swing or edges are materially worse than BCLK's, the damage hypothesis gains real support and the remedy becomes replacing a part, not remaking a wire.
+
+---
+
 ## 2026-09-07 (3) — BREAKTHROUGH: DOUT pin 8 was found physically broken. Redoing it made corruption **4.2× WORSE** — the first proven causal link to a specific conductor
 
 **The finding on the bench:** during the mechanical inspection, **DOUT (pin 8) was found physically broken** and was remade. Only that connection was touched; the breadboard analog section and all other jumpers were left alone.

@@ -245,8 +245,18 @@ Started near its best, climbed **3.4×** to a peak in band 2, then declined back
 Post-repair bands: 21.87 / 24.63 / 27.01 / 25.82. **Pre-repair bands spanned 2.83–9.50 — the lowest post band is 2.3× the worst pre band. Zero overlap.**
 **✅ FIRST A/B WHERE THE EFFECT DWARFS THE WANDERING.** 780 windows, 4.2× shift, no band overlap, against a fault that drifts only 3.4× on its own. **Changing DOUT pin 8 changed the error rate decisively ⇒ DOUT pin 8 is causally involved.**
 **It retrospectively explains everything:** a partly-broken DOUT gives sporadic single-word errors, perfect clocks, correct registers, both channels affected together (shared data line), a rate that wanders with contact conditions, and occasional dropouts. **It was never fully open** — coherent 1 kHz waveforms appeared throughout, so this was a marginal/partly-failed joint, not a severed one.
-**➡️ NEXT — REDO DOUT PIN 8 AGAIN, CAREFULLY.** The remade joint is worse than the broken one it replaced; that is a defect in the rework, not a reason to doubt the diagnosis. Inspect for a cold joint, poor wetting, a bridged or lifted pad, a nicked conductor, or a wire now longer/routed differently.
-**Pass criterion:** mean SOURCE outliers/32 **well below 5.95**, ideally near zero, over **≥300 windows**. Anything in the 20s means the joint is still bad.
+**❌ SECOND REWORK FAILED THE CRITERION 2026-09-07. See journal.md 2026-09-07 (4).**
+
+| Run | DOUT state | n | SRC out/32 | clean % | bands |
+|---|---|---|---|---|---|
+| **A** | original (found broken) | 420 | **5.95** | 3.1 % | 2.83–9.50 |
+| **B** | 1st rework | 360 | **24.72** | 0.6 % | 21.87–27.01 |
+| **C** | 2nd rework | 360 | **8.54** | 0.0 % | 6.93–10.03 |
+
+Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's bands sit inside A's range, so C is statistically indistinguishable from the original broken joint.** The second rework only undid the first rework's damage (2.9× better than B); it improved nothing.
+**🔺 DOUT is causally involved but reworking it is NOT sufficient.** Three joint states → three distinguishable rates, so the conductor matters. But three good-faith attempts gave 5.95 / 24.72 / 8.54 and **none is a working link. Even the best corrupts 18.6 % of samples** — a synchronous bus over a few cm should have essentially zero bit errors. **That scale says something is fundamentally broken in the DOUT path, not merely imperfect contact.** Stop reworking the joint.
+**🔺 NEW HYPOTHESIS — pin 8 damaged by output-vs-output contention.** Until 2026-09-05, `RA8875_RESET_PIN` was **8** (changed to 5 in `eeaec99`). `Adafruit_RA8875::begin()` does `pinMode(reset, OUTPUT)` and toggles it **even when the display is absent**, because pin setup precedes the failing chip-ID check. Meanwhile the SGTL5000 was driving that same pin as DOUT — **two active drivers fighting**, across every boot while the shield was wired and the define still said 8. That could permanently degrade the Teensy's pin 8 input stage or the codec's DOUT driver, and would explain what rework cannot: three failed joints, an enormous rather than marginal error rate, wandering with conditions, and perfect clocks/registers throughout. **Hypothesis, not conclusion.**
+**➡️ NEXT — scope DOUT for LEVELS and EDGES, not just activity.** Earlier work confirmed DOUT toggles (1.716 V DC average) but never examined swing or edge quality. **Compare DOUT against BCLK on the same probe and scope settings** — BCLK is Teensy-driven and known healthy, so it is the reference. Materially reduced swing, asymmetric levels, or visibly slow edges on DOUT would support the damage hypothesis and shift the remedy from remaking a wire to replacing a part.
 **Confirmed again:** `AudioMemoryUsageMax` pinned at 20 in both runs (leak stays dead), and **100 % of windows in both runs read +0.0 dBFS** — re-proving the peak metric is useless here; raw outlier count carries the signal.
 **📐 Methodological rule going forward:** any A/B test needs **≥100 windows per condition** to see through the fluctuation. Three dumps is nowhere near enough — that is precisely why this session produced so many confident wrong answers.
 
