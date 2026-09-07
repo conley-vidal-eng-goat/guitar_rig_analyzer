@@ -11,6 +11,56 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (1) — Halt did NOT reproduce: 47 min continuous, no hang. And the fault improved 8× over the run with nobody touching it
+
+**The discriminator test.** Power-cycled USB only, scope fully disconnected, tone off, wiring untouched, no rebuild. Logged continuously from uptime 55 s.
+
+### Result 1 — no halt
+
+**Ran 46.8 minutes continuously (uptime 55 → 2860 s, 540 diagnostic windows) and never stopped.** The previous run halted at uptime ≈2370 s; this one passed straight through that point and was still transmitting when logging ended at 2860 s.
+
+**A deterministic resource exhaustion tied to a fixed cycle count is ruled out.** At ~5 s per RAWDUMP arm/disarm cycle, the previous halt was at roughly cycle 474; this run reached ~572 cycles with no ill effect.
+
+**Stated at the right strength, per the correction adopted below:** non-reproduction at the same uptime **weakens** the resource-exhaustion hypothesis but does not eliminate it — a leak with a *variable* rate, or one gated on a condition that did not recur, would still fit. **Proving or killing it properly requires `AudioMemoryUsage()` / `AudioMemoryUsageMax()` telemetry** to show directly whether the 128-block pool is climbing. That is the honest next step for the halt question, not another timing run.
+
+**Correction adopted:** an earlier draft implied a repeatable halt would prove "one leaked `audio_block_t` per RAWDUMP cycle." It would not. It would make deterministic firmware/resource exhaustion *strongly likely*, after which the arm/read/free/disarm paths would need inspecting and the pool instrumented to identify the actual mechanism.
+
+### Result 2 — the fault fluctuates enormously, and improved over the run
+
+SOURCE raw outliers per 32-sample window, 540 dumps:
+
+| Outliers/32 | Windows | |
+|---|---|---|
+| 0 | 140 | 25.9 % |
+| 1–2 | 161 | 29.8 % |
+| 3–5 | 122 | 22.6 % |
+| 6–10 | 102 | 18.8 % |
+| 11–27 | 15 | 2.8 % |
+
+**Mean 3.14 per 32 = 9.81 % of samples**, with a range from **0 to 27 out of 32**.
+
+**And it improved steadily across the run, untouched:**
+
+> mean outliers/32 — **first third: 6.75** → **last third: 0.83**
+
+**An ~8× improvement over 47 minutes with nobody touching the board, no scope attached, and no configuration change.**
+
+### What this establishes
+
+- **The halt is not reproducible on time.** It happened once in ~40 min and not at all in the following ~47 min.
+- **The corruption is not merely bidirectional noise — it has a slow downward trend within a run.** Combined with the previous session's spontaneous recovery, the fault behaves like something that *settles* while the board runs.
+- **A warm-up / thermal / mechanical-settling character is now the best-fitting description.** A connection whose contact resistance or geometry changes slightly as the board warms would produce exactly this: high error rate when cold, improving over tens of minutes, still fluctuating window-to-window, and occasionally much worse.
+
+Stated carefully: this is a **description of the behaviour**, not an identified mechanism. It does not name a conductor, and it does not distinguish a marginal contact from a temperature-sensitive component.
+
+### Method note
+
+The previous session's conclusions all rested on 3-window samples. This run has 540. The distribution above — where 26 % of windows are perfectly clean while others carry 27 corrupted samples out of 32 — shows exactly why: **any three consecutive windows could have "proved" almost anything.** The ≥100-window rule recorded in entry (7) is now demonstrated, not just asserted.
+
+**Next:** the halt and the corruption are separate questions and should be pursued separately. For the halt, add `AudioMemoryUsage()`/`AudioMemoryUsageMax()` to the 5 s diagnostics — cheap, and it settles the leak question directly. For the corruption, any future comparison must run ≥100 windows per condition, and should ideally control for elapsed run time given the warm-up trend just measured.
+
+---
+
 ## 2026-09-06 (7) — THE UNATTENDED CONTROL. Fault RECOVERS spontaneously — refuting monotonic degradation. And the board halted on its own after 8.5 minutes
 
 **The control this investigation never had.** Scope fully disconnected (tips *and* ground), tone playing, nothing touched, no firmware change. 102 diagnostic windows captured across **510 s (8.5 min)** of continuous unattended running, uptime 1860–2370 s.
