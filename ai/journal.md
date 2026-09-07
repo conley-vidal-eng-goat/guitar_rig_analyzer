@@ -11,6 +11,41 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (3) — Ground-clip-only test: outliers NOT suppressed, so ground alone isn't the mechanism. But the 1 kHz signal vanished mid-test — CONFOUNDED, needs re-running
+
+**The test:** scope ground clip alone reattached to the breadboard GND rail. No probe tips, no channels enabled, no wiring changes. Two dumps, uptime 735 s and 750 s.
+
+```
+[Main] SOURCE_NODE peak: -2.2 dBFS   |   RETURN_NODE peak: -5.6 dBFS      (uptime 735s)
+[RAWDUMP] SOURCE: 8 -85 10 -45 -20 -53 -18 -49 -17 -83 61 -56 121 -77 110 -62 22 -126 95 -58 128 -161 33 -87 -80 -158 65 -95 1 -64 -37 -50
+[RAWDUMP] RETURN: -32 -29 -8 -18 10 4 -6 -3 -5 -14 -14 -7 -5 1 -23 -17 -9 -9 9 -9 7 30 45 18 0 14 -26 -28 11 19 9 29
+
+[Main] SOURCE_NODE peak: -2.2 dBFS   |   RETURN_NODE peak: -52.6 dBFS     (uptime 750s)
+[RAWDUMP] SOURCE: -5 -17 45 -71 -23 -95 -35 -27 -96 -47 -45 55 -52 -54 224 38 -17 123 -25 -44 -41 30 -26 -12 -15 -90 -49 1 -18 -52 -43 8
+[RAWDUMP] RETURN: 8 6 -14 -18 9 -13 -23 -10 -10 4 -14 3 -1 -21 -31 11 -8 -10 -13 -12 -4 11 15 -8 0 -12 -6 15 14 -41 -5 -15
+```
+Both dumps: `TF confidence: 0%`, every TF spot-check `---`. `CLIP_RETURN` still firing.
+
+**⚠️ CONFOUND — the 1 kHz signal is no longer present.** The raw windows are low-level noise (±100, one excursion to 224), **not** the coherent ±280-count ~1 kHz square wave seen in all six previous dumps. TF confidence dropped from 68–100 % to **0 %**, and every spot-check bin reads `---`. Something changed about the input between the scope-removed test and this one — the tone stopped playing, or attaching the clip disturbed the input wiring. **The test as designed cannot be interpreted while the stimulus is absent**, and it must be re-run with the tone confirmed live.
+
+**What can still be concluded, because it does not depend on the stimulus.** The outlier behaviour is measurable against the noise floor regardless of whether the tone is present:
+
+| Condition | Peak | Raw bulk level | Outliers above bulk |
+|---|---|---|---|
+| Full scope (probes + ground) | −38.9 dBFS | ≈−41 dBFS | **≈2 dB — essentially none** |
+| No scope at all | +0.0 dBFS | ≈−41 dBFS | ≈41 dB |
+| **Ground clip only** | **−2.2 dBFS** | **≈−50 dBFS** | **≈48 dB** |
+
+**The ground clip alone did not suppress the outliers.** Peaks stayed at −2.2 dBFS — barely different from the −1.9 dBFS seen with the scope entirely removed, and nowhere near the −38.9 dBFS of the full-scope condition. **That answers the second branch of the test: the earlier suppression depended on more than the ground path.**
+
+**What that implicates.** With the full scope attached, three probe tips were also in contact — on **LRCLK (20), BCLK (21) and DOUT (8)**. A scope probe presents roughly 1 MΩ in parallel with ~10 pF. On a marginal or reflective line, that small capacitive load can damp ringing and clean up edges. **The suppression correlating with probe tips rather than ground shifts suspicion toward the clock/data lines themselves** — signal integrity on the jumpers, not the ground return. That is a hypothesis, not a conclusion; the confounded stimulus means this round proves less than it should.
+
+**Next — re-run properly.** Confirm the 1 kHz tone is playing and reaching column 30 (measure it), then repeat the ground-clip-only capture. After that, the discriminating test is to attach **ground plus a single probe tip**, one line at a time (8, then 21, then 20), and see whether any individual line's capacitive load restores the clean −38 dBFS state. That isolates which conductor is marginal without soldering anything.
+
+**Still not adding a permanent ground jumper** — this round makes that even clearer, since ground alone demonstrably isn't the mechanism.
+
+---
+
 ## 2026-09-06 (2) — Scope-removed test: the answer is BOTH. Corruption returned, but ~400× rarer than the original fault. The scope was suppressing it AND something got reseated
 
 **The test:** all probe tips and ground clips removed, board wiring untouched, USB and 1 kHz tone still connected. Three dumps at uptime 100 s / 120 s / 130 s.
