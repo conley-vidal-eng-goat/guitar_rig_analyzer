@@ -11,7 +11,7 @@ How to use this file:
 
 ---
 
-## 2026-09-06 (1) — ✅ THE FAULT HAS CLEARED. Scope proved all three clocks correct; the pipeline now decodes a coherent ~1 kHz signal. Diagnosis: intermittent physical connection, most likely ground
+## 2026-09-06 (1) — ✅ THE FAULT HAS CLEARED. Scope proved all three clocks correct; the pipeline now decodes a coherent ~1 kHz signal. The fault points to the physical/interconnect layer, not DSP or static I²S config
 
 **This is the breakthrough entry.** After the scope session the corruption stopped, and SOURCE_NODE is now receiving real audio for the first time on this bench.
 
