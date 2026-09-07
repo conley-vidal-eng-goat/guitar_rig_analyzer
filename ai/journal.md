@@ -11,6 +11,59 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (6) — Closure test FAILS: removing the pin-8 tip did NOT restore the clean regime. The fault has degraded MONOTONICALLY all session — every probe correlation so far is confounded
+
+**The test:** pin-8 tip removed only. Ground clip still attached, pins 20/21 untouched, tone playing, no firmware change. Three dumps, uptime 1435 / 1445 / 1455 s.
+
+**All three remain fully corrupted.** `+0.0 dBFS` on both nodes, clipping continuous, −1500 to −2200 DC baseline, wild excursions, no coherent waveform:
+
+```
+uptime 1455s
+SOURCE: -1399 14294 -1475 -1385 -1436 -1485 -1424 -1449 -7548 31487 14277 -4111 -7573 -1532 -4990 555 -1467 -1553 -946 -7575 -7567 -1357 -1920 -2041 23515 -2012 -1946 -1907 -2048 -2024 -2040 -2006
+RETURN: -1506 -1385 -1878 -1003 1467 -1847 -2409 -1042 8721 3294 -3573 -5315 -3068 -860 -1872 -1636 -1408 -1522 -1493 -1493 -1491 25630 -1519 -1623 -1629 -1587 -1648 -1645 -1648 -1683 -1570 -1628
+```
+
+**❌ My pin-8 causal claim in entry (5) is refuted.** If the ~10 pF load had caused the regression, removing it should have restored the previous regime. It did not.
+
+### The real picture: monotonic degradation across the whole session
+
+Peak history assembled from the session log plus 14 consecutive windows recovered from the serial ring:
+
+| uptime | Condition | SOURCE peak | Regime |
+|---|---|---|---|
+| 605–645 s | Full scope (3 tips + gnd) | −38.9 / −38.2 / −39.1 | **CLEAN** |
+| 735–900 s | Ground clip only | −2.2 … −2.3 | **mild** |
+| 1180–1210 s | Ground + pin 8 tip | 0.0 / 0.0 / 0.0 | **SEVERE** |
+| 1345–1410 s | Pin 8 removed (14 windows) | 0.0 throughout | **SEVERE** |
+| 1435–1455 s | Pin 8 removed | 0.0 / 0.0 / 0.0 | **SEVERE** |
+
+**The fault has only ever gotten worse, never better, and it has never recovered from any step.** Clean → mild → severe, monotonically, over ~14 minutes. It has now held severe for 275+ seconds across two different probe configurations.
+
+### What that does to every conclusion drawn today
+
+**Every probe-based A/B test this session is confounded**, because none of them controlled for a monotonic time trend. Each intervention coincided with a step down that would have happened anyway:
+
+- "Full scope suppressed the fault" — already downgraded in entry (5); now clearly just the earliest, best point on a declining curve.
+- "Ground alone does not suppress" — cannot be distinguished from continued decline.
+- "Pin 8 loading caused the regression" — **refuted outright** by this test.
+
+**A better hypothesis fits the monotonic shape: cumulative mechanical disturbance.** Every intervention has involved physically attaching or detaching a probe near the shield/Teensy jumpers. If a connection there is marginal, each handling event nudges it further out of contact — and nothing in the sequence would restore it. That explains both the one-way degradation and why removing the load changed nothing.
+
+Stated carefully: **the electrical-loading explanation is refuted; a mechanical-disturbance explanation is consistent with all the data but is not yet proven.** The distinction matters, because they call for opposite next steps.
+
+### Methodological correction for the rest of this investigation
+
+**No further A/B probe tests until the time behaviour is characterised.** They cannot produce interpretable results against a drifting baseline. What is needed first:
+
+1. **Stop touching the board.** Leave it completely alone, powered, tone playing, and log peaks for 10–15 minutes with no intervention. That establishes whether the severe regime is stable, recovers, or continues to degrade — the control this session never had.
+2. Only then, if a stable baseline exists, resume single-variable tests — and repeat each one twice with an unattended interval between, so a trend can be separated from an effect.
+
+**Also keep in mind for the guardrail already recorded:** "DOUT has almost no setup-time margin" remains an unproven hypothesis, and this entry weakens rather than strengthens it, since the evidence it rested on has been refuted.
+
+**Next:** hands off the bench; unattended peak logging.
+
+---
+
 ## 2026-09-06 (5) — Pin 8 (DOUT) probe test: loading DOUT makes it DRAMATICALLY WORSE, not better. Strong localization to DOUT — and it invalidates the "full scope suppressed it" story
 
 **Two wording corrections adopted first, both raised in review and both right:**
