@@ -11,6 +11,51 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (4) — Ground-clip-only, RE-RUN with the tone confirmed playing. Result stands: ground alone does NOT suppress. And we caught a corruption event in the act — a single-sample impulse 51 dB above its neighbours
+
+**The test, properly run:** scope ground clip alone on the GND rail, no probe tips, no channels, no wiring changes, **1 kHz tone confirmed playing**. Three dumps, uptime 865 s / 890 s / 900 s.
+
+| | SOURCE peak | RETURN peak |
+|---|---|---|
+| uptime 865 s | −2.3 dBFS | −1.8 dBFS |
+| uptime 890 s | −1.7 dBFS | −6.4 dBFS |
+| uptime 900 s | −2.3 dBFS | −1.5 dBFS |
+
+**The confounded result from entry (3) is confirmed with the stimulus present: ground alone does not suppress the fault.** Peaks sit at −1.7 to −2.3 dBFS against −38.9 dBFS with the full scope attached. The stimulus is unambiguously back — SOURCE shows the coherent ~1 kHz square wave in all three dumps, and TF confidence recovered to 80 % / 77 % / 7 %.
+
+### The event, caught in a 32-sample window
+
+```
+[RAWDUMP] RETURN: -82 -80 -73 -77 -81 -86 -88 -75 -68 -76 27514 -79 -11 6 -19 4 -17 4 -8 -30 -5 -1 21 0 -6 -72 -32 -14 -23 22 -4 -32
+                                                              ^^^^^ index 10
+```
+
+**One sample. `27514`, sitting between `−76` and `−79`.** That is **−1.5 dBFS wedged between neighbours at −52.7 dBFS — a 51 dB single-sample excursion**, and it accounts for the −1.8 dBFS peak reported in the same window. The corresponding SOURCE window is a clean coherent square wave.
+
+**This is the single most diagnostic observation of the whole investigation.** The corruption is not a distortion of the signal, not a level error, not a framing offset applied continuously. **It is an isolated single-word error** — one I²S word decoded wrongly while the words either side of it are correct. A sustained framing or format problem cannot produce that; it would corrupt every word.
+
+### Rate, across all conditions
+
+| Condition | Corrupted samples | vs original |
+|---|---|---|
+| Original fault | 6–12 per 32 = **20–35 %** | — |
+| Ground clip only | 1 in 96 ≈ **1 %** | ~20–35× better |
+| Full scope (probes + ground) | peak == signal level over a 2048-sample window ⇒ **< 0.05 %** | a further ≥20× |
+
+Three distinct severity regimes, and the ordering is consistent every time it has been measured.
+
+### What this implicates
+
+**Ground is now substantially ruled out as the mechanism.** Adding a ground path changed nothing measurable; adding probe tips changed everything. With the full scope attached, tips were on **LRCLK (20), BCLK (21) and DOUT (8)** — each presenting ~1 MΩ ∥ ~10 pF. On a line with marginal edges or reflections, that small capacitive load damps ringing and sharpens the sampled transition. **Isolated single-word errors are exactly what a marginal edge produces**: most clock edges are read correctly, an occasional one is not, and one word decodes wrong.
+
+Stated as a hypothesis, not a conclusion: **signal integrity on one of the clock/data jumpers**, with the error rate set by how close that line's edges sit to the decision threshold.
+
+**Next — isolate the conductor.** Keep the ground clip attached, then add **one probe tip at a time**: pin 8 (DOUT), then 21 (BCLK), then 20 (LRCLK), capturing dumps after each. If a single line's capacitive load drops the peaks back toward −38 dBFS, that names the marginal conductor. Nothing soldered, one variable at a time, fully reversible.
+
+**Still no permanent ground jumper.** This round removes the last reason to consider one — ground demonstrably is not the mechanism.
+
+---
+
 ## 2026-09-06 (3) — Ground-clip-only test: outliers NOT suppressed, so ground alone isn't the mechanism. But the 1 kHz signal vanished mid-test — CONFOUNDED, needs re-running
 
 **The test:** scope ground clip alone reattached to the breadboard GND rail. No probe tips, no channels enabled, no wiring changes. Two dumps, uptime 735 s and 750 s.
