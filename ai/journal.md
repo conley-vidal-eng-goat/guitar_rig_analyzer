@@ -49,19 +49,25 @@ Three consecutive dumps at uptime 605 s / 635 s / 645 s, 1 kHz tone connected:
 
 **And the signal is genuinely there.** Dump C has zero crossings at sample indices 1 and 24 — **23 samples per half-cycle ⇒ 958.7 Hz**, against 22.05 samples/half-cycle for an exact 1 kHz at 44.1 kHz. Amplitude is a consistent ±270–295 counts on both sides of zero. **This is the injected tone, decoded correctly.** Waveform shape is square rather than sinusoidal (flat tops, fast transitions), so the phone is evidently producing a square tone — worth knowing, not a fault.
 
-### Diagnosis (my read — second opinion): intermittent physical connection, most likely ground
+### Diagnosis: the fault is strongly pointing toward a physical/interconnect issue, not DSP or static I²S configuration
 
-Nothing in firmware or configuration changed between the corrupted runs and these clean ones. **The same flashed build produced both.** What changed was physical handling during the scope session. Five things point the same way:
+**The decisive observation:** the same firmware went from corrupted full-scale raw samples to a clean ~1 kHz waveform after physical handling. Nothing in firmware or configuration changed between the corrupted runs and these clean ones — **the same flashed build produced both.**
+
+**Deliberately NOT concluded: "intermittent connection, most likely ground."** An earlier draft of this entry said exactly that. Ground is *a* candidate, not an established one — the evidence below narrows the fault to the physical layer but does not identify which connection. **The suspect set is the shared ground path AND the clock/data jumpers**, because handling any of them during probing could have changed contact pressure.
+
+Five observations support the physical-layer read:
 
 1. **The corruption was burst-like** — long quiet runs (11–12 consecutive stable samples in dump 4 of the previous session) punctuated by wild values. That is the signature of an intermittent connection, not a design or format fault.
 2. **Both channels were affected identically**, which implicates a shared resource — ground or a clock — rather than a per-channel path.
 3. **Clocks and register configuration are now both proven correct**, eliminating the two leading structural hypotheses.
-4. **The fault cleared during a session whose very first action was clipping a scope ground lead onto the breadboard GND rail.** That physically adds a low-impedance ground path between instrument and board.
-5. **Two unexplained USB dropouts** earlier in this project — the board vanishing from the bus mid-session, once aborting an upload — are independently consistent with a marginal power or ground connection, and were never explained.
+4. **The fault cleared during a session involving repeated physical handling** — probe clips attached, channels moved, the tone disconnected and reconnected. Any of that can change contact pressure on a breadboard or a solder joint.
+5. **Two unexplained USB dropouts** earlier in this project — the board vanishing from the bus mid-session, once aborting an upload — are independently consistent with a marginal connection somewhere in the power or interconnect path, and were never explained.
 
-The corrupted data also carried a **stable −2880 DC offset** that has now vanished entirely; the samples sit symmetrically about zero. A shifting reference is exactly what a poor ground bond produces.
+The corrupted data also carried a **stable −2880 DC offset** that has now vanished entirely; the samples sit symmetrically about zero.
 
-**⚠️ The critical caveat: the scope may be masking the fault, not fixing it.** If the marginal path is ground, the probe's ground clip is currently providing it. **Disconnect the scope and re-run the dumps before believing this is solved.** If corruption returns with the scope removed, the diagnosis is confirmed and the fix is a second, solid ground bond between the Audio Shield and the Teensy.
+**⚠️ The critical caveat: the scope may be masking the fault rather than fixing it.** The probe's ground clip adds a path that was not there before. **Disconnect the scope and re-run the dumps before believing this is solved.**
+
+**Do NOT pre-commit to a remedy.** An earlier draft of this entry proposed "add a second solid ground bond" as the fix if the no-scope test fails. That is premature — it presupposes which connection is marginal. **If corruption returns, the next step is to prove exactly which connection is at fault**, not to add redundancy blindly. Adding a second ground would very likely mask the problem again while leaving the real defect in place and unidentified. **No board wiring should be added or changed until the no-scope test result is known.**
 
 ### Two open questions raised by the clean data
 
