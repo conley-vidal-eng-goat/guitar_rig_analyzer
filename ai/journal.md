@@ -11,6 +11,67 @@ How to use this file:
 
 ---
 
+## 2026-09-06 (1) — ✅ THE FAULT HAS CLEARED. Scope proved all three clocks correct; the pipeline now decodes a coherent ~1 kHz signal. Diagnosis: intermittent physical connection, most likely ground
+
+**This is the breakthrough entry.** After the scope session the corruption stopped, and SOURCE_NODE is now receiving real audio for the first time on this bench.
+
+### Scope results (RIGOL DHO804) — all clocks correct
+
+| Signal | Pin | Measured | Expected | Verdict |
+|---|---|---|---|---|
+| LRCLK | 20 | **44.108 kHz**, stable, ~50 % duty | 44.1 kHz (1× Fs) | ✅ |
+| BCLK | 21 | **~2.82 MHz** | 2.8224 MHz (64× Fs) | ✅ |
+| MCLK | 23 | **~11.29 MHz** | 11.2896 MHz (256× Fs) | ✅ |
+
+**Do not record the initial "Vpp = 468 mV" reading as a finding.** It was a **probe attenuation mismatch** — the probe was set to 1X while the scope assumed 10X. Corrected to 10X, the levels read normally. A healthy digital signal can look badly undersized from this alone, and it nearly became a false lead.
+
+With the register comparison from 2026-09-05 (16) already showing both ends agree, and the scope now showing all three clocks at exactly the right frequencies with clean edges, **both the static configuration and the runtime bus timing are confirmed good.**
+
+### The fault cleared
+
+Three consecutive dumps at uptime 605 s / 635 s / 645 s, 1 kHz tone connected:
+
+```
+[Main] SOURCE_NODE peak: -38.9 dBFS   |   RETURN_NODE peak: -50.1 dBFS
+[RAWDUMP] SOURCE: 286 277 280 293 270 298 266 265 245 262 264 249 268 237 293 -80 -339 -285 -302 -302 -312 -296 -305 -324 -332 -298 -320 -308 -303 -293 -297 -295
+[RAWDUMP] RETURN: 70 65 67 70 69 47 58 42 66 58 53 61 36 46 29 -27 -45 -59 -61 -77 -90 -76 -77 -69 -52 -61 -69 -60 -73 -70 -51 -63
+
+[Main] SOURCE_NODE peak: -38.2 dBFS   |   RETURN_NODE peak: -49.2 dBFS
+[RAWDUMP] SOURCE: -329 -275 -303 -296 -273 -312 -251 -322 -293 -265 152 330 265 304 287 294 306 266 292 297 295 291 251 259 268 260 259 270 264 276 277 247
+[RAWDUMP] RETURN: -81 -71 -71 -47 -55 -66 -71 -62 -70 -44 70 54 46 73 73 81 70 64 78 62 77 81 54 63 49 56 78 52 52 62 57 32
+
+[Main] SOURCE_NODE peak: -39.1 dBFS   |   RETURN_NODE peak: -50.1 dBFS
+[RAWDUMP] SOURCE: -353 -38 315 260 295 274 265 298 276 278 271 262 275 261 262 258 267 253 253 272 266 276 232 256 160 -277 -309 -267 -319 -298 -305 -315
+[RAWDUMP] RETURN: -66 18 64 48 62 56 57 65 55 67 76 49 77 61 45 57 56 65 36 56 45 55 54 46 17 -31 -73 -85 -77 -69 -50 -65
+```
+
+**Everything that characterised the fault is gone.** No `+0.0 dBFS`. No `CLIP_SOURCE`/`CLIP_RETURN` in these windows. No wild excursions to ±20000–32767. No −2880/−6530/−8480 quantised levels. No DC baseline.
+
+**And the signal is genuinely there.** Dump C has zero crossings at sample indices 1 and 24 — **23 samples per half-cycle ⇒ 958.7 Hz**, against 22.05 samples/half-cycle for an exact 1 kHz at 44.1 kHz. Amplitude is a consistent ±270–295 counts on both sides of zero. **This is the injected tone, decoded correctly.** Waveform shape is square rather than sinusoidal (flat tops, fast transitions), so the phone is evidently producing a square tone — worth knowing, not a fault.
+
+### Diagnosis (my read — second opinion): intermittent physical connection, most likely ground
+
+Nothing in firmware or configuration changed between the corrupted runs and these clean ones. **The same flashed build produced both.** What changed was physical handling during the scope session. Five things point the same way:
+
+1. **The corruption was burst-like** — long quiet runs (11–12 consecutive stable samples in dump 4 of the previous session) punctuated by wild values. That is the signature of an intermittent connection, not a design or format fault.
+2. **Both channels were affected identically**, which implicates a shared resource — ground or a clock — rather than a per-channel path.
+3. **Clocks and register configuration are now both proven correct**, eliminating the two leading structural hypotheses.
+4. **The fault cleared during a session whose very first action was clipping a scope ground lead onto the breadboard GND rail.** That physically adds a low-impedance ground path between instrument and board.
+5. **Two unexplained USB dropouts** earlier in this project — the board vanishing from the bus mid-session, once aborting an upload — are independently consistent with a marginal power or ground connection, and were never explained.
+
+The corrupted data also carried a **stable −2880 DC offset** that has now vanished entirely; the samples sit symmetrically about zero. A shifting reference is exactly what a poor ground bond produces.
+
+**⚠️ The critical caveat: the scope may be masking the fault, not fixing it.** If the marginal path is ground, the probe's ground clip is currently providing it. **Disconnect the scope and re-run the dumps before believing this is solved.** If corruption returns with the scope removed, the diagnosis is confirmed and the fix is a second, solid ground bond between the Audio Shield and the Teensy.
+
+### Two open questions raised by the clean data
+
+1. **Level is ~28 dB below prediction.** At `LINE_IN_LEVEL 5` (1.33 V<sub>pp</sub> FS), 0.143 V<sub>rms</sub> should read ≈ −10.4 dBFS. Measured −38.9 dBFS. Either the phone output is far lower than during the earlier headroom sweep, or something is attenuating the path. Needs re-measuring at the buffer output before any calibration.
+2. **RETURN_NODE reads −50 dBFS with nothing connected to it** — roughly 11 dB below SOURCE, tracking the same waveform. That is channel crosstalk, plausible on a breadboard but worth quantifying before it contaminates a transfer-function measurement.
+
+**Next:** disconnect the scope, re-run dumps, and see whether the fault returns. That single test decides between "fixed" and "masked".
+
+---
+
 ## 2026-09-05 (16) — Raw I2S samples captured: the stream is systematically corrupted. Static I2S format comparison is a clean NEGATIVE — both ends agree exactly
 
 **Why this entry exists:** the diagnosis finally moved from inference to direct evidence. Raw `int16` samples were dumped from the existing `AudioRecordQueue` objects, and the SGTL5000 and Teensy SAI1 register configurations were read from the library sources this build actually compiles. Two substantial results, one positive and one negative.
