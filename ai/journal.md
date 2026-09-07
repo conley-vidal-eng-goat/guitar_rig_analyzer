@@ -11,6 +11,49 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (5) — Scope persistence view clears DOUT timing and the driver. My pin-8 damage hypothesis is WEAKENED. New leading suspect: the flying-lead I²S interconnect
+
+**Scope findings (persistence view, DOUT vs BCLK):**
+
+- **DOUT changes at essentially the same instant as the BCLK launch edge**, then settles and stays stable for the rest of the bit interval.
+- The opposite (sampling) BCLK edge is **~175–180 ns away** — consistent with a 2.8224 MHz BCLK's 177 ns half-period. **A large nominal stable-data window exists before sampling.**
+- **DOUT shows full-looking logic transitions** — no evidence of a weak driver.
+- Ringing is visually significant **but settles long before the sampling edge**, and a probe on a long flying lead can itself contribute ringing, so its true on-board magnitude is not established.
+
+**Also noted at the bench: none of the scope measurements hold still** — the readings fluctuate continuously rather than settling on a value. That is consistent with the wandering error rate already quantified (run A bands 2.83–9.50 outliers/32).
+
+### ❌ My pin-8 contention-damage hypothesis is substantially weakened
+
+Entry (4) proposed that pin 8 was damaged by output-vs-output contention while `RA8875_RESET_PIN` was still 8. **The scope evidence argues against it:** a damaged output driver or input stage would typically show reduced swing, asymmetric levels or degraded edges. **DOUT shows full logic transitions and lands on the correct BCLK edge with ~half a bit period of margin.** The timeline for the contention remains real and worth remembering, but the electrical signature that would support damage is absent.
+
+**"DOUT arrives too late at the Teensy" is likewise dropped as a primary hypothesis** — the measured setup margin is large.
+
+### ✅ Continuity is confirmed and exhausted as a test
+
+Every shield→Teensy pin has been continuity-checked and passes. **That test is now exhausted:** DC continuity says nothing about edge quality, intermittent contact under operation, or crosstalk. A jumper can read ~0 Ω and still be a poor 2.8 MHz interconnect.
+
+### 🔺 New leading suspect: the physical interconnect geometry
+
+A photo of the bench shows the shield↔Teensy connections are **long, loosely routed flying leads**. For I²S at this edge rate that is a serious signal-integrity suspect even with perfect continuity, because of large loop area, no controlled return path, mutual coupling between adjacent wires, and inconsistent geometry.
+
+**This reframes the three-rework result from entries (3) and (4).** Those runs gave 5.95 / 24.72 / 8.54 outliers per 32 and were read as three different *joint qualities*. **A better explanation is that each rework changed the wire's length and routing, and therefore its coupling and reflections.** That fits without requiring any of the joints to have been defective — and it explains why three good-faith attempts all failed to fix anything.
+
+### The experiment
+
+Power off. **Do not rework DOUT again.** Instead eliminate the interconnect as a variable:
+
+- Move the Audio Shield physically adjacent to the Teensy breakout.
+- Replace the long jumpers for **8 (DOUT), 20 (LRCLK), 21 (BCLK), 23 (MCLK)** with the shortest practical wires — a few inches at most, shorter if possible.
+- **Also shorten GND and 3.3 V.**
+- Keep the six wires grouped tightly, avoiding large loops.
+- Leave the analog breadboard section alone. No firmware changes.
+
+Then repeat the identical ≥300-window measurement. **If the error rate collapses from ~8.5 outliers/32 toward zero, that is stronger evidence than anything obtained so far.**
+
+**Falsifiability matters here:** given the natural wandering (2.83–9.50 in run A), only a **large** effect is interpretable. A collapse toward zero supports the hypothesis; a modest halving does not, and would argue the interconnect is not the dominant cause.
+
+---
+
 ## 2026-09-07 (4) — Second DOUT rework FAILS the criterion. Three joint states, three error rates, none working. New hypothesis: pin 8 output contention damage
 
 **Result of the second rework, 360 windows / 30.5 min, measured identically to the previous two runs:**
