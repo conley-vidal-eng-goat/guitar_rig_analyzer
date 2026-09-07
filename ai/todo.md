@@ -216,7 +216,22 @@ Adding **~10 pF to DOUT reverted the fault to original severity** — −2000 DC
 **📊 The fault fluctuates enormously AND improves over a run.** 540 windows: 26 % perfectly clean, range **0 to 27 outliers per 32**, mean 3.14/32 = 9.81 %. **Trend within the run, untouched: first third 6.75 → last third 0.83 outliers/32 — an ~8× improvement over 47 min** with no scope, no tone, no changes.
 **🔺 Best-fitting *description* (not a mechanism):** warm-up / settling behaviour — high error rate when cold, improving over tens of minutes, still fluctuating window-to-window. Consistent with a contact whose resistance or geometry shifts as the board warms, but it does **not** name a conductor or distinguish a marginal contact from a temperature-sensitive component.
 **📐 The ≥100-window rule is now demonstrated, not asserted:** with 26 % of windows perfectly clean and others at 27/32 corrupted, **any three consecutive windows could have "proved" almost anything** — which is exactly what happened repeatedly on 2026-09-06.
-**➡️ NEXT — treat the halt and the corruption as separate questions.** For the halt: add `AudioMemoryUsage()`/`AudioMemoryUsageMax()` to the 5 s diagnostics; cheap and directly decisive. For the corruption: any comparison needs ≥100 windows per condition **and** should control for elapsed run time given the warm-up trend.
+**✅ COLD-START RUN 2026-09-07 — 420 windows / 36.5 min, cooled overnight, untouched. See journal.md 2026-09-07 (2).**
+**✅ AudioMemory LEAK RULED OUT — definitively.** `AudioMemoryUsageMax()` read **exactly 20 in all 420 windows** (min 20, max 20, pool 128), in-use ~13, across ~440 RAWDUMP arm/disarm cycles. The pool is not climbing at all. **The RAWDUMP block leaks nothing and is exonerated as the cause of the ~2370 s halt.** That halt is now unexplained, unattributed, and remains a single unreproduced event.
+**❌ WARM-UP HYPOTHESIS DID NOT REPRODUCE.** Predicted high-at-cold-start declining with time; observed **low → high → low**:
+
+| Band | Uptime | n | SRC out/32 | RET out/32 | mem MAX |
+|---|---|---|---|---|---|
+| 1 | 0–545 s | 100 | **2.83** | 2.26 | 20 |
+| 2 | 550–1070 s | 100 | **9.50** | 8.81 | 20 |
+| 3 | 1075–1575 s | 100 | **7.29** | 6.66 | 20 |
+| 4 | 1580–2090 s | 100 | **4.82** | 3.65 | 20 |
+| 5 | 2095–2190 s | 20 | **2.85** | 0.95 | 20 |
+
+Started near its best, climbed **3.4×** to a peak in band 2, then declined back. The previous run showed a monotonic 6.75 → 0.83. **Two runs, two different shapes ⇒ time-since-cold-start does not predict the error rate.** The earlier "warm-up trend" was most likely one arbitrary slice of slow wandering — the same sparse-sampling trap as the 3-window conclusions, just at a larger scale.
+**SOURCE and RETURN track each other closely in every band** — one shared cause, not two independent faults. **No halt this run** (36.5 min continuous).
+**📐 Method update — the ≥100-window rule is not sufficient.** The wandering timescale (~10 min) is *longer* than a 100-window band (~8.5 min). **Future comparisons need much longer bands or interleaved A/B/A/B sampling**, so slow drift cannot masquerade as a treatment effect. Comparing two conditions measured minutes apart — every hardware test done so far — remains unsafe.
+**➡️ NEXT — mechanical, as a deliberate one-shot.** With resource exhaustion eliminated and no reproducible time signature, the remaining productive move is to power off and inspect/re-seat the shield↔Teensy interconnect. **Do it once, with a long before/after measurement**, not another rapid A/B.
 **📐 Methodological rule going forward:** any A/B test needs **≥100 windows per condition** to see through the fluctuation. Three dumps is nowhere near enough — that is precisely why this session produced so many confident wrong answers.
 
 **Guardrail:** "DOUT has almost no setup-time margin" remains unproven, and this result *weakens* it — the evidence it rested on has been refuted.

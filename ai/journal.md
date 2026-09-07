@@ -11,6 +11,57 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (2) — COLD-START RUN: AudioMemory is flat (leak ruled out). But the warm-up hypothesis did NOT reproduce — the fault rises then falls
+
+**Setup:** board cooled overnight, scope fully disconnected, wiring untouched, 1 kHz tone playing. Diagnostic build with `AudioMemoryUsage()` telemetry uploaded on power-up and logging started immediately. **420 complete windows over 36.5 minutes**, uptime 0 → 2190 s, nothing touched.
+
+*Caveat on "cold": the board was already enumerated when the upload watcher fired, so it had been powered for a brief unknown period (seconds) before the upload reset it. After an overnight cool-down that is a negligible warm-up, but it is not a perfectly instrumented cold start.*
+
+### ✅ Result 1 — AudioMemory is completely flat. The leak hypothesis is dead.
+
+```
+[Main] AudioMemory: 10 in use, 20 max, of 128 allocated
+```
+
+**`AudioMemoryUsageMax()` read exactly 20 in every one of the 420 windows** — minimum 20, maximum 20, across 36.5 minutes and ~440 RAWDUMP arm/disarm cycles. In-use hovered around 13.
+
+**This kills the resource-exhaustion explanation for the ~2370 s halt outright.** The pool is not climbing, not even slowly. The RAWDUMP block's arm/read/free/disarm path leaks nothing — it returns every block it takes. Combined with entry (1)'s non-reproduction of the halt, **the once-observed hang is now unexplained and unattributed, and our diagnostic is exonerated as its cause.** It remains a single unreproduced event.
+
+### ❌ Result 2 — the warm-up/settling hypothesis did NOT reproduce
+
+Corruption by 100-window band, SOURCE and RETURN outliers per 32-sample window:
+
+| Band | Uptime | n | SRC out/32 | RET out/32 | mem in-use | mem MAX |
+|---|---|---|---|---|---|---|
+| 1 | 0–545 s | 100 | **2.83** | 2.26 | 13.1 | 20 |
+| 2 | 550–1070 s | 100 | **9.50** | 8.81 | 12.9 | 20 |
+| 3 | 1075–1575 s | 100 | **7.29** | 6.66 | 13.0 | 20 |
+| 4 | 1580–2090 s | 100 | **4.82** | 3.65 | 13.0 | 20 |
+| 5 | 2095–2190 s | 20 | **2.85** | 0.95 | 13.0 | 20 |
+
+**The prediction was high-at-cold-start declining with time. What actually happened is low → high → low.** The error rate *started* near its best (2.83), climbed 3.4× to a peak in band 2 (9.50), then declined steadily back to 2.85.
+
+The previous run (entry (1)) showed a monotonic decline, 6.75 → 0.83. **This run shows a hump. The two are not the same shape, so time-since-cold-start does not predict the error rate.**
+
+**The honest reading: the fault wanders slowly, on a timescale of roughly ten minutes, with no reproducible relationship to elapsed run time.** The apparent "warm-up trend" in the previous run was most likely one arbitrary slice of that wandering — the same sparse-sampling trap as the earlier 3-window conclusions, just at a larger scale. **A single 47-minute run was not enough to establish a trend either.**
+
+**Also notable: SOURCE and RETURN track each other closely** across every band (2.83/2.26, 9.50/8.81, 7.29/6.66, 4.82/3.65). Both channels rise and fall together, consistent with a single shared cause rather than two independent faults.
+
+**No halt this run either** — 36.5 minutes continuous, still transmitting when logging stopped.
+
+### Where this leaves things
+
+- **Ruled out:** AudioMemory leak/exhaustion (definitively, by direct measurement); deterministic halt timing; monotonic warm-up.
+- **Established:** the corruption is slow-wandering on a ~10-minute scale, affects both channels together, and is unrelated to audio-buffer resources.
+- **Still unexplained:** the single halt at uptime ~2370 s, now with its most plausible cause eliminated.
+- **Still unlocalised:** which conductor or component is marginal.
+
+**Implication for method:** the wandering timescale (~10 min) is *longer* than a 100-window band (~8.5 min). **Any future comparison needs either much longer bands or interleaved A/B/A/B sampling** so that slow drift cannot masquerade as a treatment effect. Comparing two conditions measured minutes apart — which is every hardware test done so far — remains unsafe.
+
+**Next:** with resource exhaustion eliminated and no reproducible time signature, the remaining productive move is a *mechanical* one — power off and inspect/re-seat the shield↔Teensy interconnect, since nothing electrical or firmware-side has survived scrutiny. That should be done as a deliberate one-shot change with a long before/after measurement, not another rapid A/B.
+
+---
+
 ## 2026-09-07 (1) — Halt did NOT reproduce: 47 min continuous, no hang. And the fault improved 8× over the run with nobody touching it
 
 **The discriminator test.** Power-cycled USB only, scope fully disconnected, tone off, wiring untouched, no rebuild. Logged continuously from uptime 55 s.

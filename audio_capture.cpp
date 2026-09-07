@@ -229,6 +229,15 @@ static uint32_t s_last_route_changed_block = 0;
 static bool s_clip_source_pending = false;
 static bool s_clip_return_pending = false;
 
+// TEMPORARY DIAGNOSTIC (2026-09-05) — state for the periodic raw sample dump
+// in audioCap_update(). One 32+32 dump per 5 s: arm, wait for both queues,
+// print, disarm. Periodic rather than one-shot because a startup dump is
+// unobservable — the Teensy discards serial output before a USB host attaches,
+// and a reset re-enumerates the device, tearing down any open connection.
+// Remove both with that block.
+static uint32_t s_raw_next_ms = 0;       // next arm time; 0 = arm immediately
+static bool     s_raw_armed   = false;   // queues currently armed for a dump
+
 
 // --- Init guard ---
 static bool s_initialised = false;
@@ -458,6 +467,81 @@ AudioCaptureEvent audioCap_update() {
 
 
      if (!s_initialised) return AudioCaptureEvent::NONE;
+
+
+     // =========================================================================
+     // TEMPORARY DIAGNOSTIC — one-shot raw sample dump (2026-09-05, TODO-26)
+     // -------------------------------------------------------------------------
+     // Prints 32 consecutive int16 samples from each node, once, then disarms.
+     // Purpose: SOURCE and RETURN both read +0.0 dBFS with genuinely full-scale
+     // samples reaching the analyzers, while clocks, DOUT and continuity all
+     // measure healthy. Looking at the actual sample sequence distinguishes the
+     // remaining hypotheses; a level meter cannot.
+     // Read the SEQUENCE, not just the extremes — a real 1 kHz tone at 44.1 kHz
+     // moves smoothly over ~44 samples per cycle.
+     // REMOVE THIS BLOCK once the question is answered.
+     // =========================================================================
+     // Periodic dump: arm -> wait for both queues -> print 32+32 -> disarm.
+     // One dump per 5 s. Periodic rather than one-shot because a startup dump
+     // cannot be observed: the Teensy discards serial output before a USB host
+     // attaches, and pressing reset re-enumerates the device, tearing down any
+     // already-open connection.
+     // Read the SEQUENCE, not just the extremes — a real 1 kHz tone at 44.1 kHz
+     // moves smoothly over ~44 samples per cycle.
+     if (!s_raw_armed) {
+         if ((int32_t)(millis() - s_raw_next_ms) >= 0) {
+             // TEMPORARY DIAGNOSTIC (2026-09-07) — Audio Library block-pool
+             // telemetry. Printed at ARM time so it appears unconditionally every
+             // 5 s, even if the queues never fill. Tests whether the once-observed
+             // hang at uptime ~2370 s was resource exhaustion: a climbing "max"
+             // would show the 128-block pool filling. AudioMemoryUsage() and
+             // AudioMemoryUsageMax() are plain accessors — they touch nothing in
+             // the audio path. Lives here rather than in the .ino because
+             // audio_capture owns the Audio Library objects and the .ino must not
+             // reference them (see the module boundary note at the top of
+             // audio_capture.h). Pool size is the literal 128 passed to
+             // AudioMemory() below; if that changes this line only reads stale.
+             Serial.printf("[Main] AudioMemory: %u in use, %u max, of 128 allocated\n",
+                              (unsigned)AudioMemoryUsage(),
+                              (unsigned)AudioMemoryUsageMax());
+
+             audioCap_beginRawCapture();   // clears, then begins => fresh samples
+             s_raw_armed = true;
+         }
+     } else {
+         const int src_avail = s_queue_src.available();
+         const int ret_avail = s_queue_ret.available();
+
+         if (src_avail >= 1 && ret_avail >= 1) {
+             const int16_t* src_blk = s_queue_src.readBuffer();
+             const int16_t* ret_blk = s_queue_ret.readBuffer();
+
+             if (src_blk != nullptr && ret_blk != nullptr) {
+                 Serial.printf("[RAWDUMP] 32 int16 per node (src_avail=%d ret_avail=%d)\n",
+                                  src_avail, ret_avail);
+                 Serial.print("[RAWDUMP] SOURCE:");
+                 for (int i = 0; i < 32; i++) { Serial.print(' '); Serial.print(src_blk[i]); }
+                 Serial.println();
+                 Serial.print("[RAWDUMP] RETURN:");
+                 for (int i = 0; i < 32; i++) { Serial.print(' '); Serial.print(ret_blk[i]); }
+                 Serial.println();
+             } else {
+                 Serial.printf("[RAWDUMP] NULL BUFFER despite available: src=%s ret=%s\n",
+                                  src_blk ? "ok" : "NULL", ret_blk ? "ok" : "NULL");
+             }
+
+             // Free exactly what was read, then disarm immediately so the queues
+             // return to their normal idle state (only measurement_engine arms
+             // them) and cannot hoard AudioMemory between dumps.
+             if (src_blk != nullptr) s_queue_src.freeBuffer();
+             if (ret_blk != nullptr) s_queue_ret.freeBuffer();
+             audioCap_endRawCapture();
+
+             s_raw_armed   = false;
+             s_raw_next_ms = millis() + 5000;
+         }
+     }
+     // ===================== END TEMPORARY DIAGNOSTIC ==========================
 
 
      // FIXED [block-ready-semantics]: Local flag — true only if a new block
