@@ -11,6 +11,54 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (7) — ✅ ANALOG LEVEL SOLVED TOO. The 28 dB deficit was the 3.5 mm cable in the **headphone output jack**. SOURCE_NODE now reads −9.0 dBFS against a −10.3 dBFS prediction
+
+**The bench finding (ChatGPT session, Conley at the bench):** the signal was being fed into the Audio Shield's **headphone output jack**, not into LINE IN L. The dedicated LINE-IN-L jumper had been unplugged from row 48 earlier in the debugging and never restored. With the headphone plug removed and that jumper returned to row 48:
+
+| Probe point | Before | After |
+|---|---|---|
+| 48e (SOURCE_NODE) → GND, AC | 0.027 V<sub>rms</sub> | **0.143 V<sub>rms</sub>** |
+| Audio Shield LINE IN L pad → GND, AC | — | **0.143 V<sub>rms</sub>** |
+
+That is **14.5 dB** of analog loss removed — caused by driving a phone's line output into the SGTL5000's *headphone amplifier output*. (Output-into-output. Both ends are short-circuit protected and the levels below show no damage, but it is not a thing to repeat.)
+
+### ✅ The digital reading now matches the analog measurement
+
+Serial capture this session, 5 consecutive 5 s diagnostic windows, uptime 365–385 s, 1 kHz tone, no firmware change:
+
+| Uptime | SOURCE_NODE peak | RETURN_NODE peak | ms/block | AudioMemory in use / max |
+|---|---|---|---|---|
+| 365 s | **−9.1 dBFS** | −57.6 dBFS | 46.3 | 12 / 20 |
+| 370 s | **−9.2 dBFS** | −56.0 dBFS | 46.7 | 10 / 20 |
+| 375 s | **−8.9 dBFS** | −56.3 dBFS | 46.3 | 16 / 20 |
+| 380 s | **−8.9 dBFS** | −57.1 dBFS | 46.3 | 14 / 20 |
+| 385 s | **−9.0 dBFS** | −56.3 dBFS | 46.7 | 12 / 20 |
+
+**The arithmetic closes.** `SGTL5000_LINE_IN_LEVEL = 5` ([config.h:138](config.h#L138)) ⇒ 1.33 V<sub>pp</sub> full scale = 0.665 V<sub>pk</sub>. A 0.143 V<sub>rms</sub> sine is 0.202 V<sub>pk</sub> ⇒ 0.202/0.665 = 0.304 ⇒ **−10.3 dBFS predicted**. Measured **−9.0 dBFS**, a **1.3 dB** agreement. Back-solving, the codec sees 0.167 V<sub>rms</sub> where the DMM read 0.143 — 17 % high, comfortably inside handheld-DMM AC accuracy at 1 kHz combined with the PGA's ~1.5 dB step granularity and the codec's full-scale tolerance. **Nothing is left unexplained.**
+
+**The old −39.1 dBFS figure is retired, not explained.** It was recorded 2026-09-06 (1), before the interconnect fix and with the headphone-jack misconnection in place. It should never be used as a comparison point again.
+
+**RETURN crosstalk also improved by itself.** It was −50.1 dBFS / 11 dB below SOURCE on 2026-09-06 (1); it is now **−56 to −57.6 dBFS, 47.3 dB below SOURCE**. Both open questions from entry (6) are now closed by the same measurement.
+
+**And run D's zero-corruption result holds live.** Every `[RAWDUMP]` window in this capture is a coherent, monotonic waveform with no single-sample impulses, `src_avail=1 ret_avail=1` throughout, and `AudioMemoryUsageMax` still pinned at 20. Six minutes of uptime, zero clip events.
+
+### ⚠️ Corrections to the bench session's reasoning
+
+1. **"RETURN_NODE / LINE IN L" conflates two different nodes.** LINE IN **L** is I2S channel 0, which is bound to **SOURCE_NODE** — `SOURCE_NODE_PHYSICAL_CH 0` ([config.h:173](config.h#L173)), and the binding is spelled out at [config.h:158](config.h#L158): "SOURCE_NODE → SGTL5000 Line In LEFT". RETURN_NODE is channel 1 = LINE IN **R**, which has nothing wired to it — it is the −57 dBFS crosstalk channel. Reading RETURN_NODE as the result of this test would have reported the noise floor as the answer.
+2. **"The analog attenuation mystery is resolved" was over-claimed at the moment it was said.** On the evidence then in hand, 0.027 V<sub>rms</sub> predicts −24.8 dBFS while the recorded digital level was −39.1 dBFS — so the headphone-jack finding left ~14 dB unaccounted for and could not have been the whole story. It is moot *now* only because both of those numbers turned out to be stale. The inference was not valid at the time it was drawn; the conclusion happens to survive for a different reason.
+3. **The two 0.143 V readings are not independent evidence.** 48e and the LINE IN L pad are the two ends of the jumper that had just been plugged in. Identical readings prove the jumper conducts — a continuity check, not confirmation that "the signal makes it all the way."
+4. **The 54–66 kΩ / 603 kΩ resistance hunt on row 48 was never resolved, and no longer needs to be.** It was chasing a phantom: the attenuation was upstream, in the jack choice, not a stray resistive path into row 48. Left unexplained deliberately — do not spend more bench time on it.
+
+### 🔺 New finding: the TF spot-check diagnostic is reading a clamp rail, not a measurement
+
+Every window reports `1kHz=-24.0dB` exactly, with 120 Hz / 500 Hz / 5 kHz sitting at −21 to −24 dB. **−24.0 dB is not a measurement — it is the clamp.** [audio_engine.cpp:283](audio_engine.cpp#L283) does `constrain(tf_raw, TF_DB_MIN - 6.0f, TF_DB_MAX + 6.0f)` with `TF_DB_MIN = -18.0f` ([config.h:391](config.h#L391)), i.e. a hard floor at exactly −24.0 dB. The true transfer function right now is SOURCE − RETURN ≈ **−47 dB** (nothing is connected to RETURN), which is 23 dB below the floor, so every energised bin rails and the EMA converges onto the rail.
+
+**Validation is unaffected** — `validation.cpp` computes TF from raw FFT means with the EMA bypassed ([validation.cpp:47](validation.cpp#L47)), so the 40 dB gate gap is measured on unclamped data. **The live path and the display are affected**, and the diagnostic prints a plausible-looking number with no indication that it is pinned. That is the same class of false signal as TODO-27's phantom −46.6 ms delta. Logged as TODO-29.
+
+**Where this leaves the project:** Phase 4's SOURCE_NODE criterion is met on every axis — signal present, digitally clean, and at the level the analog measurement predicts. **Next:** strip the temporary RAWDUMP / AudioMemory diagnostics (TODO-30), settle TODO-29, then Phase 5.
+
+---
+
 ## 2026-09-07 (6) — ✅ SOLVED. Shortening the I²S interconnect took corruption to EXACTLY ZERO across 360 windows
 
 **The change:** Audio Shield moved adjacent to the Teensy; jumpers for **8 (DOUT), 20 (LRCLK), 21 (BCLK), 23 (MCLK), GND and 3.3 V** replaced with short, tightly-grouped wires. LINE-IN-L deliberately left long — the analog path is unchanged. **No firmware change. DOUT joint untouched from run C.**
