@@ -104,12 +104,12 @@ while col 38 F–J is U1 pin 5 (OPA_BIAS). Same for cols 35, 36, 37.
 | J1 | 3.5 mm breakout, **input** | flying cable | white → `col 30`; shield → GND | `PHYS` |
 | J2 | 3.5 mm **jack, nothing plugged in** | panel/flying jack | white → `48a`; shield → GND | `PHYS` — open stub on SOURCE_NODE |
 
-**† Unreconciled count.** The builder confirmed these as 0.1 µF on 2026-09-07,
-answering finding A1 with *"all three are 0.1 uF cap."* **Four are listed here
-(C3, C4, C5, C7).** The values are recorded as `RPT` — builder-reported, not
-independently read — and the three-versus-four discrepancy is left open rather
-than assumed away, because A1 existed precisely because an unread value had been
-asserted. Resolve by naming which four, or confirming the count was a slip.
+**† `RPT`, and deliberately not upgraded.** All four (C3, C4, C5, C7) were
+confirmed 0.1 µF by the builder on 2026-09-07; the earlier "all three" was a
+count slip, since closed. **They stay `RPT` — no marking has been read back.**
+After C1 turned out to be `BC103` = 10 nF against a parts-list assumption of
+0.1 µF, a bench recollection is not treated as equivalent to a read value.
+Upgrade to `PHYS` only on reading the parts.
 
 **Three electrolytics total** (C2, C6, C8). The cap that appears near col 57 in
 photos 1/2/8/11 is C8 at col 41, foreshortened by the camera angle.
@@ -177,16 +177,16 @@ of the fix and is what a reconstruction has to reproduce.
 
 | Colour | Carrier screw | U3 pad | Net | Function |
 |---|---|---|---|---|
-| green | `5V` | `5V` | **+5V** | pass-through — see note |
+| green | `5V` | `5V` | **+5V** | pass-through; shield's use of it `NYV` — see §4b D2 |
 | purple | `GND` | `GND` | **GND** | shield ground return |
 | brown | `3V3` | `3.3V` | **+3V3** | SGTL5000 supply |
 | yellow | `7` | `7` | **I2S_DIN** | Teensy (`SAI1_TX_DATA0`) → codec |
 | orange | `8` | `8` | **I2S_DOUT** | codec → Teensy (`SAI1_RX_DATA0`) |
 | black | `18` | `18` | **I2C_SDA** | codec control |
 | orange | `19` | `19` | **I2C_SCL** | codec control |
-| red | `20` | `20` | **I2S_LRCLK** | frame clock |
-| white | `21` | `21` | **I2S_BCLK** | bit clock |
-| gray | `23` | `23` | **I2S_MCLK** | master clock, 11.29 MHz |
+| red | `20` | `20` | **I2S_LRCLK** | frame clock, 44.1 kHz (1× Fs) |
+| white | `21` | `21` | **I2S_BCLK** | bit clock, 2.8224 MHz (64× Fs) |
+| gray | `23` | `23` | **I2S_MCLK** | master clock, 11.2896 MHz (256× Fs) |
 
 ### ⚠️ Data-line naming convention — read before citing I2S_DIN / I2S_DOUT
 
@@ -255,9 +255,8 @@ their *value*, and the table implied otherwise.
 
 **Resolution:** the builder confirmed 0.1 µF at the bench on 2026-09-07, so the
 values are restored — but tagged `RPT` (builder-reported), **not** `PHYS`, since
-no marking was read back. **One thread left open:** the confirmation said *"all
-three"* while four capacitors are listed. Flagged at the component table rather
-than assumed away; see the † note there.
+no marking was read back. The count slip
+("all three" for four parts) was raised rather than absorbed, and is closed.
 
 ### 🔴 A2 — RETURN_NODE was missing from the schematic entirely
 
@@ -297,6 +296,64 @@ bias node · U1A follower via `35a`→`36a` · **C2 polarity** (+ on the 0.875 V
 op-amp output, − on the ~0 V SOURCE_NODE — independently confirmed at
 journal.md:1390) · U1 pins 4 and 8 with W1 and C3 · U1B termination via
 `36i`→`37i` · SOURCE_NODE membership at column 48 · `48e` → LINE-IN-L.
+
+## 4b. Digital-section value & provenance audit — 2026-09-07
+
+Run after the topology and direction audits, in the order clocks → 5 V function
+→ part identity, so that the best-evidenced claims established a baseline first.
+
+### ✅ D1 — Clock frequencies: the strongest evidence chain in the document
+
+Derived **and** independently measured, agreeing to within meter resolution:
+
+| Net | Derived from `SAMPLE_RATE 44100` ([config.h:208](../../config.h#L208)) | Scope, RIGOL DHO804 | Verif |
+|---|---|---|---|
+| `I2S_LRCLK` | 44.100 kHz (1× Fs) | **44.108 kHz** — 0.018 % | `FW`+`MEAS` |
+| `I2S_BCLK` | 2.8224 MHz (64× Fs) | **~2.82 MHz** | `FW`+`MEAS` |
+| `I2S_MCLK` | 11.2896 MHz (256× Fs) | **~11.29 MHz** | `FW`+`MEAS` |
+
+Scope figures from journal 2026-09-06 (1). **Defect found: `I2S_LRCLK` carried no
+frequency on the drawing** while the other two did — an inconsistency that made
+the frame clock look less established than it is. All three now carry value and
+ratio, with the provenance stated on the sheet.
+
+### 🟡 D2 — The 5 V pass-through's function was asserted, not established
+
+The drawing read *"5V pass-through, unused by codec."* The **"unused"** half has
+no primary source: the SGTL5000 runs from 3.3 V, and journal:1077 states *"the
+shield runs from 3.3 V; it does not need 5 V"* — but that is a project assertion,
+not a datasheet citation or a measurement, and it says nothing about whether
+other Rev D circuitry uses the pad.
+
+The wire is real and `PHYS`. **What the shield does with it is `NYV`**, and the
+drawing now says so. Harmless either way, but a reconstructor should not be told
+a pin is unused on this document's authority.
+
+### 🟡 D3 — "SGTL5000" is a functional identification, not a package reading
+
+The marking on U3's codec has never been read; the QFN is not legible in any
+photo. The identification rests on two things: the Rev D silkscreen, and
+`AudioControlSGTL5000::enable()` returning true
+([audio_capture.cpp:349](../../audio_capture.cpp#L349)) — i.e. a device at the
+SGTL5000 I²C address accepts SGTL5000 register writes. That is good evidence and
+adequate for this document, but it is `DERIV`, not `PHOTO`.
+
+**Board-revision assumption, now discharged.** Journal:962 raised *"whether the
+shield is genuinely Rev D rather than a Rev C wired by pin number"* — a real risk,
+since Rev C uses a different Teensy 3.x pin set. Closed three ways: silkscreen
+read as "Rev D" (`PHOTO`), bench confirmation at journal:913, and the as-built
+pin set 7/8/20/21/23 being the Rev D assignment, which now demonstrably works.
+
+### Part-identity summary
+
+| Ref | Claim | Basis | Verif |
+|---|---|---|---|
+| U1 | OPA1642A | package marking `O1642A / TI 35K / AYZ6GA` read in photo | `PHOTO` |
+| U1 adapter | Proto-Advantage PA0001 | silkscreen read | `PHOTO` |
+| U2 | Teensy 4.1 | carrier breaks out pins to 41 + onboard SD — 4.0 has neither | `PHOTO`+`DERIV` |
+| U2 carrier | **Dinkle** terminal blocks | builder-reported. Names the *connectors*; the carrier PCB's identity and its `5V` routing stay open — same root as X-5 | `RPT` |
+| U3 | Audio Shield **Rev D** | silkscreen + bench confirmation + working Rev D pin set | `PHOTO`+`DERIV` |
+| U3 codec | SGTL5000 | functional I²C identification; package never read | `DERIV` |
 
 ## 5. Deviations from the documented design — all benign, all recorded
 

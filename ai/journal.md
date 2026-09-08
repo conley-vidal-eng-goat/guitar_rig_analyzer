@@ -47,7 +47,24 @@ A review flagged the data-line labels as reversed. They were not. `config.h:81-8
 
 Entry (6)'s lesson was that the fault lived in the medium between the endpoints. **This session's is narrower and about documentation: `PHYS` is not one claim, it is two.** "This part is in this hole" and "this part has this value" have completely different evidence, and a table with a single verification column silently merges them. Every value defect found today — A1, A3, and the R5 upgrade — is that same conflation. The netlist now separates strip-level from hole-level confidence and position from value, and adds an `RPT` tag for things reported at the bench but not independently confirmed.
 
-**Next:** digital-section value/provenance audit — same discipline, now that topology and direction are established.
+### Digital-section value/provenance audit, same session
+
+Run clocks → 5 V function → part identity, deliberately in that order so the
+best-evidenced claims set a baseline before hardware-identity questions.
+
+**✅ D1 — the clocks are the strongest evidence in the whole document, and one was under-stated.** All three derive from `SAMPLE_RATE 44100` ([config.h:208](../config.h#L208)) and were independently measured on a RIGOL DHO804 in 2026-09-06 (1): LRCLK 44.108 kHz against 44.100 derived (**0.018 %**), BCLK ~2.82 MHz against 2.8224, MCLK ~11.29 MHz against 11.2896. **Defect: LRCLK carried no frequency on the drawing** while BCLK and MCLK did, making the frame clock look less established than it is. All three now show value, ratio and provenance.
+
+**🟡 D2 — "5V pass-through, unused by codec" was half-asserted.** The wire is real and `PHYS`; the *"unused"* claim has no primary source. journal:1077's "the shield runs from 3.3 V; it does not need 5 V" is a project assertion, not a datasheet citation, and says nothing about other Rev D circuitry. Now marked `NYV`. Harmless either way — but a reconstructor should not be told a pin is unused on this document's authority.
+
+**🟡 D3 — "SGTL5000" is a functional identification, not a package reading.** The QFN marking has never been read and is illegible in every photo. The claim rests on the Rev D silkscreen plus `AudioControlSGTL5000::enable()` returning true — a device at the SGTL5000 I²C address accepting SGTL5000 register writes. Good evidence, adequate here, but `DERIV` not `PHOTO`. **The Rev C/Rev D question raised at journal:962 is discharged three ways:** silkscreen, bench confirmation (journal:913), and the working 7/8/20/21/23 pin set being the Rev D assignment.
+
+**Carrier identity stays open.** "Dinkle" names the *terminal blocks*, not the carrier PCB — so what its `5V` terminal is internally wired to (VUSB / VIN / the 5V pin) remains `NYV`, same root as X-5.
+
+### Postscript — A1's count slip
+
+The bench confirmation of the four 0.1 µF ceramics said *"all three"* for four parts. The discrepancy was raised rather than absorbed, and confirmed as a slip. **The four stay `RPT`, not `PHYS`** — a bench recollection is not equivalent to a read marking, and C1 is the reason why.
+
+**Next:** nothing outstanding on the capture. Phase 5 when the bench reopens.
 
 ---
 

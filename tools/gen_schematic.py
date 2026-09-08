@@ -37,16 +37,16 @@ DRAWN = "C. Vidal"
 # Teensy's SAI1_RX_DATA0 on pin 8. Confirmed at config.h:81-85 and
 # ai/journal.md:1077. Do not flip these without changing both of those too.
 INTERCONNECT = [
-    ("green",  "5V",  "5V",   "+5V",       "",  "5V pass-through, unused by codec"),
+    ("green",  "5V",  "5V",   "+5V",       "",  "5V pass-through — shield function NYV"),
     ("purple", "GND", "GND",  "GND",       "",  "shield ground return"),
     ("brown",  "3V3", "3.3V", "+3V3",      "",  "SGTL5000 supply"),
     ("yellow", "7",   "7",    "I2S_DIN",   "r", "Teensy SAI1_TX_DATA0 → codec"),
     ("orange", "8",   "8",    "I2S_DOUT",  "l", "codec → Teensy SAI1_RX_DATA0"),
     ("black",  "18",  "18",   "I2C_SDA",   "b", "codec control"),
     ("orange", "19",  "19",   "I2C_SCL",   "r", "codec control"),
-    ("red",    "20",  "20",   "I2S_LRCLK", "r", "frame clock"),
-    ("white",  "21",  "21",   "I2S_BCLK",  "r", "bit clock 2.8224 MHz"),
-    ("gray",   "23",  "23",   "I2S_MCLK",  "r", "master clock 11.29 MHz"),
+    ("red",    "20",  "20",   "I2S_LRCLK", "r", "frame clock · 44.1 kHz · 1×Fs"),
+    ("white",  "21",  "21",   "I2S_BCLK",  "r", "bit clock · 2.8224 MHz · 64×Fs"),
+    ("gray",   "23",  "23",   "I2S_MCLK",  "r", "master clock · 11.2896 MHz · 256×Fs"),
 ]
 
 # ---------------------------------------------------------------- future work
@@ -366,7 +366,7 @@ def draw_analog(s, ox, oy):
 
 def draw_digital(s, ox, oy):
     s.origin(ox, oy)
-    s.blockframe(-30, -30, 990, 850,
+    s.blockframe(-30, -30, 990, 910,
                  "C — TEENSY ↔ AUDIO SHIELD INTERFACE  (FROZEN GEOMETRY — DO NOT DISTURB)")
 
     ys, y = {}, 92
@@ -382,8 +382,8 @@ def draw_digital(s, ox, oy):
         s.t(239, yy + 4, screw, "pin", "end")
         s.t(696, yy + 4, pad, "pin")
         s.wire([(245, yy), (690, yy)])
-        s.t(415, yy - 8, net, "net", "end")
-        s.t(425, yy - 8, f"·  {colour}  —  {fn}", "note")
+        s.t(400, yy - 8, net, "net", "end")
+        s.t(410, yy - 8, f"·  {colour}  —  {fn}", "note")
         if dr:
             s.arrow(655, yy, dr)
 
@@ -399,18 +399,23 @@ def draw_digital(s, ox, oy):
     s.t(628, 561, "No conductor is fitted. The −56 dBFS this channel reports", "note", "end")
     s.t(628, 578, "is crosstalk from LINE IN L, not a measurement.", "note", "end")
 
-    s.rect(30, 610, 620, 68, "dash", rx=4)
-    s.t(42, 630, "NET NAMES ARE CODEC-REFERENCED (SGTL5000 side)  —  ref config.h:81-85", "lbl")
-    s.t(42, 650, "I2S_DIN   =  codec data IN    ←  Teensy pin 7  (SAI1_TX_DATA0)", "note")
-    s.t(42, 668, "I2S_DOUT  =  codec data OUT   →  Teensy pin 8  (SAI1_RX_DATA0)", "note")
-    s.t(30, 712, "GEOMETRY IS LOAD-BEARING — this is the fix, not a detail:", "lbl")
-    s.t(30, 732, "•  Jumper length ≈ 25–30 mm (was 100–200 mm flying leads)", "note")
-    s.t(30, 750, "•  U3 sits ≈ 25 mm above U2, bundle held tight, 1:1 screw → pad", "note")
-    s.t(30, 768, "•  Result: 360/360 clean windows, 0 corrupted of 11,520 samples/node", "note")
-    s.t(30, 786, "•  U2 is I²S MASTER — it generates MCLK / BCLK / LRCLK", "note")
-    s.t(560, 732, "⚠  TWO ORANGE WIRES: pin 8 (I2S_DOUT) and pin 19 (I2C_SCL).", "note")
-    s.t(560, 750, "   DOUT is the conductor that caused the corruption fault.", "note")
-    s.t(560, 768, "   Do not re-seat this bundle from memory. Risk R3.", "note")
+    s.rect(30, 600, 640, 142, "dash", rx=4)
+    s.t(42, 620, "PROVENANCE & CONVENTIONS", "lbl")
+    s.t(42, 641, "Net names are CODEC-REFERENCED:  I2S_DIN = codec data IN (Teensy 7, SAI1_TX_DATA0);", "note")
+    s.t(42, 657, "I2S_DOUT = codec data OUT (Teensy 8, SAI1_RX_DATA0).   Ref: config.h:81-85", "note")
+    s.t(42, 680, "Clocks derived from SAMPLE_RATE 44100 (config.h:208); all three scope-confirmed:", "note")
+    s.t(42, 696, "LRCLK 44.108 kHz · BCLK ~2.82 MHz · MCLK ~11.29 MHz  (journal 2026-09-06 (1))", "note")
+    s.t(42, 719, "U3 \"Rev D\" read from silkscreen. SGTL5000 identified functionally over I²C, not", "note")
+    s.t(42, 735, "from its package marking. The shield's use of the 5V pad is UNVERIFIED.", "note")
+
+    s.t(30, 774, "GEOMETRY IS LOAD-BEARING — this is the fix, not a detail:", "lbl")
+    s.t(30, 794, "•  Jumper length ≈ 25–30 mm (was 100–200 mm flying leads)", "note")
+    s.t(30, 812, "•  U3 sits ≈ 25 mm above U2, bundle held tight, 1:1 screw → pad", "note")
+    s.t(30, 830, "•  Result: 360/360 clean windows, 0 corrupted of 11,520 samples/node", "note")
+    s.t(30, 848, "•  U2 is I²S MASTER — it generates MCLK / BCLK / LRCLK", "note")
+    s.t(560, 794, "⚠  TWO ORANGE WIRES: pin 8 (I2S_DOUT) and pin 19 (I2C_SCL).", "note")
+    s.t(560, 812, "   DOUT is the conductor that caused the corruption fault.", "note")
+    s.t(560, 830, "   Do not re-seat this bundle from memory. Risk R3.", "note")
 
 
 def draw_future(s, ox, oy):
@@ -442,7 +447,7 @@ def build():
     draw_power(s, 90, 110)
     draw_analog(s, 90, 620)
     draw_digital(s, 1300, 110)
-    draw_future(s, 1300, 1000)
+    draw_future(s, 1300, 1050)
     s.origin(0, 0)
     s.t(90, 1230, "VERIFICATION", "ttl")
     s.t(90, 1258, "All connections shown are PHYS (direct physical observation) or PHOTO.", "note")
@@ -463,11 +468,11 @@ def build():
     p = f"{OUT}/schematic_sheet1_analog.svg"; open(p, "w").write(s.render()); made.append(p)
 
     # ---- sheet 2 of 2
-    s = Sheet(1360, 1560, 2, 2, "Digital interface and reserved future hardware")
+    s = Sheet(1360, 1620, 2, 2, "Digital interface and reserved future hardware")
     draw_digital(s, 130, 110)
-    draw_future(s, 130, 990)
+    draw_future(s, 130, 1050)
     s.origin(0, 0)
-    s.t(130, 1330, "SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).", "note")
+    s.t(130, 1390, "SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).", "note")
     s.titleblock()
     p = f"{OUT}/schematic_sheet2_digital.svg"; open(p, "w").write(s.render()); made.append(p)
 
