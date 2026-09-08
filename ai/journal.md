@@ -11,6 +11,46 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (9) — As-built capture FROZEN. Schematic reverse-engineered from the board, then audited against bench evidence: 2 material defects found and corrected
+
+**Why this entry exists:** the breadboard reached a known-good state on 2026-09-07 (6)/(7) after days of debugging, and nothing existed that could reconstruct it. This session captured it — a verified netlist, a generated schematic in one-sheet and two-sheet forms, and an audit of that schematic against the physical evidence. **The bench was never touched.** No measurement was taken, no wire moved, no firmware uploaded.
+
+### The rule that governed the whole session
+
+**Evidence hierarchy, applied without exception:** physical observation > photograph > measurement > active firmware > this journal > `docs/breadboard_bringup_v3.md`. Where the runbook and the board disagreed, **the board won and the disagreement was recorded** rather than reconciled. Six runbook defects are now documented, including a new one (D5): Phase 0 Step 5 bridges `TOP_RED`↔`BOT_RED` at columns 1 and 60, and Phase 1 Step 7 then declares `BOT_RED` to be VGND — **followed literally, the runbook shorts VGND to +5 V.** The board does not have those bridges.
+
+A second rule mattered as much: **documentation completeness is never a reason to touch a known-good bench.** Two gaps are recorded as `NYV` by explicit decision (`TOP_RED` col5↔col55 continuity; the Dinkle carrier's `5V` terminal provenance). They are decisions, not oversights.
+
+### What the capture established
+
+- **Analog front end fully traced** — OPA1642A on a PA0001 adapter, pin 1 at `35e`; the OPA_BIAS topology from 2026-09-05 (4) confirmed as-built at columns 41/43; VGND alive at column 45, **not** column 15 as the runbook says; W1, the orange jumper `TOP_RED`→`35h`, found only on the third pass.
+- **Interconnect map closed** — all ten wires, 1:1 screw→pad, and **the physical set matches the firmware exactly**: pins 7, 8, 18, 19, 20, 21, 23 with nothing left over on either side.
+- **The fix quantified** — jumpers ≈25–30 mm against the 100–200 mm flying leads of entry (5). A **4–8× reduction in conductor length**. That ratio is the measurable content of the fix and the thing a rebuild must reproduce.
+
+### 🔺 The audit found two material defects in my own drawing
+
+**A1 — four capacitor values were asserted but never read.** C3/C4/C5/C7 carried "0.1 µF" from the runbook's parts list. They had only ever been described as *"yellow things"* — **the same description given for C1, which turned out to be `BC103` = 10 nF.** The single data point available contradicted the assumption applied to the other four. `PHYS` had covered their presence and position; it never covered their value. Conley has since confirmed 0.1 µF at the bench, so they are restored — but tagged `RPT` (reported), not `PHYS`, because no marking was read back. **One thread stays open:** the confirmation said *"all three"* while four are listed; recorded, not assumed away.
+
+**A2 — RETURN_NODE was missing from the schematic entirely.** `RETURN_NODE_PHYSICAL_CH 1` ([config.h:174](../config.h#L174)) binds it to I²S channel 1 = U3 **LINE IN R**, which **has no conductor fitted.** The drawing simply omitted it. **This is worse than an ordinary omission, and the reason is the important part: the firmware reports a level for that channel, and −56 dBFS is the crosstalk floor bleeding from LINE IN L — not a measurement.** An undocumented open input that still prints a plausible number is the same class of trap as TODO-29's clamped TF bins, and it nearly reached a portfolio drawing. LINE IN R is now drawn with an explicit no-connect cross and annotated on the face of the sheet.
+
+**A3 — VGND's 2.50 V was stated as fact.** It is *calculated* from R3/R4 being a matched pair. The only measurement, 2.480 V (2026-09-05 (1)), predates the OPA_BIAS rework and was taken at the old column-15 divider. Now labelled "calculated".
+
+**A4 — R5 = 100 kΩ upgraded `INF` → `DERIV`.** Entry (6) measured a 1 kHz gain of **0.9848** against **0.9867** predicted for 100 kΩ with C1 = 10 nF; 22 kΩ would predict ≈0.81 and is excluded. **Independent of the colour-band reading, and the same measurement corroborates C1 = 10 nF from a second direction.**
+
+### An I²S naming scare that turned out to be a documentation defect, not a wiring one
+
+A review flagged the data-line labels as reversed. They were not. `config.h:81-85` and journal:1077 both establish that **pin 8 carries audio INTO the Teensy**, so the drawn directions were correct. The real defect was that **the drawing never declared its convention.** Net names on this project are **codec-referenced**: `I2S_DIN` is the *codec's* data input (Teensy pin 7, `SAI1_TX_DATA0`) and `I2S_DOUT` is the *codec's* data output (Teensy pin 8, `SAI1_RX_DATA0`). Read Teensy-first, they look backwards.
+
+**Renaming the nets would have been the wrong fix.** It would have contradicted `config.h` and severed the link between the schematic and entries (3)–(6), which spent days on "DOUT pin 8" — the drawing would silently have started describing a different wire. Fixed instead by declaring the convention on the drawing, adding the `SAI1_*` aliases, and putting direction arrows on every signal line.
+
+### Lesson worth keeping
+
+Entry (6)'s lesson was that the fault lived in the medium between the endpoints. **This session's is narrower and about documentation: `PHYS` is not one claim, it is two.** "This part is in this hole" and "this part has this value" have completely different evidence, and a table with a single verification column silently merges them. Every value defect found today — A1, A3, and the R5 upgrade — is that same conflation. The netlist now separates strip-level from hole-level confidence and position from value, and adds an `RPT` tag for things reported at the bench but not independently confirmed.
+
+**Next:** digital-section value/provenance audit — same discipline, now that topology and direction are established.
+
+---
+
 ## 2026-09-07 (8) — TODO-29: the TF diagnostic was printing a clamp rail as data. Evidence preserved, then annotated rather than changed. **Compiled only — NOT uploaded, bench untouched**
 
 **Also this session, record-keeping only:** TODO-1 corrected 🔴 → 🟢. It had carried a red status alongside a bracketed note saying its own compile proof was already met — the two contradicted each other for six days. No code changed; the proof (journal 2026-09-01 (1)) already existed.

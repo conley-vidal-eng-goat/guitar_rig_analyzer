@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="1560" viewBox="0 0 1360 1560">
+<style>
+    .w{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    .sym{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round}
+    .jn{fill:#111}
+    .box{stroke:#111;stroke-width:1.7;fill:#fff}
+    .dash{stroke:#b0b0b0;stroke-width:1.3;fill:none;stroke-dasharray:7 6}
+    .tag{stroke:#111;stroke-width:1.2;fill:#eef1f4}
+    .lbl{font:600 13.5px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111}
+    .val{font:12px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#333}
+    .net{font:600 12px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#111}
+    .note{font:11.5px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#5a5a5a}
+    .ttl{font:700 15px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111;letter-spacing:.07em}
+    .pin{font:10.5px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#666}
+    .gh{font:12px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#9a9a9a}</style>
+<rect width="1360" height="1560" fill="#ffffff"/>
+<rect class="box" x="18" y="18" width="1324" height="1524" fill="none"/>
+<rect class="dash" x="100" y="80" width="990" height="850" rx="6"/>
+<text class="ttl" x="104" y="71" text-anchor="start">C — TEENSY ↔ AUDIO SHIELD INTERFACE  (FROZEN GEOMETRY — DO NOT DISTURB)</text>
+<rect class="box" x="160" y="165" width="215" height="405" rx="0"/>
+<text class="lbl" x="267.5" y="191" text-anchor="middle">U2</text>
+<text class="val" x="267.5" y="209" text-anchor="middle">Teensy 4.1</text>
+<text class="note" x="267.5" y="225" text-anchor="middle">Dinkle screw carrier</text>
+<rect class="box" x="820" y="165" width="235" height="515" rx="0"/>
+<text class="lbl" x="937.5" y="191" text-anchor="middle">U3</text>
+<text class="val" x="937.5" y="209" text-anchor="middle">Audio Shield Rev D</text>
+<text class="note" x="937.5" y="225" text-anchor="middle">SGTL5000</text>
+<text class="pin" x="369" y="206" text-anchor="end">5V</text>
+<text class="pin" x="826" y="206" text-anchor="start">5V</text>
+<polyline class="w" points="375,202 820,202"/>
+<text class="net" x="545" y="194" text-anchor="end">+5V</text>
+<text class="note" x="555" y="194" text-anchor="start">·  green  —  5V pass-through, unused by codec</text>
+<text class="pin" x="369" y="240" text-anchor="end">GND</text>
+<text class="pin" x="826" y="240" text-anchor="start">GND</text>
+<polyline class="w" points="375,236 820,236"/>
+<text class="net" x="545" y="228" text-anchor="end">GND</text>
+<text class="note" x="555" y="228" text-anchor="start">·  purple  —  shield ground return</text>
+<text class="pin" x="369" y="274" text-anchor="end">3V3</text>
+<text class="pin" x="826" y="274" text-anchor="start">3.3V</text>
+<polyline class="w" points="375,270 820,270"/>
+<text class="net" x="545" y="262" text-anchor="end">+3V3</text>
+<text class="note" x="555" y="262" text-anchor="start">·  brown  —  SGTL5000 supply</text>
+<text class="pin" x="369" y="328" text-anchor="end">7</text>
+<text class="pin" x="826" y="328" text-anchor="start">7</text>
+<polyline class="w" points="375,324 820,324"/>
+<text class="net" x="545" y="316" text-anchor="end">I2S_DIN</text>
+<text class="note" x="555" y="316" text-anchor="start">·  yellow  —  Teensy SAI1_TX_DATA0 → codec</text>
+<polygon class="jn" points="785.0,318.5 797.0,324.0 785.0,329.5"/>
+<text class="pin" x="369" y="362" text-anchor="end">8</text>
+<text class="pin" x="826" y="362" text-anchor="start">8</text>
+<polyline class="w" points="375,358 820,358"/>
+<text class="net" x="545" y="350" text-anchor="end">I2S_DOUT</text>
+<text class="note" x="555" y="350" text-anchor="start">·  orange  —  codec → Teensy SAI1_RX_DATA0</text>
+<polygon class="jn" points="785.0,352.5 773.0,358.0 785.0,363.5"/>
+<text class="pin" x="369" y="396" text-anchor="end">18</text>
+<text class="pin" x="826" y="396" text-anchor="start">18</text>
+<polyline class="w" points="375,392 820,392"/>
+<text class="net" x="545" y="384" text-anchor="end">I2C_SDA</text>
+<text class="note" x="555" y="384" text-anchor="start">·  black  —  codec control</text>
+<polygon class="jn" points="785.0,386.5 797.0,392.0 785.0,397.5"/>
+<polygon class="jn" points="415.0,386.5 403.0,392.0 415.0,397.5"/>
+<text class="pin" x="369" y="430" text-anchor="end">19</text>
+<text class="pin" x="826" y="430" text-anchor="start">19</text>
+<polyline class="w" points="375,426 820,426"/>
+<text class="net" x="545" y="418" text-anchor="end">I2C_SCL</text>
+<text class="note" x="555" y="418" text-anchor="start">·  orange  —  codec control</text>
+<polygon class="jn" points="785.0,420.5 797.0,426.0 785.0,431.5"/>
+<text class="pin" x="369" y="464" text-anchor="end">20</text>
+<text class="pin" x="826" y="464" text-anchor="start">20</text>
+<polyline class="w" points="375,460 820,460"/>
+<text class="net" x="545" y="452" text-anchor="end">I2S_LRCLK</text>
+<text class="note" x="555" y="452" text-anchor="start">·  red  —  frame clock</text>
+<polygon class="jn" points="785.0,454.5 797.0,460.0 785.0,465.5"/>
+<text class="pin" x="369" y="498" text-anchor="end">21</text>
+<text class="pin" x="826" y="498" text-anchor="start">21</text>
+<polyline class="w" points="375,494 820,494"/>
+<text class="net" x="545" y="486" text-anchor="end">I2S_BCLK</text>
+<text class="note" x="555" y="486" text-anchor="start">·  white  —  bit clock 2.8224 MHz</text>
+<polygon class="jn" points="785.0,488.5 797.0,494.0 785.0,499.5"/>
+<text class="pin" x="369" y="532" text-anchor="end">23</text>
+<text class="pin" x="826" y="532" text-anchor="start">23</text>
+<polyline class="w" points="375,528 820,528"/>
+<text class="net" x="545" y="520" text-anchor="end">I2S_MCLK</text>
+<text class="note" x="555" y="520" text-anchor="start">·  gray  —  master clock 11.29 MHz</text>
+<polygon class="jn" points="785.0,522.5 797.0,528.0 785.0,533.5"/>
+<polyline class="w" points="820,590 730,590"/>
+<polygon class="tag" points="730.0,590.0 719.0,578.0 627.7,578.0 627.7,602.0 719.0,602.0"/>
+<text class="net" x="713" y="594" text-anchor="end">SOURCE_NODE</text>
+<text class="pin" x="826" y="594" text-anchor="start">LINE IN L</text>
+<text class="note" x="730" y="616" text-anchor="end">red jumper: breadboard 48e → U3 LINE-IN-L pad</text>
+<polyline class="w" points="820,655 788,655"/>
+<path class="sym" transform="translate(778,655)" d="M-7 -7 L7 7 M-7 7 L7 -7"/>
+<text class="pin" x="826" y="659" text-anchor="start">LINE IN R</text>
+<text class="lbl" x="758" y="651" text-anchor="end">RETURN_NODE  (I²S ch 1)  —  NOT CONNECTED</text>
+<text class="note" x="758" y="671" text-anchor="end">No conductor is fitted. The −56 dBFS this channel reports</text>
+<text class="note" x="758" y="688" text-anchor="end">is crosstalk from LINE IN L, not a measurement.</text>
+<rect class="dash" x="160" y="720" width="620" height="68" rx="4"/>
+<text class="lbl" x="172" y="740" text-anchor="start">NET NAMES ARE CODEC-REFERENCED (SGTL5000 side)  —  ref config.h:81-85</text>
+<text class="note" x="172" y="760" text-anchor="start">I2S_DIN   =  codec data IN    ←  Teensy pin 7  (SAI1_TX_DATA0)</text>
+<text class="note" x="172" y="778" text-anchor="start">I2S_DOUT  =  codec data OUT   →  Teensy pin 8  (SAI1_RX_DATA0)</text>
+<text class="lbl" x="160" y="822" text-anchor="start">GEOMETRY IS LOAD-BEARING — this is the fix, not a detail:</text>
+<text class="note" x="160" y="842" text-anchor="start">•  Jumper length ≈ 25–30 mm (was 100–200 mm flying leads)</text>
+<text class="note" x="160" y="860" text-anchor="start">•  U3 sits ≈ 25 mm above U2, bundle held tight, 1:1 screw → pad</text>
+<text class="note" x="160" y="878" text-anchor="start">•  Result: 360/360 clean windows, 0 corrupted of 11,520 samples/node</text>
+<text class="note" x="160" y="896" text-anchor="start">•  U2 is I²S MASTER — it generates MCLK / BCLK / LRCLK</text>
+<text class="note" x="690" y="842" text-anchor="start">⚠  TWO ORANGE WIRES: pin 8 (I2S_DOUT) and pin 19 (I2C_SCL).</text>
+<text class="note" x="690" y="860" text-anchor="start">   DOUT is the conductor that caused the corruption fault.</text>
+<text class="note" x="690" y="878" text-anchor="start">   Do not re-seat this bundle from memory. Risk R3.</text>
+<rect class="dash" x="100" y="960" width="990" height="300" rx="6"/>
+<text class="ttl" x="104" y="951" text-anchor="start">D — PHASES 5–9: NOT INSTALLED (reserved)</text>
+<text class="note" x="130" y="996" text-anchor="start">Firmware pin definitions exist in config.h:77-101. NO HARDWARE IS FITTED.</text>
+<text class="note" x="130" y="1012" text-anchor="start">Add each block here as its phase is built, then regenerate.</text>
+<text class="pin" x="130" y="1046" text-anchor="start">NET / FUNCTION</text>
+<text class="pin" x="430" y="1046" text-anchor="start">PIN</text>
+<text class="pin" x="560" y="1046" text-anchor="start">PLANNED PART</text>
+<text class="pin" x="890" y="1046" text-anchor="start">PHASE</text>
+<polyline class="w" points="130,1054 1060,1054"/>
+<text class="gh" x="130" y="1074" text-anchor="start">RELAY_SEND</text>
+<text class="gh" x="430" y="1074" text-anchor="start">Teensy 14</text>
+<text class="gh" x="560" y="1074" text-anchor="start">TQ2-5V + MMBT3904 driver</text>
+<text class="gh" x="890" y="1074" text-anchor="start">Phase 6</text>
+<text class="gh" x="130" y="1096" text-anchor="start">RELAY_RETURN</text>
+<text class="gh" x="430" y="1096" text-anchor="start">Teensy 15</text>
+<text class="gh" x="560" y="1096" text-anchor="start">TQ2-5V + MMBT3904 driver</text>
+<text class="gh" x="890" y="1096" text-anchor="start">Phase 7</text>
+<text class="gh" x="130" y="1118" text-anchor="start">JACK_INSTRUMENT</text>
+<text class="gh" x="430" y="1118" text-anchor="start">Teensy 16</text>
+<text class="gh" x="560" y="1118" text-anchor="start">Switchcraft #11 detect</text>
+<text class="gh" x="890" y="1118" text-anchor="start">Phase 5</text>
+<text class="gh" x="130" y="1140" text-anchor="start">JACK_RIG_SEND</text>
+<text class="gh" x="430" y="1140" text-anchor="start">Teensy 17</text>
+<text class="gh" x="560" y="1140" text-anchor="start">jack detect</text>
+<text class="gh" x="890" y="1140" text-anchor="start">Phase 7</text>
+<text class="gh" x="130" y="1162" text-anchor="start">JACK_RETURN_TS</text>
+<text class="gh" x="430" y="1162" text-anchor="start">Teensy 22</text>
+<text class="gh" x="560" y="1162" text-anchor="start">jack detect</text>
+<text class="gh" x="890" y="1162" text-anchor="start">Phase 7</text>
+<text class="gh" x="130" y="1184" text-anchor="start">JACK_RETURN_XLR</text>
+<text class="gh" x="430" y="1184" text-anchor="start">Teensy 24</text>
+<text class="gh" x="560" y="1184" text-anchor="start">XLR return</text>
+<text class="gh" x="890" y="1184" text-anchor="start">Phase 8</text>
+<text class="gh" x="130" y="1206" text-anchor="start">RA8875_CS / INT / RESET</text>
+<text class="gh" x="430" y="1206" text-anchor="start">Teensy 10 / 9 / 5</text>
+<text class="gh" x="560" y="1206" text-anchor="start">SPI display</text>
+<text class="gh" x="890" y="1206" text-anchor="start">deferred</text>
+<text class="note" x="130" y="1330" text-anchor="start">SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).</text>
+<rect class="box" x="710" y="1380" width="620" height="150" rx="0"/>
+<polyline class="w" points="710,1426 1330,1426"/>
+<polyline class="w" points="710,1480 1330,1480"/>
+<polyline class="w" points="1110,1480 1110,1530"/>
+<text class="ttl" x="724" y="1410" text-anchor="start">GUITAR RIG ANALYZER</text>
+<text class="lbl" x="724" y="1450" text-anchor="start">As-Built Breadboard - Known-Good Configuration</text>
+<text class="note" x="724" y="1470" text-anchor="start">Digital interface and reserved future hardware</text>
+<text class="pin" x="724" y="1502" text-anchor="start">SOURCE OF TRUTH</text>
+<text class="val" x="724" y="1520" text-anchor="start">docs/asbuilt/netlist.md</text>
+<text class="pin" x="1124" y="1502" text-anchor="start">REV</text>
+<text class="val" x="1124" y="1520" text-anchor="start">2026-09-07</text>
+<text class="pin" x="1234" y="1502" text-anchor="start">SHEET</text>
+<text class="val" x="1234" y="1520" text-anchor="start">2 of 2</text>
+<text class="val" x="1316" y="1410" text-anchor="end">C. Vidal</text>
+</svg>
