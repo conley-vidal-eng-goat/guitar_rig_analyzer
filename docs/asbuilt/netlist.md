@@ -518,3 +518,52 @@ trade and it is recorded as a decision so nobody re-opens it as an omission.
 | R1 | The Audio Shield is unrestrained and its interconnect geometry *is* the fix. Any handling can reintroduce the corruption |
 | R3 | **Two orange wires in the 10-wire interconnect bundle** — pin 8 (`I2S_DOUT`) and pin 19 (`I2C_SCL`). DOUT is the conductor that consumed journal entries (3)–(5). A transposition during any future re-seat would present as I²C weirdness, not as an obvious data fault |
 | ~~R2~~ | **Retired.** GAP-1 closed — U1's supply path is now in the written record (W1) |
+
+---
+
+## 8. Verification summary (deliverable C)
+
+Every claim in this document, by evidence tier. **The tiers are not
+interchangeable** — see the two-claims rule in §1.
+
+| Tier | What it means | Covers |
+|---|---|---|
+| `PHYS` | Direct physical observation at the bench | Every net's membership; every component's column and side of the centre channel; the interconnect wire map; rail bonding; absence of red rail bridges |
+| `PHOTO` | Read from a photograph | Breadboard model and row/column scheme; U1 package marking `O1642A`; PA0001 adapter; U3 "Rev D" silkscreen; U2 identity; shield not stacked |
+| `MEAS` | Continuity / resistance / voltage | `TOP_GND` col5↔col55 continuity; all three clock frequencies (RIGOL DHO804); OPA_BIAS 0.874 V; the 1 kHz transfer response 0.9848 |
+| `DERIV` | Computed from a recorded measurement | R1 47 k and R2/R3/R4 10 k (from 0.874 V); R5 100 k (from the 1 kHz response); C1 10 nF (marking **and** response); clock nominals from `SAMPLE_RATE`; SGTL5000 identity (functional I²C) |
+| `FW` | Read from the active firmware | I²S/I²C pin set; SOURCE/RETURN channel bindings; `SAMPLE_RATE 44100`; codec input select |
+| `RPT` | Builder-reported, not independently confirmed | Every hole-level **row letter**; C3/C4/C5/C7 values; "Dinkle" carrier branding |
+| `NYV` | Not verified — **all four are recorded decisions** | See §9 |
+
+**Confirmed by two independent routes** — the strongest claims in the document:
+
+| Claim | Route 1 | Route 2 |
+|---|---|---|
+| Interconnect pin set 7/8/18/19/20/21/23 | physical wire map | firmware object graph, nothing left over either side |
+| C1 = 10 nF | `BC103` marking read | 1 kHz response 0.9848 vs 0.9867 predicted |
+| Clock frequencies | derived from `SAMPLE_RATE 44100` | scope, agreeing to 0.018 % on LRCLK |
+| Shield is Rev D | silkscreen + bench confirmation | the working 7/8/20/21/23 pin set is the Rev D assignment |
+| OPA_BIAS = 47 k / 10 k | 0.877 V calculated | 0.874 V measured |
+
+## 9. Standing rule for Phase 5 and beyond
+
+**The four `NYV` rows below are open questions, not holes. Do not close any of
+them by assumption because a later phase makes them inconvenient. Promote a row
+only when new evidence actually appears, and record what that evidence was.**
+
+| # | Open question | Why it is open |
+|---|---|---|
+| GAP-5 | `TOP_RED` continuity col 5 ↔ col 55 | Tier-2 probing declined — handling risk outweighed the value |
+| X-5 | What the carrier's `5V` terminal is internally wired to | Same decision; "Dinkle" names the terminal blocks, not the carrier PCB |
+| D2 | Whether any Rev D circuitry uses the `5V` pad | No primary source; only a project assertion |
+| A1 | C3 / C4 / C5 / C7 values | Builder-reported, no marking read back. **C1 is why this matters** — it was assumed 0.1 µF from the parts list and turned out to be 10 nF |
+
+**The failure mode this guards against** is not laziness, it is convenience: a
+later phase that needs one of these to be true will make assuming it feel
+reasonable. Every value defect found in the 2026-09-07 audits — A1, A3, and the
+R5 under-rating — came from exactly that, applied earlier and in good faith.
+
+**Phase 5 baseline:** branch `docs/asbuilt-capture`, commits `b764bd6` and
+`97ce50a`. This document is the reference for what the board was before Phase 5
+touched it.
