@@ -134,6 +134,38 @@ struct AudioFrame {
     bool tf_persistence_active;
 
 
+    // --- TF clamp markers (added 2026-09-07, TODO-29) ---
+    // audioEngine_update() clamps each bin's raw TF into
+    // [TF_DB_MIN - 6, TF_DB_MAX + 6] before it enters the EMA, so a
+    // boundary-bin outlier cannot poison the smoothing history. That clamp is
+    // correct and is retained — but until now the railed value was written
+    // into tf_db[k] indistinguishably from a real measurement, and consumers
+    // had no way to tell a saturated bin from a measured one.
+    //
+    // Observed 2026-09-07 with nothing connected to RETURN_NODE: the true TF
+    // was ~-47 dB, 23 dB below the -24.0 dB rail, and the diagnostic printed
+    // "1kHz=-24.0dB" in 33 of 33 consecutive windows as though it were data.
+    // Evidence: ai/evidence/2026-09-07-tf-clamp-preserved.md
+    //
+    // Bit k of tf_clamped_bits is set when bin k's raw TF was outside the
+    // clamp window THIS BLOCK, i.e. tf_db[k] is a rail, not a measurement.
+    // Note a bin can be partially railed over time: the EMA mixes clamped and
+    // unclamped contributions, so a value that is not exactly at the rail can
+    // still be contaminated by it. The bit reflects this block only.
+    //
+    // Stored as a bitmask rather than bool[FFT_BINS] because AudioFrame is
+    // stack-allocated in validation.cpp and the firmware holds a ~4 KB
+    // worst-case stack budget (see measurement_engine.cpp FIX [stack-budget]).
+    // 64 bytes instead of 512.
+    //
+    // Read with audioEngine_tfBinClamped() — do not index the mask directly.
+    uint32_t tf_clamped_bits[FFT_BINS / 32];
+
+    // Number of bins clamped this block (0-FFT_BINS). A spot-check samples
+    // only five frequencies; this says how much of the whole curve is railed.
+    uint16_t tf_clamped_count;
+
+
     // --- TF confidence ---
     // FIX [confidence-denominator]: reported over the analysis band
     // (200 Hz – 10 kHz) only, NOT over all 512 FFT bins. Earlier versions
@@ -267,6 +299,21 @@ void audioEngine_resetSmoothing();
 float audioEngine_binToHz(int bin);           // Bin index → Hz
 int   audioEngine_hzToBin(float freq_hz);     // Hz → nearest bin index
 float audioEngine_linearToDbfs(float linear); // Linear magnitude → dBFS
+
+
+// -----------------------------------------------------------------------------
+// audioEngine_tfBinClamped(frame, bin)
+// True when frame->tf_db[bin] is a clamp rail rather than a measured value —
+// the bin's raw transfer function fell outside [TF_DB_MIN-6, TF_DB_MAX+6] on
+// the block this frame describes.
+//
+// Any consumer that RENDERS tf_db to a human (serial diagnostic, display curve,
+// export) must check this first and present the bin as saturated rather than
+// printing the rail as a number. See TODO-29.
+//
+// Returns false for a null frame or an out-of-range bin index.
+// -----------------------------------------------------------------------------
+bool audioEngine_tfBinClamped(const AudioFrame* frame, int bin);
 
 
 #endif // AUDIO_ENGINE_H

@@ -583,6 +583,14 @@ MeasurementState::RESULT) {
                                                          : "none (all bins live)");
 
 
+        // TODO-29: the spot-check below samples only five bins. This says how
+        // much of the whole curve is pinned to a clamp rail. A high count with
+        // nothing connected to RETURN_NODE is expected, not a fault — it means
+        // the true TF is below the representable range.
+        Serial.printf("[Main] TF clamped bins: %u of %d\n",
+                          (unsigned)s_frame.tf_clamped_count, FFT_BINS);
+
+
         // Spot-check TF at five musically significant frequencies.
         // These map to the tonal regions a guitarist would describe:
         //    Bass body | Low-mid clarity | Presence | Upper bite | Air
@@ -594,8 +602,15 @@ MeasurementState::RESULT) {
         for (int i = 0; i < 5; i++) {
              int      bin = audioEngine_hzToBin(freqs[i]);
              float tf     = s_frame.tf_db[bin];
+             // TODO-29: a clamped bin is NOT a measurement — its raw TF fell
+             // outside [TF_DB_MIN-6, TF_DB_MAX+6] and tf_db carries the rail.
+             // Printing it bare made "1kHz=-24.0dB" look like data when the
+             // true TF was ~-47 dB. RAIL[] marks the number as the boundary
+             // the value was pinned to, not the transfer function.
              if (isnan(tf))
                     Serial.printf("   %s=---", labels[i]);
+             else if (audioEngine_tfBinClamped(&s_frame, bin))
+                    Serial.printf("   %s=RAIL[%+.1fdB]", labels[i], tf);
              else
                     Serial.printf("   %s=%+.1fdB", labels[i], tf);
         }

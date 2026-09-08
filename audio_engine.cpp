@@ -218,6 +218,13 @@ const int   k_conf_lo       = (int)(200.0f   / bin_hz_for_conf);   // 200 Hz
 const int   k_conf_hi       = (int)(10000.0f / bin_hz_for_conf);   // 10 kHz
 
 
+// TODO-29: clear this block's clamp markers. tf_db[] is republished every
+// block, so its "is this a rail?" annotation must be republished with it —
+// a stale bit would mislabel a good measurement as saturated.
+memset(frame->tf_clamped_bits, 0, sizeof(frame->tf_clamped_bits));
+frame->tf_clamped_count = 0;
+
+
 for (int k = 0; k < FFT_BINS; k++) {
 
 
@@ -280,7 +287,20 @@ for (int k = 0; k < FFT_BINS; k++) {
 
     // Clamp before EMA to prevent boundary-bin outliers from corrupting
     // the smoothing history. 6 dB beyond display range is a generous margin.
-    tf_raw = constrain(tf_raw, TF_DB_MIN - 6.0f, TF_DB_MAX + 6.0f);
+    //
+    // TODO-29: the clamp itself is UNCHANGED — it is doing its job, and the
+    // numbers it produces are byte-for-byte what they were. What is new is
+    // that we RECORD it. Before this, a clamped bin was written into tf_db[k]
+    // as a bare number and every consumer displayed the rail as though it
+    // were a measured transfer function. Marking the bin lets a renderer say
+    // "saturated" instead of quoting the rail as data.
+    const float tf_lo = TF_DB_MIN - 6.0f;
+    const float tf_hi = TF_DB_MAX + 6.0f;
+    if (tf_raw < tf_lo || tf_raw > tf_hi) {
+        frame->tf_clamped_bits[k >> 5] |= (1UL << (k & 31));
+        frame->tf_clamped_count++;
+    }
+    tf_raw = constrain(tf_raw, tf_lo, tf_hi);
 
 
     // Apply EMA. First block after reset converges from 0 toward true TF.
@@ -412,4 +432,15 @@ float audioEngine_linearToDbfs(float linear) {
     if (!isfinite(linear) || linear <= 0.0f) return -120.0f;
     float db = 20.0f * log10f(linear);
     return (db < -120.0f) ? -120.0f : db;
+}
+
+
+// -----------------------------------------------------------------------------
+// audioEngine_tfBinClamped(frame, bin)
+// TODO-29. See audio_engine.h for the contract and the reason this exists.
+// -----------------------------------------------------------------------------
+bool audioEngine_tfBinClamped(const AudioFrame* frame, int bin) {
+    if (frame == nullptr)  return false;
+    if (bin < 0 || bin >= FFT_BINS) return false;
+    return (frame->tf_clamped_bits[bin >> 5] & (1UL << (bin & 31))) != 0;
 }

@@ -11,6 +11,66 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (8) — TODO-29: the TF diagnostic was printing a clamp rail as data. Evidence preserved, then annotated rather than changed. **Compiled only — NOT uploaded, bench untouched**
+
+**Also this session, record-keeping only:** TODO-1 corrected 🔴 → 🟢. It had carried a red status alongside a bracketed note saying its own compile proof was already met — the two contradicted each other for six days. No code changed; the proof (journal 2026-09-01 (1)) already existed.
+
+### The evidence, captured before touching anything
+
+33 consecutive 5 s windows, uptime 390–550 s, firmware at `e6daac8` with no local modifications, bench in the verified post-Phase-4 baseline. Full table in **`ai/evidence/2026-09-07-tf-clamp-preserved.md`**.
+
+| | Range across 33 windows |
+|---|---|
+| SOURCE_NODE peak | −8.8 to −9.4 dBFS |
+| RETURN_NODE peak | −55.3 to −57.2 dBFS |
+| **True TF (SOURCE − RETURN)** | **−46.3 to −48.0 dB** |
+| Printed `1kHz=` | **−24.0 dB in 33 of 33 windows** |
+| Printed `500Hz=` | −23.3 to −24.0 dB |
+| Printed `120Hz=` | −21.1 to −24.0 dB |
+
+**−24.0 dB is `TF_DB_MIN - 6.0f` exactly** ([config.h:391](config.h#L391), [audio_engine.cpp:283](audio_engine.cpp#L283) pre-change). The printed values sit **22–26 dB above the truth**, and the 1 kHz bin is pinned at the rail 100 % of the time.
+
+**The detail that makes this worse than a plain error:** 5 kHz alternated between `---` and ≈−23 dB across windows. `---` is the honest output (bin below `TF_SOURCE_GATE` → NAN). The ≈−23 dB is the railed one. **The same diagnostic printed both an honest and a dishonest rendering of the same physical condition, seconds apart, with nothing to distinguish them.**
+
+### The change: annotate, do not alter
+
+**The clamp is correct and is kept byte-for-byte.** It exists to stop a boundary-bin outlier poisoning the EMA history, and it does that job. The defect was never the clamping — it was that the rail was published into `tf_db[]` as a bare number with no way for any consumer to know.
+
+So the fix is **purely additive**: record the clamp, and make the renderer say so.
+
+- `AudioFrame` gains `tf_clamped_bits[FFT_BINS/32]` and `tf_clamped_count` ([audio_engine.h:162](audio_engine.h#L162)).
+- `audioEngine_update()` sets bit *k* when bin *k*'s raw TF falls outside the window, clearing the mask each block so a stale bit can never mislabel a good measurement.
+- `audioEngine_tfBinClamped(frame, bin)` is the read accessor; the mask is not to be indexed directly.
+- The serial diagnostic prints `1kHz=RAIL[-24.0dB]` instead of `1kHz=-24.0dB`, plus a new `[Main] TF clamped bins: N of 512` line — because the spot-check samples five bins and the whole curve can be railed.
+
+**No measured value changes.** `tf_db[]`, the EMA, the display curve, confidence and persistence are all bit-identical to before. The only difference is that a saturated bin is now labelled as one.
+
+**Why a bitmask and not `bool[512]`:** `AudioFrame` is stack-allocated in `validation.cpp` (lines 83, 151, 467, 528) and the firmware holds a ~4 KB worst-case stack budget (`measurement_engine.cpp` FIX [stack-budget], which notes "AudioFrame is global precisely to avoid this"). 64 bytes instead of 512.
+
+### Compile evidence — Teensy 4.1, `arduino-cli 1.4.1`
+
+| | FLASH code | RAM1 variables |
+|---|---|---|
+| Baseline (`e6daac8`, stashed) | 158 340 | 218 752 |
+| With the change | 158 532 | **218 816** |
+| Δ | +192 | **+64** |
+
+**+64 bytes of RAM is exactly the 64-byte bitmask** in the single global `s_frame`; `tf_clamped_count` fell into existing padding. That the arithmetic lands exactly is itself a check that only one `AudioFrame` is statically allocated, as the design intends.
+
+Clean compile. The two warnings emitted (`payload_size` unused in `data_sender.cpp`, `setRotation` hidden in the Adafruit library) are both pre-existing and appear identically in the baseline build.
+
+### ⛔ Not done, deliberately
+
+- **Not uploaded.** The board is still running `e6daac8`. The bench is untouched and stays in the verified baseline until Conley has photographed it.
+- **`display_engine.cpp` still renders railed bins as curve points** ([display_engine.cpp:347](display_engine.cpp#L347) reads `tf_db[bin]` directly). The accessor exists for it; wiring it in is a separate change against a separate consumer. Recorded on TODO-29.
+- **TODO-18, TODO-27 and TODO-30 deliberately NOT bundled.** One defect, one change, one verification trail — Conley's call, and the right one given how much of this project's lost time came from confounded multi-variable changes.
+
+**Note for whoever uploads this:** most source files are mode 400. `audio_engine.h` and `audio_engine.cpp` were temporarily set u+w to edit and restored to 400 afterwards; `guitar_rig_analyzer.ino` is back at 600. Verify with `stat -f '%OLp %N' *.cpp *.h *.ino` if anything looks off.
+
+**Expected post-upload behaviour, to be checked against the pre-fix table above:** with RETURN still disconnected, `1kHz` should read `RAIL[-24.0dB]` and `TF clamped bins` should be a large fraction of 512. **That is not a regression — it is the same physical condition, finally reported honestly.** The number to watch is that no bin prints a bare value while its raw TF is out of range.
+
+---
+
 ## 2026-09-07 (7) — ✅ ANALOG LEVEL SOLVED TOO. The 28 dB deficit was the 3.5 mm cable in the **headphone output jack**. SOURCE_NODE now reads −9.0 dBFS against a −10.3 dBFS prediction
 
 **The bench finding (ChatGPT session, Conley at the bench):** the signal was being fed into the Audio Shield's **headphone output jack**, not into LINE IN L. The dedicated LINE-IN-L jumper had been unplugged from row 48 earlier in the debugging and never restored. With the headphone plug removed and that jumper returned to row 48:
