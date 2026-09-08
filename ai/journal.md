@@ -11,6 +11,45 @@ How to use this file:
 
 ---
 
+## 2026-09-07 (6) — ✅ SOLVED. Shortening the I²S interconnect took corruption to EXACTLY ZERO across 360 windows
+
+**The change:** Audio Shield moved adjacent to the Teensy; jumpers for **8 (DOUT), 20 (LRCLK), 21 (BCLK), 23 (MCLK), GND and 3.3 V** replaced with short, tightly-grouped wires. LINE-IN-L deliberately left long — the analog path is unchanged. **No firmware change. DOUT joint untouched from run C.**
+
+*Pre-power safety check: 3.3 V→GND 8.06 kΩ, 5 V→GND 14.12 kΩ — matching the 8.06 / 13.99 kΩ measured days earlier, so no short was introduced.*
+
+| Interconnect state | n | SRC/32 | RET/32 | clean % | worst | +0 dBFS % |
+|---|---|---|---|---|---|---|
+| A: long leads, DOUT broken | 420 | 5.95 | 5.14 | 3.1 % | 31 | 100 % |
+| B: long leads, 1st rework | 360 | 24.72 | 26.85 | 0.6 % | 32 | 100 % |
+| C: long leads, 2nd rework | 360 | 8.54 | 8.07 | 0.0 % | 20 | 100 % |
+| **D: SHORT leads** | **360** | **0.00** | **0.00** | **100 %** | **0** | **0 %** |
+
+**Run D bands: 0.00 / 0.00 / 0.00 / 0.00.** Zero corrupted samples in 11,520 per node. **Not one clip event in 30 minutes**, against 100 % of windows clipping in every previous run. Serial output dropped from ~597 KB to ~60 KB per 5-minute capture — a 10× reduction that is purely the absence of clip spam.
+
+**Root cause: signal integrity on the flying-lead I²S interconnect.** Not a broken joint, not a damaged pin, not the codec, not firmware.
+
+### What this retrospectively explains
+
+- **Three DOUT reworks giving 5.95 / 24.72 / 8.54** — each changed wire length and routing, hence coupling and reflections. Never joint quality.
+- **Perfect clocks, correct registers, good continuity, full DOUT logic swing, correct DOUT timing** — all true, and all irrelevant, because the corruption came from coupling in flight rather than from any endpoint.
+- **Both channels always affected together** — shared DOUT line.
+- **Wandering rate, spontaneous recovery, "warm-up" trends** — geometry-dependent coupling shifting with temperature and wire position.
+- **Continuity passing on every pin** — DC continuity was never going to detect this.
+
+### Hypotheses this kills
+
+**My pin-8 contention-damage hypothesis is dead**, and so is "DOUT arrives too late". The physics that mattered was edge rate, not clock rate: the i.MX RT1062 drives ~1–2 ns edges, whose spectral content reaches ~350 MHz, where 10–20 cm flying leads are electrically long and behave as unterminated transmission lines with real reflections and crosstalk. **MCLK at 11.29 MHz running alongside DOUT was the likely dominant aggressor.**
+
+### Lesson worth keeping
+
+Days were spent testing endpoints — joints, pins, registers, drivers, firmware — because every endpoint measurement passed. **The fault was in the medium between them, and no endpoint test could ever have found it.** The one measurement that would have pointed here early is the one never taken: the physical geometry of the interconnect, treated as a circuit element rather than as plumbing.
+
+**Phase 4's SOURCE_NODE criterion is now met: the pipeline receives the injected signal correctly, with zero digital corruption.**
+
+**Next:** re-verify the analog chain now that measurements are finally trustworthy — the ~−39 dBFS level (≈28 dB below the −10.4 dBFS prediction) and the RETURN crosstalk at ≈−50 dBFS both need re-measuring against clean data. Then remove the temporary RAWDUMP and AudioMemory diagnostics.
+
+---
+
 ## 2026-09-07 (5) — Scope persistence view clears DOUT timing and the driver. My pin-8 damage hypothesis is WEAKENED. New leading suspect: the flying-lead I²S interconnect
 
 **Scope findings (persistence view, DOUT vs BCLK):**
