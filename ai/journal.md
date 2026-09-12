@@ -11,6 +11,55 @@ How to use this file:
 
 ---
 
+## 2026-09-12 (2) — CORRECTION to entry (1): grounding LINE-IN-L reproduces the floor with the front end disconnected. "The codec is exonerated" is withdrawn; the proven claim is narrower
+
+**Entry (1) concluded that the elevated SOURCE floor is delivered by the analog front end and that "the codec, its routing and the digital capture path are exonerated."** A third codec-input state was then measured and **that conclusion does not survive it.**
+
+### The three states
+
+| LINE-IN-L condition | 48e | SOURCE |
+|---|---|---|
+| Driven by front end | connected | **−31.3 dBFS** |
+| **Floating** | disconnected | **−57.0 dBFS** |
+| **Tied to GND by a bare jumper** | **disconnected** | **−31.9 dBFS** |
+
+Readings for the third state: **−31.9 / −31.9 / −32.0 / −31.9 / −31.9 dBFS**, RETURN −60.8 to −61.1.
+
+**A plain wire to ground reproduces the level to within 0.6 dB of the front-end-driven case, with the front end physically removed.** The front end therefore cannot be the source. Entry (1)'s inference was correct that the noise arrives *through* the LINE-IN-L connection and wrong about what supplies it.
+
+### What is actually proven, stated narrowly
+
+> **The elevated SOURCE reading appears whenever LINE-IN-L is given an external low-impedance connection — even to ground. It largely disappears when LINE-IN-L is left floating.**
+
+That is the whole of it. **"The codec is exonerated" is withdrawn.** The codec's behaviour when its input is externally connected versus floating is now squarely inside the suspect set, not outside it.
+
+**Supporting evidence, and labelled as supporting rather than proof:** SOURCE and RETURN track each other in sign and direction across all five windows, and in the uptime-130 s window both break downward at the *same sample index* — with nothing connected to RETURN at all. SOURCE runs ≈30× RETURN, and 30× is 29.5 dB, which is the SOURCE/RETURN asymmetry itself. That is consistent with one common disturbance coupling ~30× harder into the input that has a conductor on it. **It is consistent with a ground-potential difference; it does not establish one.**
+
+### Candidate mechanisms — three, none established
+
+1. **Ground-potential difference** between breadboard GND and the Audio Shield's analog ground reference. Tie LINE-IN-L to breadboard ground and the ADC, referenced to the shield's ground, sees the difference between them.
+2. **Loop-area pickup.** Both the front-end case and the ground-jumper case share a *wire*, and a wire from LINE-IN-L out to breadboard GND and back through the shield's ground return encloses area. The floating case encloses none. This is a different mechanism from (1) and is not distinguished by any measurement taken so far.
+3. **Codec input condition.** If LINE-IN-L is DC-coupled to the SGTL5000 pin on the shield, tying it to GND forces the ADC input toward 0 V and outside its expected common-mode window around VAG — a genuine fault condition that would produce exactly this. **Whether the Rev D shield AC- or DC-couples its LINE IN pads decides whether this candidate is live at all, and it is answerable from PJRC's published schematic with no bench work.**
+
+### The discriminating test, and why it beats measuring the ground difference first
+
+**Ground LINE-IN-L with a very short wire to the Audio Shield's OWN GND pad**, not to the breadboard rail. That collapses the loop area to near zero *and* makes the reference local in one move.
+
+- Floor **drops toward −57** ⇒ mechanism (1) or (2) — an external ground path or the loop it encloses.
+- Floor **stays near −31.9** ⇒ mechanism (3) — the codec's response to having its input tied low, independent of where the ground comes from.
+
+One wire move, no new instrument, and it splits the candidate set cleanly. The direct breadboard-GND-to-shield-GND scope measurement is still worth taking and is now interpretable — the ~32 mV<sub>pp</sub> grounded-probe control has been recorded — but it can only confirm mechanism (1), whereas the short-wire test can rule out two of three.
+
+### Bench state, and why it must be restored before any comparison
+
+Four deviations from the −31.49 dBFS pooled baseline are currently in place: **`48e` lifted off LINE-IN-L · LINE-IN-L jumpered to GND · J2 removed · `col 30` → GND jumper fitted.** No future reading is comparable to the baseline until all four are restored. Tracked in TODO-40.
+
+### Method note
+
+This is the second inference in two entries that a further test overturned, and both times the sequence was sound: state the narrow claim, design the test that could break it, run it. **Entry (1)'s error was not the inference — it was the word "exonerated", which asserted more than a two-state test can support.** The corrected form is a conditional statement about when the reading appears, which is exactly as much as the data says.
+
+---
+
 ## 2026-09-12 (1) — ✅ DECISIVE SPLIT: lifting 48e off LINE-IN-L drops SOURCE by 25.9 dB. The elevated floor is delivered through the analog front end, not generated in the codec
 
 **Observed.** Disconnecting the `48e` → SGTL5000 LINE-IN-L conductor reduced SOURCE_NODE from **≈−31.3 dBFS to ≈−57.0 dBFS**, a **25.9 dB reduction**, leaving SOURCE only **1.8 dB** above the open RETURN channel.
