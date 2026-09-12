@@ -11,6 +11,308 @@ How to use this file:
 
 ---
 
+## 2026-09-12 (1) — ✅ DECISIVE SPLIT: lifting 48e off LINE-IN-L drops SOURCE by 25.9 dB. The elevated floor is delivered through the analog front end, not generated in the codec
+
+**Observed.** Disconnecting the `48e` → SGTL5000 LINE-IN-L conductor reduced SOURCE_NODE from **≈−31.3 dBFS to ≈−57.0 dBFS**, a **25.9 dB reduction**, leaving SOURCE only **1.8 dB** above the open RETURN channel.
+
+**Inference.** The elevated SOURCE floor is introduced through the connected analog front-end path upstream of LINE-IN-L.
+
+**NOT yet proven.** That OPA_BIAS, or the missing 10 µF bulk capacitor recorded as deviation **D2**, is the root cause. See the probe-floor caveat below.
+
+### The elimination sequence, in full
+
+| # | Condition | n | mean SOURCE | Δ vs baseline |
+|---|---|---|---|---|
+| 0 | Guitar connected, volume up, J2 fitted | 14 | −31.49 dBFS | — |
+| 1 | Guitar volume at 0 | 5 | −31.48 dBFS | +0.01 |
+| 2 | J2 3.5 mm stub removed | 5 | −31.28 dBFS | +0.21 |
+| 3 | `col 30` → GND jumper fitted | 5 | −31.12 dBFS | +0.37 |
+| 4 | **`48e` lifted off LINE-IN-L** | 5 | **−57.04 dBFS** | **−25.55** |
+
+Readings for condition 4: **−57.1 / −57.2 / −57.1 / −56.7 / −57.1 dBFS**, RETURN −58.3 to −59.2 across the same windows.
+
+**Conditions 1–3 moved the floor by 0.37 dB in total.** Shorting the pickup at its volume pot, removing the open J2 stub from SOURCE_NODE, and grounding the jack-side of C1 all did nothing. Condition 4 moved it 25.9 dB. **Everything external to the board is eliminated; the source is on the board, between C1's output and LINE-IN-L.**
+
+**Two corroborating details.** TF spot-check went to `---` at every frequency including 120 Hz — the only bin that had reported a value all session — and confidence fell to 0 %. And in the uptime-145 s window SOURCE and RETURN track each other sample-for-sample, ramping at the same index: common-mode codec floor showing on two undriven inputs, exactly as expected.
+
+### The scope numbers agree with the ADC — that part is solid
+
+| Node | Scope V<sub>pp</sub> |
+|---|---|
+| OPA_BIAS `col 41` | 31.35 mV |
+| U1 pin 1 / `35e` | 37.90 mV |
+| C2 out / `48e` | 45.77 mV |
+
+**−31.3 dBFS back-converts to 36.2 mV<sub>pp</sub>** at the codec input (0.665 V peak full scale at `SGTL5000_LINE_IN_LEVEL = 5`). Against 45.77 mV<sub>pp</sub> measured at the same node, that is the same magnitude. **The scope and the ADC independently agree there is ~40 mV<sub>pp</sub> arriving at LINE-IN-L.** The elevated floor was never a digital artifact.
+
+### ⚠️ The 31 → 38 → 46 progression is NOT yet a noise gradient — correction to an earlier reading of it
+
+An earlier draft of this analysis treated the three scope readings as a rising gradient and concluded the noise originates at OPA_BIAS. **That conclusion is withdrawn as premature.**
+
+**The grounded-probe control was never recorded under the exact final settings** (20 MHz limit engaged). Without it, the probe/scope noise floor is unknown, and the first two readings — 31.35 and 37.90 mV<sub>pp</sub> — may be substantially or entirely floor. Only the 48e figure is independently corroborated, by the ADC.
+
+**A gradient measured against an unknown floor is not a gradient.** Record the control first; every amplitude comparison in this investigation depends on it.
+
+### What is and is not established
+
+- ✅ **Established:** the noise enters LINE-IN-L through the front-end connection; ~40 mV<sub>pp</sub> is real and present at `48e`; the codec, its routing and the digital capture path are exonerated; nothing external to the board contributes materially.
+- ❓ **Open:** where between C1's output and `48e` it originates. Candidates: the OPA_BIAS network through R5 (**D2**, hypothesis — TODO-33), U1's own noise, the biased high-impedance node at col 33/37, C2, or the 48e run itself.
+
+### Method note
+
+**Three consecutive over-claims this session, all the same shape:** stating a conclusion first and the disqualifying caveat second — the "J2 removed" result before the removal had happened, "shorts the amplifier input" when C1 blocks DC, and now the OPA_BIAS gradient against an unrecorded floor. Each was caught, none propagated into a bench action, but the pattern is the thing to fix. **The caveat belongs in front of the claim, or the claim should not be made.**
+
+---
+
+## 2026-09-11 (3) — Protocol v2 schema FROZEN. T1 acceptance harness built, because the firmware could not produce the numbers the pass condition requires
+
+**Why this entry exists:** the decision was made to freeze the field layout and move from code reasoning to bench proof. Acting on that surfaced a gap that would have quietly invalidated the bench test. **The bench was never touched.** Compile proof only.
+
+### The schema is frozen, and the freeze has an explicit scope
+
+Protocol v2's state is now recorded as **"schema-frozen, transport-unproven"**, and that distinction is doing real work rather than hedging:
+
+**🔒 Frozen — a parser written against these will not need rewriting:** field positions and widths, packet type ids `0x01`–`0x07`, every enum meaning, clamp and coverage semantics including the rendering contract, the RESULT layout and its 156-byte fixed block, and the framing/resync rules.
+
+**🔓 Still movable — a parser does not depend on these:** live frame cadence (`DISPLAY_UPDATE_EVERY_N_FRAMES`, currently 1), bin count, TX buffer size and chunking strategy, when `dataSender_service()` runs, baud rate.
+
+The practical consequence is written into TODO-36: **a receiver that reads `live_bins` and `decim_ratio` from HELLO instead of hardcoding them is immune to everything in the second list.** One that hardcodes 128 bins breaks the first time the cadence lever gets pulled. That is the single most useful thing to tell whoever writes the Pi side, and it is only sayable because HELLO became structured in v2.
+
+`PI_PROTOCOL_VERSION` stays at **2**. Changing the payload shape while a committed `protocol=1` existed is exactly what a protocol version is for; reverting to 1 would erase historical meaning.
+
+### The gap: the pass condition was unmeasurable
+
+The T1 pass condition is *"acquisition timing indistinguishable from the `DISPLAY_TARGET_NONE` control"*. Checking whether the firmware could actually produce that comparison: **it could not.**
+
+The 5 s diagnostic window reported a block-period **mean only** — computed as `elapsed / blocks`. No max. No spread. No skipped-block detection. No audio high-water. No loop-body maximum. Nothing in `audio_capture` exposes a dropped-block or per-queue overrun counter either.
+
+So Phase 10 could have been "passed" on the strength of a small `[Link] Call time` figure while a genuine perturbation went entirely unmeasured — **which is the exact failure mode the pass condition was written to prevent.** Writing a careful acceptance criterion and then having no instrument to evaluate it against is worse than having no criterion, because it produces false confidence with a paper trail.
+
+### `timing_probe.{h,cpp}`
+
+Measures the side that must not move:
+
+- **Block period mean / max / min / spread.** The mean alone cannot distinguish steady 46.3 ms from alternating 40/53 ms, and it is the spread that would reveal transport interference.
+- **Skipped-block detection from gaps in the canonical block counter.** The counter is monotonic, so a gap > 1 in `output_block_number` means an analysis block was produced that the loop never processed. This is the most direct evidence of measurement disturbance obtainable without modifying the capture layer, and it is the metric that must read **zero in every run, no exceptions**.
+- **Whole-loop-body duration max**, timed from the first statement to the last. Catches anything that blocks wherever it lives — a transport that is individually fast but collectively starves the loop shows up only here.
+- **Audio block high-water, reset per window.** Without the reset a boot-time spike would contaminate every subsequent run and the four runs would not be comparable.
+
+**Compiled into all three targets deliberately.** Guarding it to `_PI` would make the control run unmeasurable and void the entire test — the control must run identical code.
+
+**Output is fixed-format `key=value` lines** specifically so the four runs can be diffed mechanically rather than eyeballed, and the report prints the pass condition inside itself, including the warning that a small call time is not a pass.
+
+**One honest limitation, stated in the source rather than glossed:** `audio_blocks_high_water` is the Audio library's **global** figure, not a per-queue overrun counter, because `audio_capture` does not expose one. The report says so explicitly so nobody later cites it as "capture overruns". `blocks_skipped` is the authoritative overrun evidence.
+
+### The thing I was most careful not to do
+
+The tempting shape for this harness was to instrument the transport more heavily. That would have been the wrong instrument for the question. A microsecond-fast `presentation_*()` call can still disturb the instrument indirectly — interrupt load, UART ISR activity, DMA contention, buffer servicing — and **none of that appears in a call-duration figure.** So the harness measures acquisition, and the pass condition is comparative: run 1 *is* the threshold, which means there is no number to argue about.
+
+This matters more in this firmware than it would in most. The system is built around one capture owner and one canonical timebase, and every time-sensitive operation references it. Perturbing that layer compromises far more than the display — which is also why `blocks_skipped` gets an absolute requirement (zero) while everything else is judged comparatively.
+
+### The T1 acceptance matrix
+
+Written into Phase 10 and TODO-35. Four runs, identical window length (≥60 s) and identical signal conditions:
+
+| Run | Build | Condition | Role |
+|---|---|---|---|
+| 1 | `_NONE` | no display hardware | **THE CONTROL** |
+| 2 | `_PI` | reader consuming normally | normal operation |
+| 3 | `_PI` | reader suspended (`kill -STOP`), UART stays full | sustained backpressure |
+| 4 | `_PI` | TX pulled mid-RESULT drain | loss mid-transaction |
+
+Acquisition must not move; transport is *allowed* to degrade. Drops in runs 3/4 are expected, `TX room min = 0` in runs 3/4 is backpressure correctly absorbed, and non-zero abandoned result bytes in run 4 is correct behaviour. Run 3 additionally requires that the validation suite still runs and passes — a dead renderer must not be able to fail a measurement.
+
+### Also added
+
+`result_bytes_abandoned` to the transport stats, so run 4 can report how much of a superseded/abandoned result never reached the wire rather than only that it happened.
+
+### What the next session should know
+
+1. **The next action is bench work only.** Do not touch protocol fields. Run the four-configuration matrix, paste all four `T` reports verbatim here, and diff them.
+2. **`t` starts a window, `T` reports.** A window also starts automatically at the end of `setup()`, after init, so a run is measurable even if `t` is forgotten.
+3. **`blocks_skipped` must be 0 in all four runs.** Everything else is judged against run 1. If block timing degrades anywhere, stop and find the blocking path — acceptance test B in the protocol audit is where to start.
+4. **On pass:** T1 closes, v2 goes from schema-frozen to proven, and the milestone is **v0.6.0 — Pi presentation architecture validated**. Only then start the Pi renderer. The parser can be written now.
+5. The portfolio-relevant story here is not "added UART". It is that a **semantic audit made the packets larger, which exposed a real-time systems conflict, and the resolution was to change the delivery contract rather than delete measurement meaning** — and then that writing the acceptance criterion revealed the instrument to evaluate it did not exist yet, so that got built before the test was run. Both of those are the same discipline applied twice.
+6. Track A remains untouched: TODO-21, TODO-32, TODO-23, TODO-29.
+
+---
+
+## 2026-09-11 (2) — Protocol v2: the four truth-invariant defects closed, transport made non-blocking, firmware baselined at 0.6.0
+
+**Why this entry exists:** entry (1) built the presentation boundary and then used it to audit `data_sender`, finding 17 protocol defects. This session fixed them. **The bench was never touched.** No measurement taken, no wire moved, no firmware uploaded. Compile proof only.
+
+### The ordering was the decision
+
+Conley's sequencing: **semantic completeness first, packet mechanics second.** `result_valid`, provenance and clamp state are not optional UI metadata — they are part of the *meaning* of a measurement. Polishing framing around a packet that omits whether the measurement is valid would be optimising the wrong layer.
+
+That ordering immediately surfaced a conflict worth recording: closing L1 and L3 **makes the live frame bigger** — 1 689 B vs v1's 1 559 B, because per-bin clamp and validity coverage costs 130 bytes. So the semantic fix makes the T1 backpressure prediction *worse* (~36.7 ms of wire time vs ~33.8 ms, against a measured 46.3 ms block period). The resolution is not to shrink the payload but to change the delivery contract, which is what made the next part necessary rather than optional.
+
+### Presentation transport must be lossy before measurement becomes lossy
+
+This is the architectural rule that came out of the session and it is now explicit in the source:
+
+- **LIVE_FRAME** — best effort, droppable, latest-wins. A stale frame has no value; dropping one costs a visual update.
+- **RESULT** — reliable. Staged into a buffer and drained across loop iterations by `dataSender_service()`. A completed measurement matters, so it is queued rather than dropped; a newer result supersedes an undrained one (latest-wins, counted).
+- **STATUS / ABORTED / ROUTER / VIEW / HELLO** — best effort.
+
+Every write is gated on `availableForWrite()`. **There are no blocking writes left in the module,** and the acceptance test for that is mechanical: grep for `.write(` and confirm each is preceded by a room check covering the whole remaining packet.
+
+**The subtlety that would have broken this silently.** Teensy's default Serial1 TX buffer is far smaller than one live frame, so `availableForWrite()` could *never* report room for one, and **every single live frame would have been dropped** — a total failure of the live path presenting as a Pi-side bug. Fixed with `addMemoryForWrite()` and a 4 KB buffer, and pinned with a `static_assert` that the buffer exceeds one framed frame. Worth stating plainly: a non-blocking policy with an undersized buffer is not a conservative choice, it is a broken one.
+
+**Safety net, deliberately designed in.** `measurement_state` travels in *every* live frame. A dropped ABORTED therefore costs the reason string, not the fact — the Pi still observes `state == ABORTED` on the next frame. Event loss degrades gracefully instead of desynchronising the Pi's state model, and receivers are told in the header to treat the live frame's state byte as authoritative and event packets as enrichment.
+
+### The invariant, turned into a test that finds things
+
+Entry (1) stated it as a slogan and then as a test. Applied field by field, the test is what produced the fix list:
+
+> For every field the Pi displays: is this a **fact** the Teensy knows, or a **judgement** the Pi is reconstructing? If it is a judgement — valid/invalid, clipped, clamped, quality, calibration state, confidence, coverage — **send it.**
+
+Every such judgement now has a wire field. The clamp case is the one that matters most and it got the most care: per-bin nibbles (clamped count / valid count), a frame-level `tf_clamped_count`, and a rendering contract written into `data_sender.h` saying that `clamped == ratio` means *draw a saturation indicator, not the rail value*. Phase 10 step 7 tests it with nothing connected to RETURN_NODE — the exact condition that produced `1kHz=-24.0dB` in 33 of 33 windows on 2026-09-07.
+
+### Decimation: one function was doing two incompatible jobs
+
+v1 applied a single arithmetic mean to `fft_source`/`fft_return` (**linear** magnitude) and to `tf_db` (**dB**). Separated:
+- Linear spectra now decimate by **maximum**. An arithmetic mean buries narrow peaks — one bin at 0.5 among three at 0.001 means 0.126, a **12 dB under-report** — which for a spectrum display is the wrong default. Harmonics are the thing a player wants to see.
+- `tf_db` keeps the dB mean (a geometric mean of power), appropriate for a transfer-function curve, with the valid/clamped nibbles saying how much to trust each point.
+
+Both are now stated on the wire contract. They were never *wrong* so much as **undocumented defaults** — and an undocumented default in an interface between two codebases becomes a disagreement later.
+
+### Three smaller things worth keeping
+
+1. **I added a `frameInto()` helper, then didn't use it** — both paths frame differently by necessity (the live path writes three times after one room check; the reliable path frames into its staging buffer to be chunk-drained). The compiler caught it as unused. Removed, and replaced the spot with a comment explaining why there is deliberately *no* shared framing helper: a shared one would be a standing temptation toward a partial write.
+2. **Two `strncpy` truncation warnings were real signal.** The calls were safe only because of a preceding `memset`. Replaced with an explicit `writeFixedString()` using `strnlen` + bounded `memcpy`. Being explicit beat silencing the warning.
+3. **Layout drift is now impossible to do silently.** The RESULT fixed block is pinned by a `static_assert` on the constant *and* a runtime check that the serialiser actually filled exactly that many bytes. These fail for different reasons and both are needed: a field added without updating the layout comment shifts every later offset, and the symptom on the Pi is plausible-looking wrong floats, not an error. The runtime check refuses to send a drifted packet rather than emitting one the Pi will misparse into confident garbage.
+
+### T3 closed on a judgement call
+
+T3 (no view-change packet) was a 🟡 and outside the "five reds" scope. I closed it anyway, because my own audit said "resolve before freezing the wire format" and **this change is the pre-freeze change** — leaving a known-wrong-shaped message in a format about to be frozen would have meant a v3 for something already understood. `presentation_restoreLive()` now sends a VIEW packet instead of a magic `"VIEW:LIVE"` status string.
+
+### Versioning: 0.6.0, and two numbers instead of one
+
+`FIRMWARE_VERSION` was `0.5.0` while `data_sender`'s headers said `v0.6.1` and **21 other module headers carried their own `v0.5.0`**.
+
+- **0.6.0**, not 0.6.1. The existing 0.6.1 was a header that had run ahead of the product; adopting it would inherit a number that never meant anything. 0.6.0 now means exactly one thing: *first firmware baseline implementing the Pi 5 production display architecture.* That is a useful thing for an exported measurement to be stamped with.
+- **Bumped after the fixes, not during.** Stamping an intermediate reconciliation state would have produced a version that means "halfway through a refactor".
+- **`PI_PROTOCOL_VERSION 2` as a separate constant.** Firmware version and wire format are different compatibility concepts — a firmware bump that does not touch the wire must not invalidate a working receiver. v1 → v2 because the payload shape of both LIVE_FRAME and RESULT changed; a version number that has appeared in the tree is not reused for a different layout, or an old log reading `protocol=1` becomes ambiguous about which layout produced it.
+- **All 21 module-local versions stripped.** Original file permissions preserved exactly — several were read-only and were restored to read-only.
+
+### Proof — observed, not inferred
+
+| Target | FLASH code | RAM1 free for locals | RAM2 vars | warnings | Adafruit libs |
+|---|---:|---:|---:|---:|---|
+| `_NONE` | 147 904 | 148 928 | 46 720 | **0** | no |
+| `_PI` | 152 960 | 146 656 | 62 528 | **0** | no |
+| `_RA8875` | 158 596 | 140 608 | 46 720 | 2 | yes (3) |
+
+`_PI` and `_NONE` are now **warning-free**; v1's unused `payload_size` went with the rewritten code path, and `_RA8875`'s two remaining warnings are inside the Adafruit library itself. The `_PI` RAM2 delta (+15 808 B) is the three `DMAMEM` transport buffers landing in OCRAM rather than the tight RAM1 budget, exactly as intended — RAM1 free-for-locals differs by only ~2.3 KB between `_PI` and `_NONE`. `[compiles]` — **nothing uploaded.**
+
+### What the next session should know
+
+1. **T1 is the whole remaining question, and it is not answerable from source.** The predicted ~36.7 ms / 46.3 ms occupancy is still arithmetic. The instrumentation to settle it ships (`u` serial command; transport figures print inside the existing 5 s window so they sit directly beneath block timing). **With the non-blocking policy the measured max call time should be microseconds.** A max near a millisecond means something blocks and the policy was violated somewhere.
+2. **Protocol v2 is a freeze candidate, not frozen.** A Pi parser can be written against it now. The one thing that might still move is frame **sizing or cadence**, not field layout — if T1 measures badly, the lever is `DISPLAY_UPDATE_EVERY_N_FRAMES` (currently 1, i.e. a frame every block) or the bin count, not the semantics.
+3. **Phase 10 step 12 is the real acceptance test**, not step 11: block timing must be unchanged with the Pi **absent, stalled** (`kill -STOP` its reader so the UART stays full), **and yanked mid-result**. A high drop count with a low max call time is the design working. If block timing degrades in any of the three, stop — no amount of Pi-side work fixes it.
+4. **Do not route Pi → Teensy input through `presentation_*`.** Touch commands are CONTROL, not presentation, and belong behind a separate boundary with its own validation — presentation is outbound-only today and so adds no externally-controlled input surface at all. This is now written into `presentation.h`. Routing control back through the display API would destroy the property that makes the boundary worth having.
+5. Track A is still untouched. TODO-21, TODO-32, TODO-23 and TODO-29 are where they were.
+
+---
+
+## 2026-09-11 — Display architecture drift found and resolved. ADR-001: the Pi 5 is the production renderer; a presentation boundary now separates truth from presentation
+
+**Why this entry exists:** an audit asked a simple question — does the repository still implement the original plan (Teensy captures and computes, Pi 5 renders)? — and found that it does not, and had not for some time. The capture half was intact and enforced. The display half had quietly inverted. **The bench was never touched this session.** No measurement taken, no wire moved, no firmware uploaded. Everything below is a source audit plus a refactor verified by compile only.
+
+### What the drift actually was
+
+Two architectures coexisted, and only one was reachable:
+
+| Pi 5 architecture — documented | RA8875 architecture — actually built |
+|---|---|
+| `data_sender.{h,cpp}`: complete binary UART protocol, 5 packet types, CRC-16/CCITT, per-baud bin budget | `.ino` called `displayEngine_*` unconditionally at ~20 sites |
+| Runbook L109: "This is the **`USE_PI_DISPLAY`** build" | **`USE_PI_DISPLAY` existed nowhere in the source.** That one sentence was its only occurrence in the repository |
+| Pi 5, cooler, PSU, 7" Touch Display 2, Freenove HAT all purchased | Verified bench effort went to the RA8875: TODO-25's `s_display_ok` guard, TODO-24's pin 8→5 move |
+| TODO-24 reserved pins 0/1 for `Serial1` / `data_sender` | Track B carried TODO-12 and TODO-14, both RA8875 UI work |
+| — | `data_sender` had **zero callers**. It compiled and did nothing |
+| — | `README.md` contained no Pi at all; its diagram ended at `display_engine → RA8875` |
+| — | `tools/gen_schematic.py` reserved the RA8875 and had **no Pi UART row** |
+
+**The sharpest symptom:** pins 0/1 were being *protected* for a UART link to a renderer that **no build could select**. The project was paying the Pi path's resource cost without possessing a Pi path.
+
+**A second one worth recording:** the runbook's parts list marked five Pi components "used in Phase 9", but Phase 9 in that same document is the **validation harness**. No phase in v3 ever installed the Pi. It was bought with nowhere to go. That is what an unbuilt phase looks like from the inside — the parts arrive, the code gets written, and nothing ever connects the two.
+
+### The decision
+
+Recorded in [docs/adr/ADR-001-display-architecture.md](../docs/adr/ADR-001-display-architecture.md): **recommit to the Pi 5 as the production renderer; demote the RA8875 to bring-up/debug hardware.**
+
+Reasoning, in the order that actually decided it:
+1. The Teensy's real-time budget is already committed to acquisition, complex FFT, H1, coherence, phase, group delay, calibration, routing and quality grading. Adding a sophisticated touch UI to the same core creates coupling the design does not need.
+2. **The RA8875 incident is the precedent, not an anecdote.** An *absent* display spun `waitPoll()` and stretched the audio block period from 46 ms to 2194 ms — a display defect that destroyed acquisition (entry 2026-09-05 (10)). Keeping the renderer on the measuring core means every UI frame is a potential audio stall.
+3. The Pi has room for what makes the instrument compelling — fingerprint visualization, saved-measurement browsing, comparison views, real touch interaction.
+4. The interface already existed and is better evidence than it looked. `data_sender` has framing, a sync word, CRC-16/CCITT, and a documented receiver algorithm. It needed an audit, not a rewrite.
+
+### The governing invariant, and why it is stated as a test
+
+> **The Teensy determines truth. The Pi presents truth.**
+
+Stated that way it is a slogan. Stated as a test it is useful:
+
+> **If the Pi must derive a judgement the Teensy already made, the protocol is wrong.**
+
+That test immediately found four real defects (below). It is now the acceptance criterion for the wire format.
+
+### What was rejected, and why it mattered
+
+**Mechanically replacing the ~20 `displayEngine_*` calls with `dataSender_*` calls.** This was the obvious move and it was the wrong one — it would have hard-wired a second renderer assumption in place of the first and produced another fork to untangle later. Instead the application calls `presentation_*`, and `DISPLAY_TARGET` in `config.h` dispatches at compile time to `data_sender`, `display_engine`, or a null backend.
+
+**A boolean `USE_PI_DISPLAY`.** A tri-state is strictly better because `DISPLAY_TARGET_NONE` is independently valuable: it is the honest configuration for bench DSP work with no panel attached, which is what Phases 5–9 actually run in. A boolean cannot express "no display" — the state the bench has been in this whole time.
+
+**Deleting `display_engine`.** It is working, bench-verified code. Removing it to express an architectural preference would be a net loss; it stays as the `_RA8875` backend.
+
+### Two things the refactor found that the audit had missed
+
+**1. `validation.cpp` had 14 direct `displayEngine_drawStatusMessage()` calls.** The original audit counted only the `.ino`'s ~20 and missed these entirely. This mattered: the validation harness is what runs Phase 9 and *proves the instrument works*. Left alone, it would have kept an RA8875 dependency alive inside a Pi build while reporting none of its progress to the Pi. Rewired to `presentation_status()`.
+
+**2. A header guard in `presentation.cpp` alone does not exclude a backend.** I wrote a comment claiming that under `_NONE` neither backend is "dragged in", then the compile disproved it: **an Arduino/arduino-cli build compiles every `.cpp` in the sketch folder regardless of what includes its header.** `display_engine.cpp` and `data_sender.cpp` were both still being compiled and linked. Fixed by wrapping each file's entire body — includes and all — in its own `#if DISPLAY_TARGET == ...` guard, and the false comment was corrected rather than left in. Without that, `DISPLAY_TARGET_NONE` would have been nominally free and actually not.
+
+### Proof — observed, not inferred
+
+All three targets compile clean for `teensy:avr:teensy41`, built from the same tree with only the one `#define` changed:
+
+| Target | FLASH code | RAM1 vars | warnings | Adafruit libs in build |
+|---|---:|---:|---:|---|
+| `_NONE` | 147 840 | 211 520 | 0 | **no** |
+| `_PI` | 150 848 | 212 672 | 1 | **no** |
+| `_RA8875` | 158 596 | 218 816 | 2 | yes (RA8875, GFX, BusIO) |
+
+The library column is from `arduino-cli compile -v` "Using library" lines and is the direct evidence that the guards work — the three Adafruit libraries are a build dependency **only** in the RA8875 build. The `_PI` warning is the pre-existing unused `payload_size` in `data_sender.cpp`; the `_RA8875` warnings are the pre-existing Adafruit `setRotation` hiding. Both are the baseline pair recorded in entry 2026-09-05. `[compiles]` — **nothing was uploaded to hardware.**
+
+### The protocol audit is the most important outcome of this session
+
+`data_sender`'s wire format predates the clamp-marker work, the confidence-denominator fix and the current insight/provenance model, and had never been checked against any of them. Full findings in [docs/pi_link_protocol_audit.md](../docs/pi_link_protocol_audit.md) — **17 findings, five 🔴, four of them failures of the invariant test above.**
+
+The one that matters most:
+
+**L1 — the TF clamp mask is not transmitted.** `AudioFrame.tf_clamped_bits[]` and `tf_clamped_count` exist precisely so a consumer can tell a saturation rail from a measurement, and `audio_engine.h:310` makes checking them **mandatory** for "any consumer that RENDERS `tf_db` to a human". `sendLiveFrame()` sends neither. So the Pi would plot a flat, confident, entirely fictional −24.0 dB curve — **the identical defect that printed `1kHz=-24.0dB` in 33 of 33 consecutive windows on 2026-09-07** before `aa9a795` fixed it for the serial diagnostic. This also means **promoting `data_sender` re-opens TODO-29 on a new surface**, which is an argument for eventually fixing that bug class at the presentation boundary rather than once per renderer.
+
+Then: **R1** `result_valid` — the top-level verdict — is not transmitted at all; the Pi must infer validity from the quality enum. **R2/R3** calibration provenance, type and warnings are not transmitted, so a calibrated result would display with its own caveats silently dropped, and the "show quality *and provenance*" requirement (README, TODO-12's proof criterion) cannot be met by either renderer today.
+
+**T1 is a prediction, and is labelled as one.** A 1 559-byte live frame is ~33.8 ms of blocking UART write time at 460 800 baud against a measured 46.3 ms audio block period — **73 %** — and `DISPLAY_UPDATE_EVERY_N_FRAMES` is 1, so one is sent every block. A max-size RESULT is ~214 ms. That is the same failure shape as the RA8875 `waitPoll()` stall, reached through a different peripheral, and it would be an unforced error to trade one for the other. **But it is arithmetic from baud rate and packet size, not a bench observation** — the actual TX buffer size and whether Audio-library DMA survives a stall have not been measured. It must not be recorded as a bench finding until instrumented; that measurement is part of Phase 10's acceptance.
+
+### Why the documentation fixes are not cosmetic
+
+Four documents independently corroborated the *wrong* architecture: README, the runbook, the as-built netlist, and the generated schematics. AI assistants are first-class readers of this repository, and a stale architecture document does not merely fail to help — it actively causes the next agent to reconstruct the wrong project. The README was additionally describing six directories that do not exist here (`audit/`, `development/`, `visualizations/`, `mock-test/`, `.github/`, `docs/ai/`) and claiming `signal_router` and `data_sender` were staged in `development/` when both have been at the root for some time. All corrected, with the correction stated in place rather than silently applied, so the drift itself stays visible.
+
+The as-built record got the narrowest and most interesting fix: its reserved-hardware list contained the RA8875 and **no Pi UART row at all**. A frozen as-built document that omits the production display interface while reserving the debug one will mislead a future reconstruction, so pins 0/1 are now documented as reserved in both `netlist.md` and `tools/gen_schematic.py`, and the drawings were regenerated from source (not hand-edited).
+
+### What the next session should know
+
+1. **Do not proceed with TODO-12 or TODO-14 as written.** Both are superseded (kept, not deleted — the design content transfers to the Pi's views).
+2. **Do not write a Pi-side parser yet.** TODO-34 must close first: five findings change the payload shape, so building against the current layout means building twice.
+3. **TODO-24 is no longer a product blocker.** The pin 8→5 rewire is needed only if you deliberately select the RA8875 debug backend with the panel mounted. Use `DISPLAY_TARGET_NONE` for Phases 5–9.
+4. **Always check the `[Main] Display target:` banner line** before interpreting a serial log. It was added specifically so a bench observation can never be misattributed to the wrong display architecture — which is the error class this entire session was about.
+5. `FIRMWARE_VERSION` is still `0.5.0` while `data_sender.{h,cpp}` headers say `v0.6.1`. Not changed here — a version bump stamps into every exported measurement result and is a deliberate decision, not a cleanup. Flagged, not resolved.
+6. Track A is untouched. The hardware bring-up path and its open items (TODO-21, TODO-32, TODO-23, TODO-29) are exactly where they were.
+
+---
+
 ## 2026-09-07 (9) — As-built capture FROZEN. Schematic reverse-engineered from the board, then audited against bench evidence: 2 material defects found and corrected
 
 **Why this entry exists:** the breadboard reached a known-good state on 2026-09-07 (6)/(7) after days of debugging, and nothing existed that could reconstruct it. This session captured it — a verified netlist, a generated schematic in one-sheet and two-sheet forms, and an audit of that schematic against the physical evidence. **The bench was never touched.** No measurement was taken, no wire moved, no firmware uploaded.
@@ -65,6 +367,88 @@ best-evidenced claims set a baseline before hardware-identity questions.
 The bench confirmation of the four 0.1 µF ceramics said *"all three"* for four parts. The discrepancy was raised rather than absorbed, and confirmed as a slip. **The four stay `RPT`, not `PHYS`** — a bench recollection is not equivalent to a read marking, and C1 is the reason why.
 
 **Next:** nothing outstanding on the capture. Phase 5 when the bench reopens.
+
+---
+
+## 2026-09-08 (1) — Phase 5 prep, bench probing: the assisting session is re-deriving the PRE-REBIAS topology, and two readings point at column mis-identification rather than a circuit fault
+
+**No hardware changed by this session. No measurements taken by this session.** This entry records a second opinion on a bench sequence run in a parallel ChatGPT conversation, which does not have filesystem access and is therefore working from the runbook's description rather than from `docs/asbuilt/netlist.md`.
+
+### 🚨 The important correction: col 41 is NOT "the VGND-side leg"
+
+The assisting session proposed, as its next step, a continuity check from **col 41** — described as *"the VGND-side leg of that 100 kΩ resistor"* — to **col 45**, VGND. It framed the intended topology as *"100 kΩ from the op-amp pin-3 node to VGND."*
+
+**That is the topology that was proven invalid and abandoned on 2026-09-05.** Per `docs/asbuilt/netlist.md` §3:
+
+- **OPA_BIAS** = col 41 A–E ∪ col 43 A–E (bridged `41e`→`43e`), fed by R1 47 kΩ from +5 V and R2 10 kΩ to GND ⇒ **0.877 V**, R<sub>th</sub> = 8.25 kΩ
+- **VGND** = `BOT_RED` · col 45 A–E, fed by R3/R4 10 kΩ/10 kΩ ⇒ **2.50 V**, R<sub>th</sub> = 5.0 kΩ
+- **R5 100 kΩ: `37c` → `41d`** — pin 3 to **OPA_BIAS**, not to VGND
+
+**Separating those two nets IS the common-mode fix** (TODO-21, journal 2026-09-05 (1)–(5)). TI's V<sub>CM</sub> ceiling is (V+) − 3.5 V = 1.5 V on this rail; biasing pin 3 at VGND ≈ 2.5 V is outside it, which is what caused the 327 mV droop that the rebias reduced to 6 mV.
+
+**So the proposed 41↔45 check is safe to run but its interpretation is inverted: NO BEEP is the correct, healthy answer.** A beep would mean OPA_BIAS is shorted to VGND, the buffer is back at an invalid operating point, and every measurement since 2026-09-05 is suspect. It is a fault test, not a confirmation test.
+
+### 🔺 Two readings both land on OPA_BIAS's Thévenin resistance — probe reference is the likelier problem
+
+| Reported | Expected from the as-built netlist | Reading |
+|---|---|---|
+| `45a` → GND | VGND divider, 10k ∥ 10k = **5.00 kΩ** | **8.58 kΩ** |
+| `42d` → GND | col 42 A–E is GND ⇒ **≈0 Ω** | **8.08 kΩ** |
+| `37c` ↔ `42d` | pin 3 → GND ⇒ R5 + 8.25k ≈ **108 kΩ** | **73.5 kΩ** |
+| `42d` → `BOT_RED` (VGND) | separate nets ⇒ **no beep** | **no beep** ✅ |
+
+**8.58 kΩ and 8.08 kΩ both sit within a few percent of 8.246 kΩ = 47 k ∥ 10 k, the OPA_BIAS Thévenin resistance.** Neither matches the 5.0 kΩ that VGND should present, and neither matches the ≈0 Ω that a GND column should present. Two independent probings, several minutes apart, landing on the same wrong-but-identical value is the signature of **column mis-identification on a crowded board**, not of two separate circuit faults.
+
+The one reading that behaved exactly as the netlist predicts is the `no beep` between the bias node and VGND — which is the reading that confirms the rebias is intact.
+
+### The measurement that would settle it in one step
+
+**OPA_BIAS and VGND are distinguishable by resistance to GND alone, with power off:**
+
+- **8.25 kΩ ⇒ you are on OPA_BIAS** (col 41 / col 43)
+- **5.0 kΩ ⇒ you are on VGND** (col 45 / `BOT_RED`)
+- **≈0 Ω ⇒ GND** (col 42, col 34, `38b`)
+
+One reading identifies which net a probe is on, without a continuity hunt and without relying on counting columns. **Establish the probe reference before taking any more readings** — a sequential chain of measurements built on an unverified column index accumulates error rather than resolving it.
+
+### ⚠️ R5's value is now genuinely in doubt, and it is not a cosmetic question
+
+`docs/asbuilt/netlist.md` carries R5 as `DERIV`. **That tag cannot be supported.** The R1–R4 derivation works because the divider sets a voltage that was measured (0.874 V vs 0.877 V predicted). **No such derivation exists for R5:** it feeds a JFET gate drawing picoamps, so it drops no measurable voltage, and no recorded measurement constrains it. Its value traces to TODO-4 step 3 and the runbook — i.e. `INF`, design intent, never verified.
+
+**Why it matters now, at Phase 5:**
+- **TODO-23** — input impedance *is* R5. If it is 75 kΩ rather than 100 kΩ, the front end loads a 6–250 kΩ pickup harder than the record claims, and the 1 MΩ target moves further away.
+- **TODO-19** — the C1 corner is set by R5. 10 nF into 100 kΩ ⇒ 159 Hz; into 75 kΩ ⇒ 212 Hz. The whole low-frequency limitation is quoted from a number nobody has measured.
+- Journal 2026-09-05 (6)'s consistency argument assumed 100 kΩ. At 1 kHz it predicts 0.9867 for 100 kΩ and 0.9782 for 75 kΩ against a measured 0.9848, so the sweep mildly favours 100 kΩ — but that is a 6× -above-corner probe and, as that entry itself says, nearly the least informative place to measure a high-pass.
+
+**Resolution: lift one leg of R5 and measure it out of circuit.** In-circuit readings cannot settle it, which is exactly what the 73.5 kΩ reading demonstrates. Logged as TODO-32.
+
+### ✅ Follow-up same session — col 41 confirmed OPA_BIAS, and the powered readings quietly re-verify Phase 4
+
+**`col 41` → GND = 8.20 kΩ** against 8.246 kΩ predicted (47 k ∥ 10 k). **0.6 % agreement.** col 41 is OPA_BIAS, OPA_BIAS is not VGND, and the rebias network is intact. The earlier 8.08 / 8.58 kΩ readings were the same net under wrong labels, as suspected.
+
+**Powered readings reported alongside it, and they are worth more than the identification:**
+
+| Node | 2026-09-05 (5) | 2026-09-08 | Δ |
+|---|---|---|---|
+| OPA_BIAS | 0.874 V | *(not re-read)* | — |
+| U1 pin 3 | 0.868 V | **0.864 V** | −4 mV |
+| U1 pin 1 | 0.875 V | **0.872 V** | −3 mV |
+
+**Three days, one interconnect rework, one LINE-IN-L restoration, several power cycles — and the operating point moved by 3–4 mV.** That is a reproducibility result the project did not have before. The analog front end is stable, and the rebias is not drifting.
+
+**And C2's output settled to 4.1 mV DC.** The runbook's Phase 4 end-of-phase table requires *"C2 output is DC-free — red on `48e`, black on GND — **< 50 mV**"*. **4.1 mV passes with 12× margin.** That criterion had never been logged as met; it is met now. Together with pin 1 tracking pin 3 (both criteria on the same table), Phase 4's electrical verify is substantially closed on real numbers rather than on inference.
+
+### R5: the stock list is evidence nobody has cited
+
+TODO-4's recorded inventory is **1 kΩ ×60 · 10 kΩ ×60 · 47 kΩ ×40 · 100 kΩ ×50 · 10 µF ×10 · 0.1 µF ×20**. There is **no 75 kΩ and no 68 kΩ in stock.** A resistor reading 73.5 kΩ is 26.5 % below 100 kΩ — far outside any plausible tolerance — so if R5 really were 73.5 kΩ it would have to be a part that is not in the documented inventory at all.
+
+**That materially raises the probability that R5 IS 100 kΩ and the 73.5 kΩ reading has a different explanation** — most likely one probe on an unconfirmed column, which is precisely the failure mode this entry already documents. It does not close TODO-32; an unmeasured resistor stays unmeasured. But it changes the prior.
+
+**Better next measurement than a column-to-column repeat:** `col 37` (pin 3 node) → **GND**, power off. GND is a known reference, so only one endpoint can be wrong. Predicted **108.25 kΩ** if R5 = 100 kΩ (R5 + the 8.25 kΩ OPA_BIAS Thévenin), versus **81.75 kΩ** if R5 = 73.5 kΩ. The two hypotheses are 32 % apart — unmissable on any meter, and it needs nothing lifted.
+
+### Standing note for Phase 5
+
+This is the same class of error the project has now hit repeatedly: **a document describing the intended circuit was used in place of the record of the built one.** The runbook still describes the pre-rebias Phase 4. Anyone assisting at the bench without filesystem access will reconstruct that circuit in good faith. `docs/asbuilt/netlist.md` is the reconstruction authority — paste the relevant net rows into any assisting conversation before probing, not after a discrepancy appears.
 
 ---
 

@@ -128,6 +128,31 @@ Compare each candidate on, at minimum: **input common-mode range at 5 V · outpu
 **Root cause of the two-day detour:** the runbook gap in **TODO-18** — Phase 4 says "Unplug USB" and never says to reconnect before demanding live DMM readings. This was correctly identified on 2026-09-03, then wrongly withdrawn on a mistaken report that the 0 V had been measured with power connected. Reinstated.
 **Kept from this item, demoted to housekeeping:** the runbook specifies the **`VUSB` pad** (Phase 1 Step 2, line 561) and never mentions VIN in 1860 lines, while the debugging session probed "5V/VIN." A real documentation inconsistency worth settling for clarity — but **not implicated in any fault.** See journal.md 2026-09-05 (1).
 
+### TODO-40 — Locate the source of the ~40 mV<sub>pp</sub> on the SOURCE front end 🔴 **HYPOTHESIS: D2's missing bulk cap. NOT a confirmed diagnosis — read the proof criterion before acting**
+**Established (journal 2026-09-12 (1)):** lifting `48e` off SGTL5000 LINE-IN-L dropped SOURCE_NODE from **−31.3 to −57.0 dBFS, a 25.9 dB collapse**, leaving it 1.8 dB above the open RETURN channel. The noise is delivered through the analog front end; the codec, its routing and the digital capture path are exonerated. Independently corroborated: −31.3 dBFS back-converts to 36.2 mV<sub>pp</sub> at the codec input, against 45.77 mV<sub>pp</sub> measured on the scope at the same node.
+**NOT established:** where between C1's output and `48e` it originates.
+**🔺 The hypothesis — deviation D2.** `docs/asbuilt/netlist.md` §5 records that OPA_BIAS carries **only C4 (0.1 µF)**, while TODO-4 step 2 specified **10 µF electrolytic + 0.1 µF ceramic**. The bulk cap was never fitted. OPA_BIAS draws 88 µA static, has R<sub>th</sub> = 8.25 kΩ, and is fed by R1 47 kΩ from a +5 V rail shared with the Teensy and the codec. R5 then delivers whatever is on that node to pin 3 — a picoamp JFET gate, so essentially undivided — and a unity-gain follower reproduces it. The rail-to-bias divider ratio is 10/(47+10) = **0.175**, so ~180 mV<sub>pp</sub> of rail noise would yield ~31 mV<sub>pp</sub> at OPA_BIAS.
+**⚠️ Why this is only a hypothesis.** The scope readings 31.35 (OPA_BIAS) → 37.90 (pin 1) → 45.77 mV<sub>pp</sub> (`48e`) look like a rising gradient, **but the grounded-probe control was never recorded under the final settings (20 MHz limit engaged)**. The probe/scope floor is unknown, so the first two figures may be substantially or entirely floor. **A gradient measured against an unknown floor is not a gradient.** Do not treat D2 as diagnosed.
+**Competing candidates, none excluded:** U1's own noise · the biased high-impedance node at col 33/37 picking up directly · C2 · the `48e` run itself · a shared ground/rail mechanism coupling preferentially into the high-impedance path.
+**Proof criterion — in this order, and step 1 is not optional:**
+1. **Record the grounded-probe control V<sub>pp</sub> under the exact final scope settings.** Every amplitude comparison in this investigation depends on it. Until it exists, no reading below the ~46 mV<sub>pp</sub> at `48e` can be interpreted.
+2. **Scope the +5 V rail, same settings.** If it reads ≈5.7× the OPA_BIAS amplitude, the divider path is consistent. If the rail is clean, the noise is local to the bias node and D2 remains the right fix for a different reason.
+3. **Fit the 10 µF bulk cap on OPA_BIAS** (+ to OPA_BIAS, − to GND), reconnect `48e` → LINE-IN-L, and re-measure SOURCE_NODE peak over ≥5 windows. **This is the decisive single-variable test.** SOURCE falling materially below −31.3 dBFS confirms D2 was contributing; no movement falsifies it and the search moves to the other candidates.
+**Note the fix is worth doing either way:** D2 is a recorded departure from the specified design, and **10 µF ×10 is already in stock** per TODO-4. Fitting it corrects a known deviation regardless of what it does to the noise floor — but **record the before/after so the result is evidence, not housekeeping.**
+**Bench-safety:** all of this is on the analog section (cols 41–43) and the `48e` run. It does **not** touch the Audio Shield or the I²S interconnect, so it does not threaten the R1-protected geometry (journal 2026-09-07 (6)).
+**Also outstanding from this session:** `col 30` → GND jumper still fitted, `48e` → LINE-IN-L still lifted, J2 still removed. **Restore all three and re-baseline before any result is treated as comparable to the −31.49 dBFS pooled baseline.**
+
+### TODO-32 — R5's value has never been measured, and it sets BOTH the input impedance and the C1 corner 🔴 **blocks TODO-23 and TODO-19 — resolve before Phase 5's first pickup**
+**Why:** every statement this project makes about input impedance (TODO-23) and low-frequency corner (TODO-19) rests on R5 = 100 kΩ, and **nothing has ever verified that number.** It traces to TODO-4 step 3 and the runbook — design intent. `docs/asbuilt/netlist.md` carries it as `DERIV`, which **cannot be supported**: R1–R4 are derivable because the divider sets a voltage that was measured (0.874 V vs 0.877 V predicted), but R5 feeds a JFET gate drawing picoamps, drops no measurable voltage, and is constrained by no recorded measurement. The correct tag is `INF`.
+**What the in-circuit probing showed (2026-09-08, ChatGPT bench session):** `37c` ↔ the bias node measured **73.5 kΩ** in circuit, against ~108 kΩ expected for 100 kΩ + the 8.25 kΩ OPA_BIAS Thévenin. That is unexplained. It may be a mis-identified probe column (see journal 2026-09-08 (1)) rather than a wrong resistor — **in-circuit readings cannot separate the two, which is the whole point.**
+**Consequences if R5 is not 100 kΩ:**
+- **Input impedance** is R5. 75 kΩ loads a 6–250 kΩ pickup harder than the record claims and moves TODO-23's 1 MΩ target further away.
+- **The C1 corner** is set by R5. 10 nF into 100 kΩ ⇒ 159 Hz; into 75 kΩ ⇒ **212 Hz**. Every low-frequency limitation quoted in this project comes from an unmeasured number.
+- Journal 2026-09-05 (6)'s consistency check assumed 100 kΩ. It mildly favours 100 kΩ (predicts 0.9867 vs 0.9782 for 75 kΩ, measured 0.9848) but that entry already says a 1 kHz probe is nearly the least informative place to measure a 159 Hz high-pass.
+**What:** **lift one leg of R5 and measure it out of circuit.** Then read its colour bands and record both. Do it in the same bench pass as any other analog-section work — it touches cols 37/41 only, **not** the shield or the I²S geometry, so it does not threaten R1's protected configuration.
+**Proof:** an out-of-circuit ohmmeter reading and a band reading agreeing on one value, recorded in journal.md, and `docs/asbuilt/netlist.md` R5 promoted from `DERIV` to `MEAS`.
+**Sequencing:** resolve jointly with TODO-23 and TODO-19 — if R5 is being swapped toward 1 MΩ anyway, measure the old part on the way out rather than making two passes.
+
 ### TODO-23 — Buffer input impedance is ~100 kΩ — too low for a guitar pickup 🔴 lands on Phase 5
 **Why:** The input bias resistor to VGND is 100 kΩ (confirmed by the runbook's own corner-frequency arithmetic, R = 100 000), setting input impedance at ~100 kΩ. The runbook's Phase 4 Background justifies the JFET choice by noting pickups are high-impedance (6–250 kΩ) — then loads them with 100 kΩ, which rolls off highs and reduces output. Standard guitar-amp input is ~1 MΩ. **The runbook argues for a high-impedance front end and builds a comparatively low-impedance one.**
 **What:** Harmless at Phase 4 (a phone is a low-impedance source) but it bites at Phase 5's first real instrument jack. Raise the bias resistor toward 1 MΩ, which **also shifts the input RC corner** — resolve jointly with TODO-19 and TODO-21 rather than in isolation, since all three touch the same network.
@@ -337,7 +362,21 @@ Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's
 **⚠️ Until this is done, no number from the firmware is a measurement.** SOURCE_NODE at +0.0 dBFS is *not* evidence the analog buffer works; it is evidence the digital path is untrustworthy. Do not read the current diagnostics as validating or condemning the front end.
 **Proof:** RETURN_NODE reads near the noise floor with nothing connected, and SOURCE_NODE tracks the injected signal level rather than sitting at full scale.
 
-### TODO-24 — Pin 8 collision: RA8875 reset vs I2S RX_DATA0 🟡 **config fixed 2026-09-05 (8→5, compile-verified); rewire + boot-order halt still outstanding**
+### TODO-24 — Pin 8 collision: RA8875 reset vs I2S RX_DATA0 🟢 **NO LONGER A PRODUCT BLOCKER — ADR-001 demoted the RA8875 (2026-09-11)**
+**Status 2026-09-11:** the config fix stands and the engineering record below is
+kept in full — it is the most instructive debugging narrative in this project and
+the reason pins 0/1 were protected for the Pi link in the first place. But under
+[ADR-001](../docs/adr/ADR-001-display-architecture.md) the RA8875 is debug hardware,
+so `RA8875_RESET_PIN` is only claimed when `DISPLAY_TARGET == DISPLAY_TARGET_RA8875`.
+**The physical rewire is now required only if you deliberately select the RA8875
+debug backend with the panel mounted** — not for the production build, and not for
+any Phase 5–9 bench work (use `DISPLAY_TARGET_NONE`).
+**The boot-order concern is closed separately and was already false:**
+`displayEngine_init()` failure has not halted boot since the TODO-25 work — the
+`.ino` logs a warning and continues, and `display_engine.cpp` guards all six entry
+points on `s_display_ok`. `presentation_init()` now carries that non-fatal contract
+explicitly for every backend, so no future renderer can reintroduce the dependency.
+**Original entry (retained):** 🟡 config fixed 2026-09-05 (8→5, compile-verified); rewire + boot-order halt still outstanding
 **✅ Done:** `config.h:79` now `#define RA8875_RESET_PIN 5`, with an inline warning against reverting. Compiles clean for `teensy:avr:teensy41`. One line sufficed — the pin is referenced only via the macro (`display_engine.cpp:36` and `:440`), no hardcoded 8s anywhere.
 **🔴 Still outstanding:** (a) physical rewire of the display reset to pin 5 when the RA8875 is actually mounted — no wiring changed yet, by instruction; (b) **the boot-order halt is a separate blocker and is NOT fixed** — see below. Moving the pin does not by itself let the SOURCE_NODE test run.
 **Why:** `config.h:79` sets `#define RA8875_RESET_PIN 8`, passed to `Adafruit_RA8875 tft(...)` at `display_engine.cpp:36`. **Pin 8 is I2S RX_DATA0 on Teensy 4.x** — the line carrying line-in audio *into* the Teensy. Verified from the Audio library source, `input_i2s.cpp:222` (`__IMXRT1062__` branch), not from memory. Whichever initialises last wins the mux: display wins ⇒ no audio input at all; `AudioInputI2S` wins ⇒ the display's reset line is driven by I2S data.
@@ -355,6 +394,15 @@ Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's
 **What:** Insert an explicit "Reconnect USB" step between Step 13 and the End-of-phase verify. While there, audit Phases 5–9 for the same unplug-without-restore pattern (Phase 5 also opens with "Unplug USB" — confirm it restores power before its own verify).
 **Proof:** Phase 4 read end-to-end contains an explicit power-restore step ahead of its first live measurement, and no other phase demands a live reading without a preceding powered state.
 
+### TODO-31 (D5) — Runbook rail-bridge contradiction: followed literally, the instructions short +5 V to VGND 🔴 **documentation defect, adjacent to TODO-18 — not a hardware fault**
+**Why:** `docs/breadboard_bringup_v3.md` Phase 0 Step 5 (line 262) instructs bridging **top-red ↔ bottom-red** at columns 1 and 60. Phase 1 Step 7 (line ~627) then **re-purposes bottom-red as VGND** ("This *re-purposes the bottom-red rail as VGND.*"). Nothing between them says to remove or revise the earlier red bridges. **Followed literally and in order, the runbook connects +5 V to VGND.**
+**This is a defect in the instructions, not a claim about the board.** Whatever the bench actually has, the runbook cannot be followed as written. Same class as TODO-18 (Phase 4 unplugs USB and never restores it): a step sequence that is individually sensible and collectively wrong, and it will mislead whoever next uses the document for reconstruction.
+**Surfaced 2026-09-07** during the `docs/asbuilt/netlist.md` audit; named D5 by the photo-owning session (`0476826b`). See journal.md 2026-09-07 (7)/(8) era and the audit exchange.
+**What:** Audit and correct the Phase 0 → Phase 1 sequence. Either Step 5 should bridge GND only, or Step 7 must explicitly instruct removing the red bridges before bottom-red becomes VGND. **Do this before the runbook is used for any reconstruction.** While there, audit whether any other phase re-purposes a rail that an earlier phase bonded.
+**Proof:** Phase 0 → Phase 1 read end-to-end never places +5 V and VGND on the same net at any point in the sequence.
+**✅ The defect was NOT built — confirmed 2026-09-07 by direct visual inspection** (`docs/asbuilt/netlist.md` §6b): no red conductor bridges `TOP_RED`↔`BOT_RED` at either end; only the yellow GND bridges are fitted. VGND is intact and the col-45 divider works as intended. **So this is purely a documentation fix with no hardware implication** — but it is still a live trap for anyone who follows the runbook as written.
+**Not blocking:** no bench action required. The as-built bridge status is closed in TODO-20.
+
 ### TODO-19 — Decide C1 input coupling cap value before trusting any low-frequency measurement 🔴 low priority, but a correctness trap
 **Why:** C1 = 10 nF gives a high-pass corner of ~160 Hz — *above* the low-E fundamental at 82 Hz. The runbook's own Phase 4 Background flags this and suggests 0.1 µF ceramic (20 on hand) for a ~16 Hz corner. Left as-is, low-frequency rolloff will look like a fault or, worse, be silently accepted as real rig response.
 **What:** Keep 10 nF for topology validation. Before any bass-inclusive measurement, either swap to 0.1 µF or explicitly document the 160 Hz floor as a known measurement limit.
@@ -365,10 +413,26 @@ Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's
 **Why:** Phase 1 passed and the +5 V rail worked — confirmed by Conley 2026-09-03. It has no journal entry only because the journal was created *after* Phase 1 was completed, and no TODO item because Track A's numbering starts at TODO-1 (compile blocker) / TODO-2 (Phase 2). **This is an artifact of when record-keeping started, not evidence of an unverified build** — an earlier draft of TODO-4 wrongly inferred the latter. Corrected here so no future session re-derives that mistake.
 **What:** Log Phase 1's end-of-phase results retroactively if the numbers can be recalled or re-measured: +5 V rail 4.85–5.10 V; VGND 2.40–2.60 V; VGND midpoint symmetry within 0.05 V; GND continuity top-blue↔bottom-blue; **no** top-red↔top-blue short. Note Step 2 (line 561) sources 5 V from the **`VUSB` pad**, not VIN — see TODO-4.
 **Proof:** Phase 1's five checks present in journal.md with values, so the evidence chain from Phase 1 forward is continuous and the "last known-good state" is documented rather than reconstructed from memory.
+**🔺 2026-09-07 — the power-isolation criterion above is the same question as the as-built audit's GAP-7. Merged here rather than tracked twice.** This item already carried "**no** top-red↔top-blue short" as a Phase 1 sign-off check, and **that check was never evidenced.** The `docs/asbuilt/netlist.md` audit re-derived the same gap independently from the runbook (see TODO-31/D5), which is what surfaced the overlap.
+**What the record does and does not establish:**
+- **Retrospective evidence, 2026-09-05:** the VGND rail measured **2.480 V** with the op-amp removed (journal.md 2026-09-05 (1), journal.md:1335). A fitted top-red↔bottom-red bridge would have put VGND at ~5 V. **That reading therefore demonstrates no +5 V/VGND bridge existed at the time of the measurement** — it retrospectively satisfies the Phase 1 criterion for that date. Historical `MEAS`.
+- **It does not establish the current as-built state.** The OPA_BIAS rework happened later the same day (journal 2026-09-05 (3)–(5)), so rail wiring could in principle have changed after that reading. Treat 2.480 V as historical evidence, not as proof of present physical routing.
+- **Current status: awaiting photo reconciliation.** The photo-owning session (`0476826b`) has been asked a photo-only question — whether any **red** conductor bridges top-red↔bottom-red at columns ~1 or ~60 — with the known yellow GND bridges explicitly excluded as evidence either way. **No bench measurement is authorised for this**; if the photographs cannot resolve it, the correct answer is unverified.
+**✅ CLOSED 2026-09-07 by direct visual inspection — no red bridges fitted** (`docs/asbuilt/netlist.md` §6b). `PHYS`. The Phase 1 power-isolation criterion is now evidenced, four weeks late, by observation rather than by the retrospective 2.480 V argument.
+**The 2.480 V reading is demoted to a historical consistency check**, exactly as scoped above — it falsified a bridge on 2026-09-05 and was never proof of the present state. It was right, and it was still the wrong thing to close on.
+**Method note worth keeping:** this gap stayed open through two failed photographic passes and closed only on a directed look at the board. Photographs proved sufficient for topology, component identity and interconnect geometry, and insufficient for one specific class of question — **which of two adjacent rail rows a conductor lands in.** Same limitation closed GAP-1. Budget a physical look for rail-row questions; do not expect a photo set to answer them.
+**Still open in this item:** the other four Phase 1 numbers (+5 V rail, VGND value, divider symmetry, GND continuity) remain unlogged.
 **Broader lesson worth keeping:** the journal starting mid-build means **the earliest phases have a silent evidence gap**. When reasoning about regressions, "no record" here does not mean "never tested" for anything at or before Phase 1.
 
-### TODO-5 — Phase 5: First real instrument jack (Switchcraft #11) 🔴
-**Proof:** Sign-off checklist line: "Switchcraft #11 + invert define both work — guitar plays through, detect events fire."
+### TODO-5 — Phase 5: First real instrument jack (Switchcraft #11) 🟡 **jack INSTALLED and signal path verified 2026-09-08; detect-event half still blocked**
+**✅ Electrical half done — builder-reported 2026-09-08.** The real 1/4" jack is installed and the path verified end to end: **guitar → 1/4" jack → col 30 → C1 → col 33 → OPA1642 → C2 → SGTL5000 LINE-IN-L**. The old J1 3.5 mm breakout is **no longer the guitar path** — any instruction routing a guitar through J1 or a 1/4"→3.5 mm adapter is stale and actively misleading. `RPT` (builder-reported; not yet photo- or continuity-confirmed by an independent pass).
+**🔴 Detect-event half NOT done, and it is the harder half.** The sign-off line is *"Switchcraft #11 + invert define both work — guitar plays through, **detect events fire**."* Guitar-plays-through is now met. Detect events cannot fire, for two independent reasons verified in the active tree 2026-09-07:
+1. **`signalRouter_init()` / `signalRouter_update()` are not called anywhere in `guitar_rig_analyzer.ino`.** The router has never been in the live path. This is TODO-3's deferred half and TODO-11.
+2. **`JACK_DETECT_INVERTED` does not exist** in `config.h` or `signal_router.cpp`. The runbook prescribes it because the Switchcraft #11 switch is shorted-to-tip when empty and open when inserted, so the logic reads backwards without it.
+Both are compile-time work. **Neither requires touching the bench.**
+**⚠️ The runbook's Phase 5 repeats the TODO-18 defect.** Step 5 says "Unplug USB" and no reconnect, re-plug, power-restore or upload instruction appears anywhere in the rest of the phase. Same gap that cost two days at Phase 4. Fix before following it.
+**Open measurement question raised during bring-up (2026-09-08):** SOURCE_NODE idles at **≈−31.5 dBFS** against RETURN's **≈−60.8 dBFS** on the same codec, rails and board — a ~29 dB asymmetry. Guitar volume at zero did not change it (means −31.40 → −31.48 dBFS, 0.08 dB), which weakens the pickup/cable-antenna hypothesis without eliminating cable contribution. **Localised to the SOURCE-side analog path, or specific to it — shared power/ground mechanisms are not excluded by this evidence alone.** See journal.md 2026-09-08.
+**Proof:** unchanged — both halves of the sign-off line, not just the first.
 
 ### TODO-6 — Phase 6: First relay driver, RELAY_SEND (TQ2-5V) 🔴
 **Why:** Breadboard uses non-latching TQ2-5V (DigiKey 255-1004-5-ND) instead of the TQ2-L2-5V purchased for the eventual PCB, because current firmware drives each relay with one static GPIO — see journal.md 2026-08-25 entry for the full reasoning. Don't "fix" this by swapping in the latching parts without also changing the firmware.
@@ -393,6 +457,254 @@ Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's
 
 ---
 
+## Track C — Display architecture reconciliation (ADR-001) — **resolve before any further UI work**
+
+Opened 2026-09-11 after an audit found the repository building an RA8875 product
+while still carrying the Pi 5 architecture as documentation and dead code. The
+decision is recorded in [docs/adr/ADR-001-display-architecture.md](../docs/adr/ADR-001-display-architecture.md):
+**the Pi 5 is the production renderer; the RA8875 is demoted to debug hardware;
+the Teensy remains sole authority for measurement truth.**
+
+Sequencing rule: TODO-12 and TODO-14 do **not** proceed in their current form.
+Every hour spent polishing the RA8875 interface makes this correction more
+expensive.
+
+### TODO-33 — `DISPLAY_TARGET` + presentation boundary 🟢 **DONE — compile-verified 2026-09-11, all three targets**
+**Why:** the application had ~20 direct `displayEngine_*` calls and `data_sender`
+had zero callers — two renderer architectures, one unreachable. Swapping the call
+sites to `dataSender_*` would have hard-wired the second assumption in place of
+the first. A boundary makes renderer choice a build decision.
+**What was done:**
+- `presentation.{h,cpp}` — the only display-facing API the application may call.
+  Seven functions, one-way by design: no return path exists through which a
+  renderer could report a measurement value or validity verdict back into the
+  measurement path.
+- `config.h` — `DISPLAY_TARGET` tri-state (`_PI` / `_RA8875` / `_NONE`) replacing
+  the never-implemented boolean `USE_PI_DISPLAY`, with an `#error` on an invalid
+  value. `_NONE` is independently valuable: it is the honest configuration for
+  bench DSP work with no panel attached, which is what Phases 5–9 actually run in.
+- `guitar_rig_analyzer.ino` — 27 call sites rewired to `presentation_*`; header
+  documentation and boot banner updated. The banner now prints the backend name so
+  no serial log pasted into this journal can be misattributed to the wrong renderer.
+- **`validation.cpp` — 14 direct `displayEngine_*` calls found and rewired.** This
+  was a real leak: the validation harness, which runs Phase 9 and proves the
+  instrument works, was hard-wired to the RA8875 and would have kept an RA8875
+  dependency alive inside a Pi build while reporting nothing to the Pi.
+- `display_engine.cpp` and `data_sender.cpp` bodies wrapped in
+  `#if DISPLAY_TARGET == ...` guards. Necessary because an Arduino build compiles
+  **every** `.cpp` in the sketch folder regardless of includes — without the
+  guards, `_NONE` would not actually be free and the unselected backend would stay
+  a build dependency.
+
+**Proof (observed, not inferred):** all three targets compile clean for
+`teensy:avr:teensy41`. `arduino-cli compile -v` library lists confirm exclusivity —
+Adafruit RA8875 / GFX / BusIO appear **only** in the `_RA8875` build. Figures below
+are post-TODO-34 (protocol v2):
+
+| Target | FLASH code | RAM1 free for locals | RAM2 vars | warnings | Adafruit libs linked |
+|---|---:|---:|---:|---:|---|
+| `_NONE` | 147 904 | 148 928 | 46 720 | **0** | no |
+| `_PI` | 152 960 | 146 656 | 62 528 | **0** | no |
+| `_RA8875` | 158 596 | 140 608 | 46 720 | 2 | yes (3) |
+
+The `_PI` build's two remaining warnings are gone as of TODO-34 — the unused
+`payload_size` went with the rewritten code path. The two `_RA8875` warnings are
+the pre-existing Adafruit `setRotation` hiding, inside the third-party library
+itself. The `_PI` RAM2 delta (+15 808 B) is the three `DMAMEM` transport buffers
+landing in OCRAM rather than the tight RAM1 budget, as intended — RAM1 free for
+locals differs by only ~2.3 KB between `_PI` and `_NONE`.
+**Not yet uploaded to hardware** — compile proof only. `[compiles]`
+
+### TODO-34 — Audit and freeze the Pi link wire format 🟡 **SCHEMA FROZEN 2026-09-11 (protocol v2). Transport unproven — T1 bench measurement outstanding**
+
+**🟢 Closed in source (protocol v2, `PI_PROTOCOL_VERSION 2`):** all five 🔴 findings plus six 🟡.
+- **L1 — clamp state now on the wire.** Per transmitted bin, one byte carries the number of source bins CLAMPED (high nibble) and VALID (low nibble), plus frame-level `tf_clamped_count` over all 512 source bins. The rendering contract is written into `data_sender.h`: `clamped == ratio` means draw a saturation indicator, **not** the rail value; `valid == 0` means pen-lift.
+- **L2 — decimation domains separated.** Linear spectra decimate by **maximum** (peak-preserving: an arithmetic mean under-reported a lone peak by 12 dB); `tf_db` keeps the dB mean. Both choices are now stated on the wire contract rather than being undocumented defaults.
+- **L3 — NaN coverage preserved** via the valid nibble; a bin with no energised source bins emits NaN.
+- **R1 `result_valid`, R2 `calibration_provenance[96]`, R3 `calibration_type` + 5 warning bits, R5 structured `firmware_version`, R6 `fft_size`/capture blocks/node channels/`line_in_level`** — all transmitted.
+- **T2 → structured HELLO packet** (`0x06`) with numeric protocol/bin/baud fields and a capability bitmap. **T4** closed by that bitmap: the Pi can now distinguish "monitor mode off" from "monitor mode not compiled in", so it will not render a control that cannot respond. `MODE_PRECISION`/`MODE_LF` bits stay clear because `arm()` still rejects them — advertising them would be a lie the Pi would act on.
+- **T3 → VIEW packet** (`0x07`). `presentation_restoreLive()` no longer sends a magic `"VIEW:LIVE"` status string.
+- **T5** gone with the rewritten code path; `_PI` and `_NONE` now compile with **zero warnings**.
+- **R4 / R7 deliberately deferred** (result auto-spectra = +4 KB/packet, revisit after T1; `phase_unwrapped`/`tf_raw_mag_db` recoverable or redundant). Recorded as decisions, not omissions.
+
+**🟡 T1 — mitigated architecturally, NOT YET MEASURED. This is the only thing standing between v2 and a freeze.**
+The rule is now explicit in source: **presentation transport must be lossy before measurement becomes lossy.** LIVE_FRAME is best-effort/droppable/latest-wins; RESULT is reliable, staged and drained across loop iterations by `dataSender_service()`; events are best-effort. Every write is gated on `availableForWrite()` and **no blocking write remains**. The TX buffer is extended to 4 KB via `addMemoryForWrite()` — a `static_assert` enforces that it exceeds one framed live frame, because otherwise `availableForWrite()` could never report room and *every* frame would silently drop.
+Safety net: `measurement_state` rides in every live frame, so a dropped ABORTED costs the reason string, not the fact.
+**Note the trade made knowingly:** v2's live frame is *larger* than v1's (1 689 B vs 1 559 B, ~36.7 ms vs ~33.8 ms predicted) because closing L1/L3 costs 130 bytes of coverage data. Those bytes are what stop the Pi rendering a rail as a measurement, and the larger frame is only safe *because* it is now droppable.
+**Proof required (Phase 10 step 11/12, TODO-35):** measured max call duration in **microseconds**; block timing with a Pi consuming indistinguishable from `DISPLAY_TARGET_NONE`; and block timing unchanged with the Pi **absent, stalled, and yanked mid-result**. A high drop count with a low max call time is the policy working. **Do not close T1 on a source reading.**
+
+**Instrumentation shipped for that measurement:** `dataSender_getStats()` / `dataSender_printDiagnostics()`, surfaced as the `u` serial command and printed inside the existing 5 s diagnostic window so transport figures sit directly beneath block timing — the question is never "how many frames dropped" alone, it is "did transmission perturb acquisition".
+
+**Protocol acceptance tests** (docs/pi_link_protocol_audit.md): A the truth question per field · B no new blocking write · C layout drift cannot be silent (`static_assert` + a runtime check that refuses to send a drifted packet) · D receiver survives unknown packet types · E renderer cannot perturb measurement.
+
+**Original audit findings, retained below for the reasoning trail:**
+**Why:** `data_sender`'s protocol was written before the clamp-marker work, the
+confidence-denominator fix and the insight/provenance model reached their current
+form, and had never been checked against them. Promoting it to production makes it
+a compatibility surface between two codebases.
+**Findings:** [docs/pi_link_protocol_audit.md](../docs/pi_link_protocol_audit.md) —
+**17 findings, five 🔴, four of them failures of the ADR-001 invariant** ("the
+Teensy determines truth"). Every invariant failure is the same mistake: the
+firmware computes a verdict and does not put it on the wire.
+- **L1 🔴 the TF clamp mask is not transmitted.** `tf_clamped_bits[]` /
+  `tf_clamped_count` exist precisely so consumers can distinguish a saturation
+  rail from a measurement, and `audio_engine.h:310` makes checking them mandatory
+  for any consumer that renders `tf_db` to a human. `sendLiveFrame()` sends
+  neither. **This re-opens TODO-29 on a new surface** — the Pi would plot a flat,
+  confident, entirely fictional −24.0 dB curve exactly as the serial diagnostic
+  did in 33 of 33 windows on 2026-09-07 before `aa9a795` fixed it.
+- **R1 🔴 `result_valid` is not transmitted at all.** The Pi must infer validity
+  from the quality enum — re-deriving a judgement the Teensy already made.
+- **R2/R3 🔴 `calibration_provenance`, `calibration_type` and
+  `calibration_warnings` are not transmitted.** The result view is specified to
+  show provenance (README, TODO-12 proof criterion) and cannot. A calibrated
+  result would display with its own warnings silently dropped.
+- **T1 🔴 blocking UART writes sit in the real-time super-loop.** A 1 559-byte
+  live frame is ~33.8 ms of wire time at 460 800 baud — **73 % of the measured
+  46.3 ms audio block period** — and `DISPLAY_UPDATE_EVERY_N_FRAMES` is 1, so one
+  is sent every block. A max-size RESULT is ~214 ms, ~4.6 block periods. Same
+  failure shape as the RA8875 `waitPoll()` incident, different peripheral.
+  **⚠️ This is an analytic prediction from baud rate and packet size, NOT a bench
+  measurement** — the TX buffer size and whether Audio-library DMA survives a
+  stall have not been measured. Instrument it before recording it as a finding.
+- **T2 🟡 the protocol version is a human-readable string** the Pi must parse to
+  establish its own compatibility contract.
+**What:** close L1, R1, R2, R3 and T2 — they change the payload shape — then
+version and freeze the format. Measure T1 before choosing its fix.
+**Proof:** a frozen, numbered protocol spec; a Teensy-side packet dump showing
+clamp state, `result_valid` and provenance present; and a measured (not predicted)
+worst-case loop-blocking figure for both packet types.
+
+### TODO-35 — Phase 10: Pi 5 integration and bench acceptance 🔴 **ready to run — this phase is what closes TODO-34's T1 and freezes protocol v2**
+**Why:** the Pi 5, Active Cooler, 27 W PSU, Touch Display 2 and Freenove GPIO HAT
+were all purchased and the runbook's parts list marks them "used in Phase 9" — but
+Phase 9 in that same document is the **validation harness**. The Pi was in the bill
+of materials with nowhere to be installed. Retrofitting it into Phase 9 would
+repeat exactly the status-collapsing error this file warns against.
+**What:** Phase 10 in `docs/breadboard_bringup_v3.md` — Teensy `Serial1`
+(pins 0/1) to the Pi UART via the Freenove HAT, level/ground verification before
+any data, then link bring-up.
+**Proof:** acceptance must test **Teensy UART → Pi → rendered known data
+independently of the full analyzer** — a synthetic/known frame rendered correctly
+on the Pi panel, plus CRC-rejection behaviour demonstrated by deliberately
+corrupting a packet. Do not accept the phase on "the analyzer seems to work".
+
+**🔬 THE T1 ACCEPTANCE MATRIX — this is the decisive test and the harness for it
+now ships.** `timing_probe.{h,cpp}`, compiled into **all three** targets (the
+control run must use identical code, or the comparison is meaningless). Commands:
+`t` starts a measurement window, `T` prints a fixed-format `key=value` report
+built to be diffed mechanically.
+
+| Run | Build | Condition | Role |
+|---|---|---|---|
+| 1 | `_NONE` | no display hardware | **THE CONTROL** |
+| 2 | `_PI` | reader consuming normally | normal operation |
+| 3 | `_PI` | reader suspended (`kill -STOP`), UART stays full | sustained backpressure |
+| 4 | `_PI` | TX pulled mid-RESULT drain | loss mid-transaction |
+
+Identical window length (≥60 s) and identical signal conditions across all four.
+
+**Pass condition — acquisition must not move:**
+- `block_ms_mean` / `block_ms_max` / `block_ms_spread` **indistinguishable from run 1**
+- `blocks_skipped` / `skip_events` / `largest_block_gap` = **0 in every run**
+- `loop_us_max` and `audio_blocks_high_water` comparable to run 1
+- Validation suite still runs and passes in run 3
+
+**Transport is ALLOWED to degrade:** drops in runs 3/4 are expected and correct;
+`TX room min = 0` in runs 3/4 is backpressure being absorbed as designed;
+non-zero abandoned result bytes in run 4 is correct.
+
+**⚠️ DO NOT PASS ON A SMALL CALL TIME.** A microsecond-fast `presentation_*()` can
+still disturb the instrument through interrupt load, UART ISR activity, DMA
+contention or buffer servicing — none of which appear in a call-duration figure.
+The pass condition is the comparison against run 1. The control run *is* the
+threshold; there is no absolute number to argue about. This matters more here than
+in a typical embedded project because the firmware is built around one capture
+owner and one canonical timebase, and everything time-sensitive references it.
+
+Keep all four reports verbatim in journal.md. On pass: T1 closes, protocol v2 goes
+from *schema-frozen, transport-unproven* to proven, and the milestone is
+**v0.6.0 — Pi presentation architecture validated**.
+
+### TODO-36 — Pi-side software deliverables 🔴 **schema is frozen — write the parser; start the renderer only after T1 passes**
+**Status 2026-09-11:** protocol v2 is **schema-frozen** — field positions, packet
+type ids, enum meanings, clamp/coverage semantics and the RESULT layout will not
+change without a defect and a version bump. The parser can be written now.
+
+**Read `live_bins` and `decim_ratio` from the HELLO packet rather than hardcoding
+them.** Cadence, bin count, TX buffering, chunking and baud are explicitly NOT
+frozen — Phase 10's T1 measurement may change any of them — and a receiver that
+takes its geometry from HELLO is immune to all of it. One that hardcodes 128 bins
+will break the first time the cadence lever is pulled.
+
+**Do not start the renderer/UI until T1 passes.** Building views on a transport not
+yet shown to be harmless to measurement timing is the one dependency worth
+respecting here; the parser is safe to build because the schema is frozen, but the
+renderer embeds assumptions about frame rate and latency that T1 could invalidate.
+**Why:** ADR-001 accepts a second codebase as a real cost. None of it exists yet.
+**What:** receiver + framing scanner; packet parser; CRC rejection and resync;
+reconnect/stall behaviour (the Teensy may reboot mid-stream); measurement state
+model mirroring the firmware's `IDLE → ARMED → CAPTURE → PROCESSING → RESULT`
+plus sticky `ABORTED`; live spectrum/TF view; completed-measurement view showing
+quality **and** provenance; touch navigation; then Compare/Recall and the radial
+tone fingerprint.
+**Constraint — non-negotiable (ADR-001):** the Pi must not compute anything that
+determines whether a measurement is valid. Confidence, coherence, clamp state and
+quality grade arrive as verdicts and are displayed, never recomputed. Interpolating
+pixels, animating, formatting and navigating are all fine.
+**Proof:** a held-out recorded packet stream replays to identical rendered output;
+a deliberately corrupted packet is rejected, not rendered; a mid-stream Teensy
+reboot recovers without a restart.
+
+### TODO-39 — T1 acceptance harness (`timing_probe`) 🟢 **DONE — compile-verified 2026-09-11, all three targets**
+**Why:** the T1 pass condition is "acquisition timing indistinguishable from the
+`_NONE` control", and **the firmware could not produce the numbers that claim
+requires.** The 5 s window reported a block-period *mean* only — no max, no
+spread, no skipped-block detection, no audio high-water, no loop-body max. Phase 10
+could have been "passed" on a small transport figure while a real perturbation went
+unmeasured, which is precisely the failure mode the pass condition is written to
+prevent.
+**What was done:** `timing_probe.{h,cpp}` — block period mean/max/min/spread;
+**skipped-block detection from gaps in the canonical block counter** (a gap > 1
+means an analysis block was produced that the loop never processed — the most
+direct evidence of measurement disturbance available without touching the capture
+layer); whole-loop-body duration max, which catches anything blocking wherever it
+lives rather than only presentation calls; audio block high-water with a per-window
+reset so a boot spike cannot contaminate later runs. Wired into `loop()` and
+`setup()`; `t` / `T` serial commands; emits the transport block in the same report
+so one paste captures both sides.
+**Compiled into all three targets deliberately** — guarding it to `_PI` would make
+the control run unmeasurable and void the entire test.
+**Honest limitation, stated in the source rather than glossed:** `audio_capture`
+exposes no dropped-block or per-queue overrun counter, so `audio_blocks_high_water`
+is the Audio library's **global** figure and is corroborating pressure data only.
+`blocks_skipped` is the authoritative overrun evidence. The report says so, so
+nobody cites it as "capture overruns".
+**Proof:** all three targets compile clean (`_PI` and `_NONE` warning-free).
+**Not yet uploaded** — compile proof only. `[compiles]`
+
+### TODO-38 — Single authoritative firmware version; 0.6.0 baseline 🟢 **DONE 2026-09-11**
+**Why:** `FIRMWARE_VERSION` said `0.5.0` while `data_sender.{h,cpp}` headers said `v0.6.1` and **21 other module headers carried their own `v0.5.0`**. A version stamped into every exported measurement must have exactly one source, and a module-local product version is drift waiting to be cited as fact.
+**What was done:**
+- `FIRMWARE_VERSION "0.6.0"` — a deliberate baseline, not a patch bump, and deliberately **not** 0.6.1 just because a header already claimed it (that header had run ahead of the product). 0.6.0 means one thing: *first firmware baseline implementing the Pi 5 production display architecture* — presentation boundary, three compile targets, backend exclusion, validation harness migrated off the renderer, protocol v2 with the four truth-invariant defects closed.
+- `PI_PROTOCOL_VERSION 2` added as a **separate** constant. Firmware version and wire-format version are different compatibility concepts: a firmware bump that does not touch the wire must not invalidate a working receiver, and a wire change must be visible even if the firmware version is untouched. v1 → v2 because v2 changes the payload shape of both LIVE_FRAME and RESULT, and a version number that has appeared in the tree is not reused for a different layout.
+- **Module-local product versions stripped from all 21 files** (headers and .cpp alike). Original file permissions preserved exactly — several were read-only and were restored to read-only afterward.
+**Proof:** `grep -rn "Guitar Rig Analyzer[ ]*v0\.[0-9]" *.h *.cpp *.ino` returns nothing; all three targets compile; the banner and HELLO both report 0.6.0 from the single constant.
+
+### TODO-37 — Reconcile README, runbook and as-built drawings with ADR-001 🟢 **DONE 2026-09-11**
+**Why:** stale architecture docs are more dangerous than cosmetic debt in this
+repo specifically, because AI assistants are first-class readers of it. A future
+agent reading the old README would reconstruct the wrong project — and the audit
+that opened this track found exactly that happening across four documents at once.
+**What was done:** README architecture/tech-stack/prerequisites/repo-structure
+sections corrected (and its stale claims about non-existent directories removed);
+the runbook's `USE_PI_DISPLAY` claim replaced with the real `DISPLAY_TARGET`
+mechanism and its Phase 9 parts-list mismatch fixed; a Pi UART row added to the
+as-built reserved-hardware list in `tools/gen_schematic.py` and the drawings
+regenerated.
+
+---
+
 ## Track B — Firmware-only (deferred until hardware catches up, or independent of it)
 
 ### TODO-11 — Complete the signal_router promotion (steps 3-6), one step per matching hardware phase — not ahead of it ⚪ blocked on Track A
@@ -400,8 +712,17 @@ Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's
 **What:** Complete checklist steps 3-6 incrementally, each gated on its own hardware phase actually existing and being testable, not speculatively ahead of it: merge the pin constants into `config.h` now (TODO-1 — pins are already correctly designed, this is integration only, not pin design); add `s_mixer_send` to `audio_capture.cpp` only once the relay/routing hardware it depends on (Phase 6/7) is on the bench; implement `audioCap_setInjectionMode` and the `measurement_engine` arm-time gate (`signalRouter_canInject()`) only once injection can be immediately tested against real hardware, not before.
 **Proof:** an INTERNAL-stimulus MODE_LIVE run (not MODE_PRECISION — see TODO-13) shows the actual generated signal present in the RETURN_NODE capture with a rig connected — not silence, not today's monitor-only loopback.
 
-### TODO-12 — Polish result UX in display_engine 🟡
-**Why:** Was the previously-stated next milestone from the software roadmap. Still real work, just not the current execution path — the project has moved into hardware bring-up (Track A) first.
+### TODO-12 — Polish result UX in display_engine ⚪ **SUPERSEDED by ADR-001 — do not proceed in this form**
+**Status 2026-09-11:** the RA8875 is no longer the product renderer
+([ADR-001](../docs/adr/ADR-001-display-architecture.md)). Polishing its result
+screen is no longer product work, and doing it now makes the architecture
+correction more expensive. **Kept, not deleted** — the panel-geometry reasoning and
+the MEASUREMENT-vs-ADVISORY visual requirement below are the real design content,
+and they transfer to the Pi's result view as TODO-36 acceptance criteria. The
+requirement that the result view show quality **and provenance** is also what
+surfaced TODO-34's R2 finding: the provenance string is not on the wire, so the Pi
+cannot currently satisfy it either.
+**Why (original, retained):** Was the previously-stated next milestone from the software roadmap. Still real work, just not the current execution path — the project has moved into hardware bring-up (Track A) first.
 **What:** Using the existing panel geometry — meter panel (quality/provenance header), spectrum panel (insight list), TF panel (measured `tf_cal_mag_db` curve using existing TF chrome) — refine the result screen's layout, readability, and the MEASUREMENT-vs-ADVISORY visual distinction in the insight panel.
 **Proof:** A measurement run using the currently supported MODE_LIVE complex-FFT path (not MODE_PRECISION — `arm()` still rejects that, see TODO-13) reaches RESULT and the display clearly shows quality/provenance, the TF curve (correct NaN pen-lift on invalid bins), and an unambiguous MEASUREMENT-vs-ADVISORY insight list, reviewed against real captured data.
 
@@ -410,8 +731,17 @@ Criterion was "well below 5.95, ideally near zero". Got **8.54 — FAIL**. **C's
 **What:** Implement the OCRAM accumulator and frequency-bin remapping for MODE_PRECISION and MODE_LF; only remove the `arm()`-time rejection once the full path produces real, correctly-rebinned data end to end.
 **Proof:** `arm()` accepts MODE_PRECISION/MODE_LF, a measurement completes through RESULT with correctly rebinned data, verified against the validation harness's known-response tests — not just "it produces numbers."
 
-### TODO-14 — Touch UI interaction 🔴
-**Why:** `display_engine` renders the result view and insight panel; all measurement control still goes through the serial `x` command.
+### TODO-14 — Touch UI interaction ⚪ **SUPERSEDED by ADR-001 — touch moves to the Pi**
+**Status 2026-09-11:** touch interaction is a Pi-side deliverable (TODO-36), not an
+RA8875 one. `RA8875_INT_PIN` stays defined for the debug backend but no touch
+handler will be written for it. **Kept, not deleted** — the proof criterion below
+is the valuable part and transfers verbatim: whatever drives a state transition,
+touch or packet, must produce the *identical* transition the serial command
+produces, and live updates must still only occur in IDLE / ARMED. Under ADR-001
+this becomes a stronger constraint, since the Pi must route control actions back
+through the same `measurement_engine` entry points rather than modelling state
+locally.
+**Why (original, retained):** `display_engine` renders the result view and insight panel; all measurement control still goes through the serial `x` command.
 **What:** Add touch handling wired to the same `measurement_engine` control entry points the serial `x` command uses today.
 **Proof:** A touch action produces the identical state transition the serial command produces: ABORTED → acknowledge + restore live; RESULT → `measurementEngine_returnToLive()` + restore live; active measurement → cancel. Live display updates must still only occur in IDLE / ARMED.
 
