@@ -1,5 +1,5 @@
 // =============================================================================
-// validation.h   —   Guitar Rig Analyzer   v0.5.0
+// validation.h   —   Guitar Rig Analyzer
 // =============================================================================
 // Known-signal validation harness — public interface.
 //

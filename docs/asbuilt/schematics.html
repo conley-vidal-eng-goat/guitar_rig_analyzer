@@ -1,0 +1,684 @@
+<title>Guitar Rig Analyzer Schematics</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root{
+    --ground:#E7EBEC;
+    --sheet:#FCFDFD;
+    --panel:#F3F6F6;
+    --ink:#152029;
+    --muted:#5D6D79;
+    --hair:#B9C5CC;
+    --rule:#8FA0AA;
+    --analog:#B4661A;
+    --digital:#0B6E77;
+    --flag:#A6362F;
+    --shadow:rgba(21,32,41,.13);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:"Archivo","Helvetica Neue",Arial,sans-serif;
+    --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0C1114; --sheet:#151C21; --panel:#1A2329;
+      --ink:#D9E2E7; --muted:#8497A2; --hair:#37454E; --rule:#5A6C77;
+      --analog:#E09B4E; --digital:#4EBCC4; --flag:#E0776D;
+      --shadow:rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0C1114; --sheet:#151C21; --panel:#1A2329;
+    --ink:#D9E2E7; --muted:#8497A2; --hair:#37454E; --rule:#5A6C77;
+    --analog:#E09B4E; --digital:#4EBCC4; --flag:#E0776D;
+    --shadow:rgba(0,0,0,.5);
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);font-family:var(--serif);line-height:1.6;margin:0}
+  .wrap{max-width:1180px;margin:0 auto;padding:48px 24px 96px}
+
+  .masthead{border-bottom:2px solid var(--ink);padding-bottom:20px;margin-bottom:14px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(28px,4.6vw,46px);line-height:1.04;letter-spacing:-.015em;margin:0;text-wrap:balance}
+  .deck{font-size:17px;color:var(--muted);margin:12px 0 0;max-width:62ch}
+
+  .meta{display:flex;flex-wrap:wrap;gap:0 30px;font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:0 0 44px;padding-top:12px}
+  .meta b{color:var(--ink);font-weight:600}
+
+  h2{font-family:var(--disp);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:0 0 6px}
+  h3{font-family:var(--disp);font-weight:600;font-size:16px;margin:0 0 6px}
+  .sec{margin-top:64px}
+  .sec-lead{color:var(--muted);font-size:15.5px;margin:0 0 22px;max-width:66ch}
+
+  .divider{display:flex;align-items:baseline;gap:14px;border-bottom:1px solid var(--rule);padding-bottom:8px;margin-bottom:18px}
+  .divider .tag{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--flag);white-space:nowrap}
+
+  figure{margin:0 0 30px}
+  .plate{background:var(--sheet);border:1px solid var(--hair);box-shadow:0 2px 14px var(--shadow);padding:10px;overflow-x:auto}
+  .plate svg{display:block;width:100%;height:auto;min-width:820px;color:var(--ink)}
+  figcaption{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5}
+
+  .key{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px 26px;background:var(--panel);border:1px solid var(--hair);padding:18px 20px;margin:0 0 30px}
+  .key div{font-size:13.5px;color:var(--muted);line-height:1.45}
+  .key b{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;color:var(--ink);display:block;margin-bottom:2px}
+  .sw{display:inline-block;width:22px;height:3px;vertical-align:middle;margin-right:7px}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:0 0 8px}
+  th,td{text-align:left;padding:7px 12px 7px 0;border-bottom:1px solid var(--hair);vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:500}
+  td code,.m{font-family:var(--mono);font-size:12.5px}
+  .tw{overflow-x:auto}
+
+  .foot{margin-top:64px;padding-top:18px;border-top:1px solid var(--rule);font-size:13.5px;color:var(--muted)}
+  .foot p{max-width:70ch}
+  a{color:var(--analog)}
+</style>
+
+<!-- ============ SYMBOL LIBRARY ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <g id="s-res"><path d="M-30 0 H-18 L-15 -7 L-9 7 L-3 -7 L3 7 L9 -7 L15 7 L18 0 H30" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></g>
+  <g id="s-cnp"><path d="M-30 0 H-5 M-5 -12 V12 M5 -12 V12 M5 0 H30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+  <g id="s-cpol"><path d="M-30 0 H-5 M-5 -12 V12 M5 0 H30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 -12 Q13 0 5 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M-19 -14 H-11 M-15 -18 V-10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></g>
+  <g id="s-gnd"><path d="M0 0 V9 M-13 9 H13 M-8 14 H8 M-3 19 H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+  <g id="s-vcc"><path d="M0 0 V-14 M-10 -14 H10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+  <g id="s-nc"><path d="M-6 -6 L6 6 M6 -6 L-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+</defs></svg>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Drawing set · Rev A · Frozen configuration</p>
+  <h1>Guitar Rig Analyzer<br>As-Built Schematics</h1>
+  <p class="deck">Two renderings of the same verified breadboard: a single-sheet drawing for reconstruction at the bench, and a two-sheet set that separates the analog front end from the digital interface.</p>
+</header>
+
+<div class="meta">
+  <span><b>Project</b> Teensy 4.1 Guitar Rig Analyzer</span>
+  <span><b>Captured</b> 2026-09-07</span>
+  <span><b>Source</b> docs/asbuilt/netlist.md</span>
+  <span><b>Firmware on bench</b> e6daac8</span>
+</div>
+
+<div class="key">
+  <div><b><span class="sw" style="background:var(--analog)"></span>Analog signal path</b>Guitar-level audio, J1 through the OPA1642A buffer to the codec's LINE-IN-L.</div>
+  <div><b><span class="sw" style="background:var(--digital)"></span>Digital interconnect</b>I²S audio and I²C control between the Teensy and the SGTL5000.</div>
+  <div><b><span class="sw" style="background:currentColor"></span>Power &amp; reference</b>+5V, GND, VGND and OPA_BIAS. Drawn in ink throughout.</div>
+  <div><b>Coordinates</b>All <code>NNx</code> references are BB830 breadboard holes. Column and strip are verified; the row letter is builder-reported.</div>
+</div>
+
+<!-- ==================== VERSION A · SINGLE SHEET ==================== -->
+<section class="sec">
+  <div class="divider"><h2>Version A · Single sheet</h2><span class="tag">Sheet 1 of 1</span></div>
+  <p class="sec-lead">Everything on one drawing, with a verification column at right. This is the version to work from when rebuilding the board — nothing requires flipping between pages.</p>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 1900 1860" role="img" aria-label="Complete single-sheet schematic of the Guitar Rig Analyzer breadboard: OPA1642A unity-gain buffer with bias and reference generators, feeding the SGTL5000 audio shield over a ten-wire I2S and I2C interconnect.">
+        <rect x="0" y="0" width="1900" height="1860" fill="none"/>
+        <rect x="30" y="30" width="1840" height="1800" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <rect x="44" y="44" width="1812" height="1772" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+
+        <text x="62" y="88" font-family="Archivo, sans-serif" font-size="17" font-weight="600" fill="currentColor" letter-spacing="1.6">A · POWER, REFERENCE &amp; ANALOG FRONT END</text>
+        <line x1="62" y1="98" x2="1430" y2="98" stroke="currentColor" stroke-width="1" opacity=".4"/>
+
+        <g transform="translate(20,110)">
+          <use href="#blk-analog"/>
+        </g>
+
+        <text x="62" y="1000" font-family="Archivo, sans-serif" font-size="17" font-weight="600" fill="currentColor" letter-spacing="1.6">B · DIGITAL INTERFACE — TEENSY 4.1 ↔ SGTL5000</text>
+        <line x1="62" y1="1010" x2="1430" y2="1010" stroke="currentColor" stroke-width="1" opacity=".4"/>
+
+        <g transform="translate(30,1030)">
+          <use href="#blk-digital"/>
+        </g>
+
+        <!-- right column -->
+        <line x1="1452" y1="60" x2="1452" y2="1800" stroke="currentColor" stroke-width="1" opacity=".4"/>
+
+        <text x="1476" y="88" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="currentColor" letter-spacing="1.6">VERIFICATION</text>
+        <line x1="1476" y1="98" x2="1846" y2="98" stroke="currentColor" stroke-width="1"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">
+          <text x="1476" y="122">PHYS   direct bench observation</text>
+          <text x="1476" y="142">PHOTO  read from a photograph</text>
+          <text x="1476" y="162">MEAS   continuity / voltage</text>
+          <text x="1476" y="182">DERIV  measurement + arithmetic</text>
+          <text x="1476" y="202">FW     read from active firmware</text>
+          <text x="1476" y="222">RPT    builder-reported only</text>
+          <text x="1476" y="242">NYV    not yet verified</text>
+        </g>
+
+        <text x="1476" y="288" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="currentColor" letter-spacing="1.6">HOW THIS WAS VERIFIED</text>
+        <line x1="1476" y1="298" x2="1846" y2="298" stroke="currentColor" stroke-width="1"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+          <text x="1476" y="322">Coordinate system         PHYS</text>
+          <text x="1476" y="342">GND rails bonded          PHYS</text>
+          <text x="1476" y="362">No red rail bridge        PHYS</text>
+          <text x="1476" y="382">Rail continuity (GND)     MEAS</text>
+          <text x="1476" y="402">U1 identity O1642A        PHOTO</text>
+          <text x="1476" y="422">R1..R4 values             DERIV</text>
+          <text x="1476" y="442">C1 = 10 nF (BC103)        PHYS</text>
+          <text x="1476" y="462">Analog net list           PHYS</text>
+          <text x="1476" y="482">W1 → U1 pin 8             PHYS</text>
+          <text x="1476" y="502">Interconnect wire map     PHYS</text>
+          <text x="1476" y="522">I²S / I²C pin set         FW</text>
+          <text x="1476" y="542">Interconnect geometry     PHYS</text>
+        </g>
+
+        <text x="1476" y="590" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="var(--flag)" letter-spacing="1.6">OPEN ITEMS — NYV BY DECISION</text>
+        <line x1="1476" y1="600" x2="1846" y2="600" stroke="var(--flag)" stroke-width="1"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+          <text x="1476" y="624">GAP-5  TOP_RED continuity,</text>
+          <text x="1476" y="642">       col 5 ↔ col 55, unrecorded.</text>
+          <text x="1476" y="666">X-5    Whether the carrier's 5V</text>
+          <text x="1476" y="684">       terminal is VUSB, VIN or</text>
+          <text x="1476" y="702">       the Teensy 5V pin.</text>
+          <text x="1476" y="736" fill="var(--muted)">Both were left open deliberately.</text>
+          <text x="1476" y="754" fill="var(--muted)">Closing them means probing a</text>
+          <text x="1476" y="772" fill="var(--muted)">board whose known-good state</text>
+          <text x="1476" y="790" fill="var(--muted)">took days to reach.</text>
+        </g>
+
+        <text x="1476" y="838" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="currentColor" letter-spacing="1.6">MEASURED PERFORMANCE</text>
+        <line x1="1476" y1="848" x2="1846" y2="848" stroke="currentColor" stroke-width="1"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+          <text x="1476" y="872">Digital interconnect — journal (6):</text>
+          <text x="1476" y="892">  360 windows, 11 520 samples/node,</text>
+          <text x="1476" y="910">  0 corrupted, 100 % clean.</text>
+          <text x="1476" y="936">Analog chain — journal (7):</text>
+          <text x="1476" y="956">  SOURCE_NODE −9.0 dBFS measured</text>
+          <text x="1476" y="974">  vs −10.3 dBFS predicted.</text>
+          <text x="1476" y="992">  RETURN_NODE −56 dBFS crosstalk.</text>
+          <text x="1476" y="1018" fill="var(--muted)">The analog input changed after the</text>
+          <text x="1476" y="1036" fill="var(--muted)">360/360 run; that figure belongs to</text>
+          <text x="1476" y="1054" fill="var(--muted)">the interconnect, which is unchanged.</text>
+        </g>
+
+        <text x="1476" y="1102" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600" fill="currentColor" letter-spacing="1.6">NOT INSTALLED</text>
+        <line x1="1476" y1="1112" x2="1846" y2="1112" stroke="currentColor" stroke-width="1"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+          <text x="1476" y="1136">Relays TQ2-5V ×2 · MMBT3904 ×2</text>
+          <text x="1476" y="1156">Switchcraft #11 jacks · XLR return</text>
+          <text x="1476" y="1176">Pi 5 UART link · Teensy 1/0 · Phase 10</text>
+          <text x="1476" y="1196">RA8875 display (debug only, deferred)</text>
+          <text x="1476" y="1222" fill="var(--muted)">Firmware defines pins for all of</text>
+          <text x="1476" y="1240" fill="var(--muted)">these. None exist on the board.</text>
+          <text x="1476" y="1258" fill="var(--muted)">They are forward declarations,</text>
+          <text x="1476" y="1276" fill="var(--muted)">not as-built nets.</text>
+          <text x="1476" y="1302" fill="var(--muted)">Pi link added 2026-09-11 (ADR-001):</text>
+          <text x="1476" y="1320" fill="var(--muted)">it is the PRODUCTION display path</text>
+          <text x="1476" y="1338" fill="var(--muted)">and was absent from this list while</text>
+          <text x="1476" y="1356" fill="var(--muted)">the RA8875 was the only entry.</text>
+        </g>
+
+        <!-- title block -->
+        <g>
+          <rect x="1476" y="1560" width="370" height="240" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="1476" y1="1618" x2="1846" y2="1618" stroke="currentColor" stroke-width="1"/>
+          <line x1="1476" y1="1690" x2="1846" y2="1690" stroke="currentColor" stroke-width="1"/>
+          <line x1="1476" y1="1745" x2="1846" y2="1745" stroke="currentColor" stroke-width="1"/>
+          <line x1="1661" y1="1690" x2="1661" y2="1800" stroke="currentColor" stroke-width="1"/>
+          <text x="1490" y="1584" font-family="Archivo, sans-serif" font-size="15" font-weight="700" fill="currentColor">GUITAR RIG ANALYZER</text>
+          <text x="1490" y="1606" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)">As-built breadboard capture</text>
+          <text x="1490" y="1644" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="currentColor">COMPLETE SCHEMATIC</text>
+          <text x="1490" y="1668" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--muted)">Analog front end + digital interface</text>
+          <text x="1490" y="1712" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">DRAWN</text>
+          <text x="1490" y="1730" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">Conley Vidal</text>
+          <text x="1675" y="1712" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">DATE</text>
+          <text x="1675" y="1730" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">2026-09-07</text>
+          <text x="1490" y="1768" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">SHEET</text>
+          <text x="1490" y="1786" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">1 OF 1</text>
+          <text x="1675" y="1768" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">REV</text>
+          <text x="1675" y="1786" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">A</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Version A — the complete circuit on one sheet. Analog front end above, digital interface below, verification record in the right-hand column.</figcaption>
+  </figure>
+</section>
+
+<!-- ==================== VERSION B · TWO SHEETS ==================== -->
+<section class="sec">
+  <div class="divider"><h2>Version B · Two sheets</h2><span class="tag">Sheets 1 &amp; 2 of 2</span></div>
+  <p class="sec-lead">The same circuit split along its natural seam. Sheet 1 is everything that carries analog voltage; sheet 2 is everything that carries digital edges. <code class="m">SOURCE_NODE</code> is the single net crossing between them, shown as an off-sheet connector on both.</p>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 1520 1000" role="img" aria-label="Sheet 1 of 2: power rails, OPA_BIAS and VGND reference generators, and the OPA1642A unity-gain analog buffer from the 3.5 millimetre input jack to SOURCE_NODE.">
+        <rect x="24" y="24" width="1472" height="952" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <rect x="40" y="40" width="1440" height="920" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)" text-anchor="middle">
+          <text x="280" y="36">1</text><text x="560" y="36">2</text><text x="840" y="36">3</text><text x="1120" y="36">4</text><text x="1400" y="36">5</text>
+          <text x="280" y="972">1</text><text x="560" y="972">2</text><text x="840" y="972">3</text><text x="1120" y="972">4</text><text x="1400" y="972">5</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)" text-anchor="middle">
+          <text x="33" y="230">A</text><text x="33" y="450">B</text><text x="33" y="670">C</text><text x="33" y="890">D</text>
+          <text x="1488" y="230">A</text><text x="1488" y="450">B</text><text x="1488" y="670">C</text><text x="1488" y="890">D</text>
+        </g>
+
+        <g transform="translate(30,20)"><use href="#blk-analog"/></g>
+
+        <g>
+          <rect x="1086" y="836" width="386" height="124" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="1086" y1="884" x2="1472" y2="884" stroke="currentColor" stroke-width="1"/>
+          <line x1="1086" y1="922" x2="1472" y2="922" stroke="currentColor" stroke-width="1"/>
+          <line x1="1279" y1="922" x2="1279" y2="960" stroke="currentColor" stroke-width="1"/>
+          <text x="1098" y="858" font-family="Archivo, sans-serif" font-size="14" font-weight="700" fill="currentColor">GUITAR RIG ANALYZER</text>
+          <text x="1098" y="876" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--muted)">As-built breadboard capture · Rev A</text>
+          <text x="1098" y="906" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="currentColor">POWER, REFERENCE &amp; ANALOG FRONT END</text>
+          <text x="1098" y="944" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">DRAWN</text>
+          <text x="1148" y="944" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">Conley Vidal</text>
+          <text x="1291" y="944" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">SHEET</text>
+          <text x="1338" y="944" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">1 OF 2</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Sheet 1 of 2 — the analog domain. Every net on this sheet carries a DC level or an audio voltage; nothing here switches.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="plate">
+      <svg viewBox="0 0 1300 990" role="img" aria-label="Sheet 2 of 2: the ten-wire interconnect between the Teensy 4.1 in its screw-terminal carrier and the PJRC Audio Shield Rev D, carrying I2S audio, I2C control and power, plus the SOURCE_NODE analog input arriving from sheet 1.">
+        <rect x="24" y="24" width="1252" height="942" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <rect x="40" y="40" width="1220" height="910" fill="none" stroke="currentColor" stroke-width="1" opacity=".45"/>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)" text-anchor="middle">
+          <text x="270" y="36">1</text><text x="520" y="36">2</text><text x="770" y="36">3</text><text x="1020" y="36">4</text>
+          <text x="270" y="962">1</text><text x="520" y="962">2</text><text x="770" y="962">3</text><text x="1020" y="962">4</text>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--muted)" text-anchor="middle">
+          <text x="33" y="230">A</text><text x="33" y="450">B</text><text x="33" y="670">C</text><text x="33" y="880">D</text>
+          <text x="1268" y="230">A</text><text x="1268" y="450">B</text><text x="1268" y="670">C</text><text x="1268" y="880">D</text>
+        </g>
+
+        <g transform="translate(60,20)"><use href="#blk-digital"/></g>
+
+        <g>
+          <rect x="866" y="826" width="386" height="124" fill="none" stroke="currentColor" stroke-width="2"/>
+          <line x1="866" y1="874" x2="1252" y2="874" stroke="currentColor" stroke-width="1"/>
+          <line x1="866" y1="912" x2="1252" y2="912" stroke="currentColor" stroke-width="1"/>
+          <line x1="1059" y1="912" x2="1059" y2="950" stroke="currentColor" stroke-width="1"/>
+          <text x="878" y="848" font-family="Archivo, sans-serif" font-size="14" font-weight="700" fill="currentColor">GUITAR RIG ANALYZER</text>
+          <text x="878" y="866" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--muted)">As-built breadboard capture · Rev A</text>
+          <text x="878" y="896" font-family="Archivo, sans-serif" font-size="13" font-weight="600" fill="currentColor">DIGITAL INTERFACE — TEENSY ↔ SGTL5000</text>
+          <text x="878" y="934" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">DRAWN</text>
+          <text x="928" y="934" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">Conley Vidal</text>
+          <text x="1071" y="934" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">SHEET</text>
+          <text x="1118" y="934" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">2 OF 2</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Sheet 2 of 2 — the digital domain. The ten-wire bundle and its physical geometry are the subject; the corruption that took days to find lived in the space between these endpoints, not at either end.</figcaption>
+  </figure>
+</section>
+
+<!-- ==================== BLOCK DEFINITIONS ==================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+
+<!-- ---------- ANALOG BLOCK ---------- -->
+<g id="blk-analog" font-family="IBM Plex Mono, monospace" fill="currentColor">
+
+  <!-- +5V rail -->
+  <line x1="140" y1="60" x2="1400" y2="60" stroke="currentColor" stroke-width="2.5"/>
+  <use href="#s-vcc" x="140" y="60"/>
+  <text x="140" y="34" font-size="13" font-weight="600" text-anchor="middle">+5V</text>
+  <text x="168" y="80" font-size="10.5" fill="var(--muted)">TOP_RED rail · from Dinkle carrier 5V terminal</text>
+
+  <!-- rail decoupling -->
+  <line x1="280" y1="60" x2="280" y2="100" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-cpol" x="280" y="120" transform="rotate(90 280 120)"/>
+  <line x1="280" y1="140" x2="280" y2="166" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="280" y="166"/>
+  <circle cx="280" cy="60" r="3.6" fill="currentColor"/>
+  <text x="296" y="114" font-size="11.5" font-weight="600">C6</text>
+  <text x="296" y="130" font-size="11" fill="var(--muted)">10 µF</text>
+
+  <line x1="376" y1="60" x2="376" y2="100" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-cnp" x="376" y="120" transform="rotate(90 376 120)"/>
+  <line x1="376" y1="140" x2="376" y2="166" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="376" y="166"/>
+  <circle cx="376" cy="60" r="3.6" fill="currentColor"/>
+  <text x="392" y="114" font-size="11.5" font-weight="600">C5</text>
+  <text x="392" y="130" font-size="11" fill="var(--muted)">0.1 µF · col 54</text>
+
+  <!-- ===== reference generators ===== -->
+  <rect x="1040" y="100" width="378" height="232" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="7 5"/>
+  <text x="1040" y="92" font-size="10.5" letter-spacing="1.4" fill="var(--muted)">BIAS &amp; REFERENCE GENERATORS</text>
+
+  <!-- OPA_BIAS divider -->
+  <line x1="1090" y1="60" x2="1090" y2="136" stroke="currentColor" stroke-width="2"/>
+  <circle cx="1090" cy="60" r="3.6" fill="currentColor"/>
+  <use href="#s-res" x="1090" y="166" transform="rotate(90 1090 166)"/>
+  <line x1="1090" y1="196" x2="1090" y2="220" stroke="currentColor" stroke-width="2"/>
+  <line x1="1064" y1="220" x2="1178" y2="220" stroke="currentColor" stroke-width="2.5"/>
+  <circle cx="1090" cy="220" r="3.6" fill="currentColor"/>
+  <text x="1102" y="154" font-size="11.5" font-weight="600">R1</text>
+  <text x="1102" y="170" font-size="11" fill="var(--muted)">47 k</text>
+  <text x="1064" y="208" font-size="11.5" font-weight="600">OPA_BIAS · 0.877 V</text>
+  <use href="#s-res" x="1090" y="250" transform="rotate(90 1090 250)"/>
+  <line x1="1090" y1="280" x2="1090" y2="300" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="1090" y="300"/>
+  <text x="1102" y="242" font-size="11.5" font-weight="600">R2</text>
+  <text x="1102" y="258" font-size="11" fill="var(--muted)">10 k</text>
+  <line x1="1165" y1="220" x2="1165" y2="230" stroke="currentColor" stroke-width="2"/>
+  <circle cx="1165" cy="220" r="3.6" fill="currentColor"/>
+  <use href="#s-cnp" x="1165" y="250" transform="rotate(90 1165 250)"/>
+  <line x1="1165" y1="270" x2="1165" y2="300" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="1165" y="300"/>
+  <text x="1180" y="246" font-size="11.5" font-weight="600">C4</text>
+  <text x="1180" y="262" font-size="11" fill="var(--muted)">0.1 µF</text>
+
+  <!-- VGND divider -->
+  <line x1="1270" y1="60" x2="1270" y2="136" stroke="currentColor" stroke-width="2"/>
+  <circle cx="1270" cy="60" r="3.6" fill="currentColor"/>
+  <use href="#s-res" x="1270" y="166" transform="rotate(90 1270 166)"/>
+  <line x1="1270" y1="196" x2="1270" y2="220" stroke="currentColor" stroke-width="2"/>
+  <line x1="1248" y1="220" x2="1400" y2="220" stroke="currentColor" stroke-width="2.5"/>
+  <circle cx="1270" cy="220" r="3.6" fill="currentColor"/>
+  <text x="1282" y="154" font-size="11.5" font-weight="600">R4</text>
+  <text x="1282" y="170" font-size="11" fill="var(--muted)">10 k</text>
+  <text x="1248" y="208" font-size="11.5" font-weight="600">VGND · 2.50 V · BOT_RED</text>
+  <use href="#s-res" x="1270" y="250" transform="rotate(90 1270 250)"/>
+  <line x1="1270" y1="280" x2="1270" y2="300" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="1270" y="300"/>
+  <text x="1282" y="242" font-size="11.5" font-weight="600">R3</text>
+  <text x="1282" y="258" font-size="11" fill="var(--muted)">10 k</text>
+  <line x1="1332" y1="220" x2="1332" y2="230" stroke="currentColor" stroke-width="2"/>
+  <circle cx="1332" cy="220" r="3.6" fill="currentColor"/>
+  <use href="#s-cpol" x="1332" y="250" transform="rotate(90 1332 250)"/>
+  <line x1="1332" y1="270" x2="1332" y2="300" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="1332" y="300"/>
+  <text x="1345" y="246" font-size="11" font-weight="600">C8</text>
+  <text x="1345" y="262" font-size="10.5" fill="var(--muted)">10 µF</text>
+  <line x1="1394" y1="220" x2="1394" y2="230" stroke="currentColor" stroke-width="2"/>
+  <circle cx="1394" cy="220" r="3.6" fill="currentColor"/>
+  <use href="#s-cnp" x="1394" y="250" transform="rotate(90 1394 250)"/>
+  <line x1="1394" y1="270" x2="1394" y2="300" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="1394" y="300"/>
+  <text x="1352" y="322" font-size="10.5" fill="var(--muted)">C7 0.1 µF · VGND is unloaded</text>
+
+  <!-- ===== signal chain ===== -->
+  <!-- J1 -->
+  <rect x="80" y="365" width="86" height="112" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="123" y="352" font-size="11.5" font-weight="600" text-anchor="middle">J1</text>
+  <text x="123" y="497" font-size="10.5" fill="var(--muted)" text-anchor="middle">3.5 mm TRS</text>
+  <text x="123" y="511" font-size="10.5" fill="var(--muted)" text-anchor="middle">SIGNAL INPUT</text>
+  <text x="90" y="394" font-size="11">T</text><text x="90" y="424" font-size="11">R</text><text x="90" y="454" font-size="11">S</text>
+  <line x1="166" y1="390" x2="250" y2="390" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <line x1="166" y1="420" x2="196" y2="420" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-nc" x="204" y="420"/>
+  <text x="218" y="424" font-size="10.5" fill="var(--muted)">ring · taped off</text>
+  <line x1="166" y1="450" x2="196" y2="450" stroke="currentColor" stroke-width="2"/>
+  <line x1="196" y1="450" x2="196" y2="472" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="196" y="472"/>
+  <text x="182" y="378" font-size="11" font-weight="600" fill="var(--analog)" style="fill:var(--analog)">SOURCE_IN · col 30</text>
+
+  <!-- C1 -->
+  <use href="#s-cnp" x="285" y="390"/>
+  <text x="285" y="366" font-size="11.5" font-weight="600" text-anchor="middle">C1</text>
+  <text x="285" y="422" font-size="11" fill="var(--muted)" text-anchor="middle">10 nF</text>
+  <line x1="315" y1="390" x2="440" y2="390" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <circle cx="440" cy="390" r="3.6" fill="currentColor"/>
+  <text x="352" y="378" font-size="10.5" fill="var(--muted)" text-anchor="middle">col 33</text>
+
+  <!-- R5 to OPA_BIAS -->
+  <line x1="440" y1="390" x2="440" y2="450" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-res" x="440" y="480" transform="rotate(90 440 480)"/>
+  <line x1="440" y1="510" x2="440" y2="556" stroke="currentColor" stroke-width="2"/>
+  <line x1="418" y1="556" x2="462" y2="556" stroke="currentColor" stroke-width="2"/>
+  <text x="440" y="574" font-size="11" font-weight="600" text-anchor="middle">OPA_BIAS</text>
+  <text x="455" y="468" font-size="11.5" font-weight="600">R5</text>
+  <text x="455" y="484" font-size="11" fill="var(--muted)">100 k</text>
+
+  <!-- U1A -->
+  <line x1="440" y1="390" x2="560" y2="390" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <polygon points="560,330 560,510 690,420" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <text x="572" y="394" font-size="14" font-weight="600">+</text>
+  <text x="572" y="456" font-size="14" font-weight="600">−</text>
+  <text x="548" y="384" font-size="10.5" text-anchor="end">3</text>
+  <text x="548" y="454" font-size="10.5" text-anchor="end">2</text>
+  <text x="700" y="414" font-size="10.5">1</text>
+  <text x="596" y="368" font-size="12" font-weight="600">U1A</text>
+  <text x="596" y="384" font-size="10.5" fill="var(--muted)">OPA1642A</text>
+  <text x="466" y="378" font-size="10.5" fill="var(--muted)">col 37</text>
+
+  <!-- feedback -->
+  <line x1="690" y1="420" x2="760" y2="420" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <circle cx="760" cy="420" r="3.6" fill="currentColor"/>
+  <polyline points="760,420 760,530 520,530 520,450 560,450" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="640" y="548" font-size="10.5" fill="var(--muted)" text-anchor="middle">unity-gain feedback · jumper 35a–36a</text>
+
+  <!-- C2 -->
+  <use href="#s-cpol" x="830" y="420"/>
+  <text x="830" y="396" font-size="11.5" font-weight="600" text-anchor="middle">C2</text>
+  <text x="830" y="452" font-size="11" fill="var(--muted)" text-anchor="middle">10 µF · 35b→48d</text>
+  <line x1="860" y1="420" x2="980" y2="420" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <circle cx="980" cy="420" r="3.6" fill="currentColor"/>
+
+  <!-- J2 open stub -->
+  <line x1="980" y1="420" x2="980" y2="352" stroke="currentColor" stroke-width="2"/>
+  <rect x="932" y="292" width="96" height="60" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="980" y="316" font-size="11.5" font-weight="600" text-anchor="middle">J2</text>
+  <text x="980" y="332" font-size="10" fill="var(--muted)" text-anchor="middle">3.5 mm jack</text>
+  <text x="980" y="345" font-size="10" fill="var(--muted)" text-anchor="middle">NO PLUG</text>
+  <text x="1038" y="330" font-size="10.5" fill="var(--muted)">open stub on 48a</text>
+
+  <!-- SOURCE_NODE out -->
+  <line x1="980" y1="420" x2="1104" y2="420" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <text x="988" y="444" font-size="11.5" font-weight="600" fill="var(--analog)" style="fill:var(--analog)">SOURCE_NODE · col 48</text>
+  <polygon points="1104,404 1200,404 1218,420 1200,436 1104,436" fill="none" stroke="var(--analog)" stroke-width="2" style="stroke:var(--analog)"/>
+  <text x="1152" y="425" font-size="11" font-weight="600" text-anchor="middle" fill="var(--analog)" style="fill:var(--analog)">48e</text>
+  <text x="1228" y="416" font-size="10.5" fill="var(--muted)">→ U3 LINE-IN-L</text>
+  <text x="1228" y="431" font-size="10.5" fill="var(--muted)">(sheet 2)</text>
+
+  <!-- ===== U1 supply pins ===== -->
+  <rect x="80" y="612" width="330" height="196" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="7 5"/>
+  <text x="80" y="604" font-size="10.5" letter-spacing="1.4" fill="var(--muted)">U1 — SUPPLY PINS, SHOWN SEPARATELY</text>
+  <rect x="170" y="672" width="150" height="62" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <text x="245" y="698" font-size="12" font-weight="600" text-anchor="middle">U1</text>
+  <text x="245" y="716" font-size="10" fill="var(--muted)" text-anchor="middle">OPA1642A · PA0001</text>
+  <line x1="210" y1="672" x2="210" y2="644" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-vcc" x="210" y="644"/>
+  <text x="218" y="668" font-size="10.5">8</text>
+  <text x="228" y="640" font-size="11" font-weight="600">V+</text>
+  <circle cx="210" cy="660" r="3.6" fill="currentColor"/>
+  <line x1="210" y1="660" x2="356" y2="660" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-cnp" x="356" y="690" transform="rotate(90 356 690)"/>
+  <line x1="356" y1="660" x2="356" y2="670" stroke="currentColor" stroke-width="2"/>
+  <line x1="356" y1="710" x2="356" y2="756" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="356" y="756"/>
+  <text x="370" y="686" font-size="11" font-weight="600">C3</text>
+  <text x="370" y="700" font-size="10.5" fill="var(--muted)">0.1 µF</text>
+  <line x1="280" y1="734" x2="280" y2="762" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-gnd" x="280" y="762"/>
+  <text x="288" y="748" font-size="10.5">4</text>
+  <text x="298" y="748" font-size="11" font-weight="600">V−</text>
+  <text x="92" y="782" font-size="10.5" fill="var(--muted)">W1 · orange jumper, TOP_RED → hole 35h</text>
+  <text x="92" y="797" font-size="10.5" fill="var(--muted)">C3 spans 34i–35i; 34j returns to the GND rail</text>
+
+  <!-- ===== U1B idle ===== -->
+  <rect x="452" y="612" width="440" height="196" fill="none" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="7 5"/>
+  <text x="452" y="604" font-size="10.5" letter-spacing="1.4" fill="var(--muted)">U1B — UNUSED HALF, TERMINATED</text>
+  <polygon points="580,644 580,764 706,704" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <text x="592" y="682" font-size="14" font-weight="600">+</text>
+  <text x="592" y="740" font-size="14" font-weight="600">−</text>
+  <text x="568" y="678" font-size="10.5" text-anchor="end">5</text>
+  <text x="568" y="738" font-size="10.5" text-anchor="end">6</text>
+  <text x="716" y="698" font-size="10.5">7</text>
+  <text x="614" y="672" font-size="12" font-weight="600">U1B</text>
+  <line x1="580" y1="674" x2="510" y2="674" stroke="currentColor" stroke-width="2"/>
+  <line x1="510" y1="662" x2="510" y2="686" stroke="currentColor" stroke-width="2"/>
+  <text x="500" y="678" font-size="11" font-weight="600" text-anchor="end">OPA_BIAS</text>
+  <polyline points="706,704 756,704 756,782 540,782 540,734 580,734" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="650" y="798" font-size="10.5" fill="var(--muted)" text-anchor="middle">jumper 36i–37i · out B shorted to −in B</text>
+  <text x="770" y="682" font-size="10.5" fill="var(--muted)">Deviation D1 — pin 5 ties</text>
+  <text x="770" y="697" font-size="10.5" fill="var(--muted)">directly to OPA_BIAS.</text>
+  <text x="770" y="712" font-size="10.5" fill="var(--muted)">No 100 k, unlike pin 3.</text>
+
+  <!-- ===== notes ===== -->
+  <rect x="932" y="486" width="486" height="322" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <text x="944" y="510" font-size="11" font-weight="600" letter-spacing="1.4">NOTES</text>
+  <line x1="944" y1="518" x2="1406" y2="518" stroke="currentColor" stroke-width="1"/>
+  <g font-size="11" fill="currentColor">
+    <text x="944" y="542">1.  Coordinates are BB830 holes. Column and strip are</text>
+    <text x="960" y="558">verified; the row letter is builder-reported only.</text>
+    <text x="944" y="582">2.  The two GND rails are bonded by a yellow jumper.</text>
+    <text x="960" y="598">GND is a single net across the whole board.</text>
+    <text x="944" y="622">3.  No TOP_RED ↔ BOT_RED bridge is fitted. VGND is</text>
+    <text x="960" y="638">generated at col 45 and presently drives no load.</text>
+    <text x="944" y="662">4.  C1 = 10 nF into R5 = 100 k sets a 159 Hz input</text>
+    <text x="960" y="678">corner. The front end is −6 dB at the low E string's</text>
+    <text x="960" y="694">82 Hz fundamental — a known breadboard compromise.</text>
+    <text x="944" y="718">5.  J2 is an unplugged jack. It is an open stub on</text>
+    <text x="960" y="734">SOURCE_NODE and was present when the board measured</text>
+    <text x="960" y="750">clean, so it is part of the captured configuration.</text>
+    <text x="944" y="774">6.  R1–R4 values are derived, not measured: 5.00 V ×</text>
+    <text x="960" y="790">10/(47+10) = 0.877 V against 0.874 V recorded.</text>
+  </g>
+</g>
+
+<!-- ---------- DIGITAL BLOCK ---------- -->
+<g id="blk-digital" font-family="IBM Plex Mono, monospace" fill="currentColor">
+
+  <!-- U2 -->
+  <rect x="180" y="120" width="260" height="560" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <text x="310" y="152" font-size="14" font-weight="600" text-anchor="middle">U2</text>
+  <text x="310" y="172" font-size="11.5" text-anchor="middle">Teensy 4.1</text>
+  <text x="310" y="190" font-size="10" fill="var(--muted)" text-anchor="middle">in Dinkle screw-terminal carrier</text>
+  <text x="310" y="206" font-size="10" fill="var(--muted)" text-anchor="middle">I²S master · MCLK 11.29 MHz</text>
+
+  <!-- USB in -->
+  <rect x="96" y="286" width="46" height="28" fill="none" stroke="currentColor" stroke-width="2"/>
+  <line x1="142" y1="300" x2="180" y2="300" stroke="currentColor" stroke-width="2"/>
+  <text x="119" y="278" font-size="10.5" fill="var(--muted)" text-anchor="middle">USB-C</text>
+  <text x="119" y="332" font-size="10.5" fill="var(--muted)" text-anchor="middle">5 V in</text>
+
+  <!-- to sheet 1 -->
+  <polygon points="196,586 108,586 90,602 108,618 196,618" fill="none" stroke="currentColor" stroke-width="2"/>
+  <text x="152" y="607" font-size="10.5" font-weight="600" text-anchor="middle">+5V / GND</text>
+  <text x="152" y="640" font-size="10.5" fill="var(--muted)" text-anchor="middle">→ sheet 1 rails</text>
+
+  <!-- U3 -->
+  <rect x="860" y="120" width="260" height="600" fill="none" stroke="currentColor" stroke-width="2.5"/>
+  <text x="990" y="152" font-size="14" font-weight="600" text-anchor="middle">U3</text>
+  <text x="990" y="172" font-size="11.5" text-anchor="middle">Audio Shield Rev D</text>
+  <text x="990" y="190" font-size="10" fill="var(--muted)" text-anchor="middle">SGTL5000 codec</text>
+  <text x="990" y="206" font-size="10" fill="var(--muted)" text-anchor="middle">free-standing, not stacked</text>
+
+  <!-- ROW 1  3V3 -->
+  <line x1="440" y1="250" x2="860" y2="250" stroke="currentColor" stroke-width="2"/>
+  <text x="432" y="254" font-size="11" text-anchor="end">3V3</text><text x="868" y="254" font-size="11">3.3V</text>
+  <text x="650" y="242" font-size="11.5" font-weight="600" text-anchor="middle">+3V3</text>
+  <circle cx="596" cy="266" r="5.5" fill="#7A4A2B" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="270" font-size="10" fill="var(--muted)">brown</text>
+
+  <!-- ROW 2  5V -->
+  <line x1="440" y1="292" x2="860" y2="292" stroke="currentColor" stroke-width="2"/>
+  <text x="432" y="296" font-size="11" text-anchor="end">5V</text><text x="868" y="296" font-size="11">5V</text>
+  <text x="650" y="284" font-size="11.5" font-weight="600" text-anchor="middle">+5V</text>
+  <circle cx="596" cy="308" r="5.5" fill="#2E8B3D" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="312" font-size="10" fill="var(--muted)">green · pass-through</text>
+
+  <!-- ROW 3  GND -->
+  <line x1="440" y1="334" x2="860" y2="334" stroke="currentColor" stroke-width="2"/>
+  <text x="432" y="338" font-size="11" text-anchor="end">GND</text><text x="868" y="338" font-size="11">GND</text>
+  <text x="650" y="326" font-size="11.5" font-weight="600" text-anchor="middle">GND</text>
+  <circle cx="596" cy="350" r="5.5" fill="#7B4EA8" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="354" font-size="10" fill="var(--muted)">purple</text>
+
+  <line x1="440" y1="370" x2="860" y2="370" stroke="var(--muted)" stroke-width="1" stroke-dasharray="4 4"/>
+
+  <!-- ROW 4  MCLK -->
+  <line x1="440" y1="404" x2="860" y2="404" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="408" font-size="11" text-anchor="end">23</text><text x="868" y="408" font-size="11">23</text>
+  <text x="650" y="396" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2S_MCLK</text>
+  <circle cx="596" cy="420" r="5.5" fill="#9AA3AA" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="424" font-size="10" fill="var(--muted)">gray</text>
+
+  <!-- ROW 5  BCLK -->
+  <line x1="440" y1="446" x2="860" y2="446" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="450" font-size="11" text-anchor="end">21</text><text x="868" y="450" font-size="11">21</text>
+  <text x="650" y="438" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2S_BCLK</text>
+  <circle cx="596" cy="462" r="5.5" fill="#FFFFFF" stroke="currentColor" stroke-width="1.2"/>
+  <text x="608" y="466" font-size="10" fill="var(--muted)">white</text>
+
+  <!-- ROW 6  LRCLK -->
+  <line x1="440" y1="488" x2="860" y2="488" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="492" font-size="11" text-anchor="end">20</text><text x="868" y="492" font-size="11">20</text>
+  <text x="650" y="480" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2S_LRCLK</text>
+  <circle cx="596" cy="504" r="5.5" fill="#D22B2B" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="508" font-size="10" fill="var(--muted)">red</text>
+
+  <!-- ROW 7  DOUT -->
+  <line x1="440" y1="530" x2="860" y2="530" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="534" font-size="11" text-anchor="end">8</text><text x="868" y="534" font-size="11">8</text>
+  <text x="650" y="522" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2S_DOUT</text>
+  <circle cx="596" cy="546" r="5.5" fill="#E07A1F" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="550" font-size="10" fill="var(--muted)">orange ⚠</text>
+
+  <!-- ROW 8  DIN -->
+  <line x1="440" y1="572" x2="860" y2="572" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="576" font-size="11" text-anchor="end">7</text><text x="868" y="576" font-size="11">7</text>
+  <text x="650" y="564" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2S_DIN</text>
+  <circle cx="596" cy="588" r="5.5" fill="#E8C11C" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="592" font-size="10" fill="var(--muted)">yellow</text>
+
+  <!-- ROW 9  SDA -->
+  <line x1="440" y1="614" x2="860" y2="614" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="618" font-size="11" text-anchor="end">18</text><text x="868" y="618" font-size="11">18</text>
+  <text x="650" y="606" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2C_SDA</text>
+  <circle cx="596" cy="630" r="5.5" fill="#1A1A1A" stroke="currentColor" stroke-width="1.2"/>
+  <text x="608" y="634" font-size="10" fill="var(--muted)">black</text>
+
+  <!-- ROW 10  SCL -->
+  <line x1="440" y1="656" x2="860" y2="656" stroke="var(--digital)" stroke-width="2.5" style="stroke:var(--digital)"/>
+  <text x="432" y="660" font-size="11" text-anchor="end">19</text><text x="868" y="660" font-size="11">19</text>
+  <text x="650" y="648" font-size="11.5" font-weight="600" fill="var(--digital)" style="fill:var(--digital)" text-anchor="middle">I2C_SCL</text>
+  <circle cx="596" cy="672" r="5.5" fill="#E07A1F" stroke="currentColor" stroke-width=".8"/>
+  <text x="608" y="676" font-size="10" fill="var(--muted)">orange ⚠</text>
+
+  <!-- LINE IN L from sheet 1 -->
+  <polygon points="700,682 796,682 814,698 796,714 700,714" fill="none" stroke="var(--analog)" stroke-width="2" style="stroke:var(--analog)"/>
+  <text x="748" y="703" font-size="11" font-weight="600" text-anchor="middle" fill="var(--analog)" style="fill:var(--analog)">48e</text>
+  <line x1="814" y1="698" x2="860" y2="698" stroke="var(--analog)" stroke-width="2.5" style="stroke:var(--analog)"/>
+  <text x="868" y="694" font-size="11">LINE IN L</text>
+  <text x="868" y="708" font-size="10" fill="var(--muted)">ch 0 → SOURCE_NODE</text>
+  <text x="694" y="676" font-size="10.5" fill="var(--muted)" text-anchor="end">SOURCE_NODE, sheet 1</text>
+
+  <!-- LINE IN R  NC -->
+  <line x1="812" y1="748" x2="860" y2="748" stroke="currentColor" stroke-width="2"/>
+  <use href="#s-nc" x="800" y="748"/>
+  <text x="868" y="744" font-size="11">LINE IN R</text>
+  <text x="868" y="758" font-size="10" fill="var(--muted)">ch 1 → RETURN_NODE · not connected</text>
+  <text x="784" y="752" font-size="10.5" fill="var(--muted)" text-anchor="end">NC</text>
+  <text x="868" y="776" font-size="10" fill="var(--muted)">reads −56 dBFS crosstalk from ch 0</text>
+
+  <!-- geometry callout -->
+  <rect x="180" y="800" width="940" height="112" fill="none" stroke="var(--flag)" stroke-width="1.5"/>
+  <text x="196" y="824" font-size="11" font-weight="600" letter-spacing="1.4" fill="var(--flag)" style="fill:var(--flag)">INTERCONNECT GEOMETRY — THIS IS THE FIX, AND IT IS NOT OPTIONAL</text>
+  <g font-size="11" fill="currentColor">
+    <text x="196" y="848">Jumper length ≈ 1 in / 25–30 mm.  Shield sits ≈ 1 in above the Teensy.  All ten wires bundled tightly, 1:1, no crossovers.</text>
+    <text x="196" y="868">The failing configuration used 10–20 cm flying leads — a 4–8× reduction in conductor length took corruption from 8.54</text>
+    <text x="196" y="888">outliers per 32 samples to exactly zero. Every endpoint test passed in both states; the fault lived in the medium between them.</text>
+    <text x="196" y="906" fill="var(--muted)">⚠ Pins 8 and 19 are both orange. DOUT is the wire that consumed three reworks — a transposition here would present as I²C fault.</text>
+  </g>
+</g>
+</defs></svg>
+
+<section class="sec">
+  <div class="divider"><h3>Which version to use</h3></div>
+  <div class="tw">
+  <table>
+    <thead><tr><th>Use case</th><th>Version</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Rebuilding the board</td><td class="m">A · single sheet</td><td>Every net visible at once; no cross-referencing between pages while your hands are busy.</td></tr>
+      <tr><td>Portfolio / engineering journal</td><td class="m">B · two sheets</td><td>Reads as a conventional drawing set, and the analog/digital split mirrors how the debugging actually divided.</td></tr>
+      <tr><td>KiCad import (deliverable E)</td><td class="m">B · two sheets</td><td>Maps directly onto a hierarchical schematic with two child sheets and one shared net.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<div class="foot">
+  <p><strong>Provenance.</strong> Every connection drawn here was traced from the physical board and cross-checked against the active firmware, not transcribed from the build runbook — which was found to contain six defects, including one that would short VGND to +5&nbsp;V if followed literally. Two items remain unverified by deliberate choice: rather than probe a configuration that took days of debugging to reach, they were left open and labelled. The drawings show what was observed.</p>
+</div>
+
+</div>

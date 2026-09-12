@@ -1,5 +1,5 @@
 // =============================================================================
-// insights_engine.cpp   —   Guitar Rig Analyzer   v0.5.0
+// insights_engine.cpp   —   Guitar Rig Analyzer
 // =============================================================================
 // Interprets MeasurementResult into structured Insight objects.
 //

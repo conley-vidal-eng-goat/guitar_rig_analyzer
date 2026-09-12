@@ -1,5 +1,5 @@
 // =============================================================================
-// audio_capture.cpp     —   Guitar Rig Analyzer   v0.5.0
+// audio_capture.cpp     —   Guitar Rig Analyzer
 // =============================================================================
 // Implementation of the single audio acquisition layer.
 //

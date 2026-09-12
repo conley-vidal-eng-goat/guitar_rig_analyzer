@@ -1,5 +1,5 @@
 // =============================================================================
-// audio_engine.cpp     —   Guitar Rig Analyzer   v0.5.0
+// audio_engine.cpp     —   Guitar Rig Analyzer
 // =============================================================================
 // Implementation of the audio engine.
 //

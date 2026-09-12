@@ -1,5 +1,5 @@
 // =============================================================================
-// audio_engine.h     —    Guitar Rig Analyzer   v0.5.0
+// audio_engine.h     —    Guitar Rig Analyzer
 // =============================================================================
 // Public interface for the audio engine.
 //

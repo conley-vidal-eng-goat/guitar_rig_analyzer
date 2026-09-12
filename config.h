@@ -1,5 +1,6 @@
 // =============================================================================
-// config.h   —    Guitar Rig Analyzer   v0.5.0
+// config.h   —    Guitar Rig Analyzer
+// (no module-local version — see FIRMWARE_VERSION below)
 // =============================================================================
 // Central configuration. All hardware pin assignments, tuning constants,
 // display geometry, and calibration placeholders live here.
@@ -56,7 +57,82 @@
 #define CONFIG_H
 
 
-#define FIRMWARE_VERSION "0.5.0"
+// =============================================================================
+// VERSIONS  —  two independent compatibility concepts. Do not conflate them.
+// =============================================================================
+// FIRMWARE_VERSION is the ONE authoritative product version for this repository.
+// It is stamped into every MeasurementResult, every export, the Serial banner and
+// the Pi HELLO packet. No module carries a product version of its own — if you
+// find one in a file header comment, it is stale and should reference this.
+//
+// PI_PROTOCOL_VERSION versions the Teensy<->Pi wire format ONLY
+// (data_sender.h). A firmware bump that does not change the wire format must not
+// invalidate a working receiver, and a wire-format change must be visible to a
+// receiver even if the firmware version is untouched. Hence two numbers.
+//
+// 0.6.0 — first firmware baseline implementing the Pi 5 production display
+//         architecture: presentation boundary, three DISPLAY_TARGETs, backend
+//         exclusion, validation harness migrated off the renderer, and Pi link
+//         protocol v2 with the four truth-invariant defects closed.
+//         See docs/adr/ADR-001-display-architecture.md.
+//
+// PI_PROTOCOL_VERSION 2 — v1 was the pre-audit layout. It never had a receiver
+//         and was never frozen, but the literal string "protocol=1" did exist in
+//         committed source, and v2 changes the payload shape of both LIVE_FRAME
+//         and RESULT. A version number that ever appeared in the tree is not
+//         reused for a different layout: an old log saying "protocol=1" must not
+//         be ambiguous about which layout produced it.
+//         Changes: see docs/pi_link_protocol_audit.md.
+// -----------------------------------------------------------------------------
+#define FIRMWARE_VERSION "0.6.0"
+#define PI_PROTOCOL_VERSION 2
+
+
+// =============================================================================
+// DISPLAY ARCHITECTURE — RENDERER SELECTION
+// =============================================================================
+// Authority: docs/adr/ADR-001-display-architecture.md (ACCEPTED 2026-09-11).
+//
+// The Raspberry Pi 5 + 7" Touch Display 2 is the PRODUCTION renderer. The
+// RA8875 is retained as bring-up/debug hardware only.
+//
+// The application never calls a renderer directly — it calls presentation_*
+// (presentation.h), and this constant decides which backend those calls reach
+// at compile time. Changing renderers is a one-line change here; no measurement
+// or DSP code knows which display exists.
+//
+//   DISPLAY_TARGET_PI      → presentation_* dispatches to data_sender
+//                            (binary UART → Pi 5, Serial1 pins 0/1).
+//                            THE PRODUCTION CONFIGURATION.
+//
+//   DISPLAY_TARGET_RA8875 → presentation_* dispatches to display_engine
+//                            (SPI RA8875 800x480). Debug/fallback only.
+//                            Panel geometry is written for this panel and is
+//                            NOT retargeted to the Pi's 7" display.
+//
+//   DISPLAY_TARGET_NONE    → presentation_* becomes no-ops. Use this for bench
+//                            DSP work with NO display hardware attached: it is
+//                            the cheapest configuration and removes the
+//                            renderer from the timing budget entirely. This is
+//                            the honest setting for most of Phases 5-9.
+//
+// WHY A TRI-STATE AND NOT A BOOLEAN: the runbook once promised a
+// `USE_PI_DISPLAY` flag that was never implemented anywhere in the code
+// (see ADR-001 "Context"). A boolean also cannot express "no display", which
+// is the configuration the bench actually runs in today. Making hardware
+// selection explicit prevents a repeat of that drift.
+// -----------------------------------------------------------------------------
+#define DISPLAY_TARGET_PI       1
+#define DISPLAY_TARGET_RA8875   2
+#define DISPLAY_TARGET_NONE     3
+
+#define DISPLAY_TARGET DISPLAY_TARGET_PI
+
+#if DISPLAY_TARGET != DISPLAY_TARGET_PI     && \
+    DISPLAY_TARGET != DISPLAY_TARGET_RA8875 && \
+    DISPLAY_TARGET != DISPLAY_TARGET_NONE
+  #error "DISPLAY_TARGET must be DISPLAY_TARGET_PI, _RA8875, or _NONE. See docs/adr/ADR-001-display-architecture.md"
+#endif
 
 
 // =============================================================================
@@ -83,6 +159,45 @@
                                  // carries Audio Shield line-in INTO the
                                  // Teensy. Display reset and I2S RX cannot
                                  // share it. Do NOT move this back to 8.
+                                 //
+                                 // SCOPE (ADR-001): these three pins are only
+                                 // claimed when DISPLAY_TARGET ==
+                                 // DISPLAY_TARGET_RA8875. In the production PI
+                                 // build and in NONE they are free. The 8->5
+                                 // rewire is therefore no longer a product
+                                 // blocker — it is only required if you select
+                                 // the RA8875 debug backend with the panel
+                                 // physically mounted. See TODO-24.
+
+
+// =============================================================================
+// HARDWARE — PI 5 DISPLAY LINK    (UART, DISPLAY_TARGET_PI)
+// =============================================================================
+// Authority: docs/adr/ADR-001-display-architecture.md.
+//
+// The production renderer is a Raspberry Pi 5 reached over a binary UART link.
+// Teensy Serial1 = pin 0 (RX) / pin 1 (TX), wired to the Pi's UART through the
+// Freenove GPIO breakout HAT.
+//
+// *** PINS 0 AND 1 ARE RESERVED FOR THIS LINK. DO NOT REASSIGN THEM. ***
+//
+// This reservation predates ADR-001 (TODO-24 already rejected pins 0/1 as
+// display-reset candidates on these grounds) but was previously protecting an
+// interface no build could select. It is now load-bearing.
+//
+// The wire format, baud/bin budget and receiver algorithm are documented in
+// data_sender.h. The DS_* constants there (DS_BAUD_RATE, DS_LIVE_BINS,
+// DS_UART_PORT) are the tunables; they are deliberately left at their
+// data_sender.h defaults rather than duplicated here, so there is exactly one
+// definition of the protocol's parameters.
+//
+// *** THE WIRE FORMAT IS NOT YET FROZEN. *** An audit against the canonical
+// 512-bin MeasurementResult model found five gaps, one of which drops the TF
+// clamp mask and would let the Pi render a saturation rail as a measurement.
+// Do not build a Pi-side parser against the current layout until TODO-34 closes.
+// -----------------------------------------------------------------------------
+#define PI_LINK_UART_RX_PIN  0   // Teensy Serial1 RX — RESERVED, do not reassign
+#define PI_LINK_UART_TX_PIN  1   // Teensy Serial1 TX — RESERVED, do not reassign
 
 
 // =============================================================================

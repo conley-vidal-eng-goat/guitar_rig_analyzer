@@ -106,7 +106,17 @@ A working **breadboard prototype** of the v0.6 signal-router hardware that will 
   <line x1="680" y1="135" x2="700" y2="135" class="ctl" marker-end="url(#ar)"/>
 </svg>
 
-This is the **`USE_PI_DISPLAY`** build (since you bought the Pi 5 + touch display). The Teensy still owns all DSP and routing; the Pi just renders.
+This is the **`DISPLAY_TARGET_PI`** build (since you bought the Pi 5 + touch display). The Teensy still owns all DSP and routing; the Pi just renders.
+
+> **⚠️ Corrected 2026-09-11.** This line previously named a flag **`USE_PI_DISPLAY`** that was never implemented anywhere in the firmware — it existed only in this sentence, and the repository was meanwhile building an RA8875 product. That drift is now resolved: the decision is recorded in [docs/adr/ADR-001-display-architecture.md](adr/ADR-001-display-architecture.md) and the real mechanism is the tri-state `DISPLAY_TARGET` in `config.h`:
+>
+> | Value | Renderer | Use |
+> |---|---|---|
+> | `DISPLAY_TARGET_PI` | Pi 5 over UART (`Serial1`, pins 0/1) | **production** |
+> | `DISPLAY_TARGET_RA8875` | RA8875 800×480 over SPI | debug / fallback only |
+> | `DISPLAY_TARGET_NONE` | none | **use this for Phases 1–9** |
+>
+> **For every phase in this runbook, build with `DISPLAY_TARGET_NONE`.** No display hardware is attached during breadboard bring-up, and `_NONE` compiles out both renderers — which also removes the Adafruit RA8875 library and the RA8875 pin claims from the build entirely. The Pi link is **Phase 10**, at the end, and it is not a prerequisite for anything before it.
 
 ---
 
@@ -121,12 +131,14 @@ This consolidates your **DigiKey + Mouser + Vilros + Amazon** orders into one pl
 | PJRC Teensy 4.1 (no pins) ×1 | Amazon | Phase 0 onward |
 | Teensy 4 Audio Shield Rev D ×1 | Amazon | Phase 4 onward |
 | SanDisk 128GB microSD ×1 | Amazon | Optional (calibration / exports) |
-| Raspberry Pi 5 8GB ×1 | Vilros | Phase 9 + setup |
-| Pi 5 Active Cooler ×1 | Vilros | Phase 9 |
-| Pi 27W USB-C PSU ×1 | Vilros | Phase 9 |
-| Pi Touch Display 2 (7") ×1 | Vilros | Phase 9 |
-| Freenove RPi GPIO breakout HAT ×1 | Amazon | Phase 9 (Pi↔Teensy UART) |
+| Raspberry Pi 5 8GB ×1 | Vilros | **Phase 10** + setup |
+| Pi 5 Active Cooler ×1 | Vilros | **Phase 10** |
+| Pi 27W USB-C PSU ×1 | Vilros | **Phase 10** |
+| Pi Touch Display 2 (7") ×1 | Vilros | **Phase 10** |
+| Freenove RPi GPIO breakout HAT ×1 | Amazon | **Phase 10** (Pi↔Teensy UART) |
 | HiLetgo SSD1309 2.42" OLED ×1 | Amazon | Optional secondary status display |
+
+> **⚠️ Corrected 2026-09-11.** The five Pi parts above were previously marked "Phase 9". **Phase 9 in this document is the validation harness** — it has nothing to do with the Pi, and no phase in v3 ever installed the Pi hardware. It was purchased with nowhere to go. The Pi link is now **Phase 10** (see below). Retrofitting it into Phase 9 would have meant claiming a completed phase covered untested work, which is the status-collapsing mistake `ai/todo.md` exists to prevent.
 
 ### Active / semiconductor
 
@@ -1690,8 +1702,140 @@ Each check is one line you read out loud. Tick each as you confirm.
 - [ ] Phase 7: Full route matrix (4 jack combinations) produces correct route description on Serial.
 - [ ] Phase 8: XLR + microswitch detect both work end-to-end.
 - [ ] Phase 9: `1`, `2`, `3`, `4` all PASS.
+- [ ] Phase 10: Pi link — common ground verified, HELLO reports protocol v2, known data renders, **clamped bins marked rather than drawn**, CRC rejection and unknown-packet tolerance demonstrated, reboot recovery demonstrated, and the **T1 acceptance matrix** passed: all four runs recorded, runs 2-4 indistinguishable from the `_NONE` control on `block_ms_*`, and `blocks_skipped = 0` in every run.
 
 When every box is ticked: photograph the entire board, save the serial logs, and update [docs/bench_runbook.md](bench_runbook.md) §8 with the date. The breadboard is signed off and ready to translate into a KiCad schematic.
+
+---
+
+# Phase 10 — Pi 5 display link (UART)
+
+> **Goal:** Prove that the Teensy can hand measurement data to the Raspberry Pi 5 over UART and that the Pi renders it correctly — **tested independently of the analyzer**, using known data, before the two are trusted together.
+
+**Added 2026-09-11.** Authority: [docs/adr/ADR-001-display-architecture.md](adr/ADR-001-display-architecture.md). The Pi 5 is the production renderer; the Teensy keeps all DSP, routing and measurement authority. Every earlier phase in this runbook is built with `DISPLAY_TARGET_NONE` and none of them depend on this one.
+
+## Status: protocol v2 is a freeze candidate — this phase is the thing that freezes it
+
+An audit on 2026-09-11 found 17 findings against the v1 packet layout, five severe, **four of them cases where the firmware computed a verdict and failed to put it on the wire** — including the TF clamp mask, which would have had the Pi plotting a saturation rail as a real measurement. All five are now fixed in **protocol v2** ([docs/pi_link_protocol_audit.md](pi_link_protocol_audit.md)).
+
+One finding is **not** closed, and it is the one this phase exists to settle:
+
+> **T1 — transmission must not perturb acquisition.** The prediction is that a 128-bin live frame occupies ~36.7 ms of wire time against a measured ~46.3 ms audio block period (~79 %). The delivery policy makes that *safe in principle* — a frame that does not fit is dropped, not waited on — but **nobody has measured it.** Until step 8 below produces a number, T1 is arithmetic, not evidence.
+
+A Pi-side parser may be written against v2 now. The format freezes when step 8 passes, because that measurement is the only remaining thing that could force a change to packet sizing or cadence.
+
+## Parts tray for this phase
+
+| Part | Qty | Notes |
+|---|---:|---|
+| Raspberry Pi 5 8GB | 1 | |
+| Pi 5 Active Cooler | 1 | Fit before first boot — the Pi 5 throttles without it |
+| Pi 27W USB-C PSU | 1 | Use this one. An underpowered supply on a Pi 5 presents as random corruption, which looks exactly like a UART fault |
+| Pi Touch Display 2 (7") | 1 | |
+| Freenove RPi GPIO breakout HAT | 1 | Pi↔Teensy UART |
+| Jumper wires | 3 | TX, RX, GND |
+| microSD for the Pi | 1 | Not the Teensy's card |
+
+## The link
+
+| Teensy | Signal | Pi (BCM) | Notes |
+|---|---|---|---|
+| pin 1 | `Serial1` TX | GPIO15 / RXD | Teensy transmits, Pi receives |
+| pin 0 | `Serial1` RX | GPIO14 / TXD | reserved for future Pi→Teensy control; not used by `data_sender` today |
+| GND | ground | GND | **required** — see the stop sign below |
+
+Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 V between the boards.** Each has its own supply; the only power-domain connection is ground.
+
+> **[STOP]** Connect **GND first**, before TX or RX, and confirm continuity with the DMM. A UART link between two separately-powered boards with no common ground will appear to work intermittently and corrupt data in a pattern that looks like a baud-rate or CRC problem. You will spend a day on it. This is the single most common failure in this phase.
+
+> **[STOP]** `Serial1` is pins **0 and 1** and `config.h` reserves them (`PI_LINK_UART_RX_PIN` / `PI_LINK_UART_TX_PIN`). Do not reassign them for anything. TODO-24 already rejected them as display-reset candidates on these grounds.
+
+## Steps
+
+**1. Assemble and boot the Pi alone.** Active Cooler fitted, OS installed, Touch Display 2 working, no Teensy connected. Confirm the touchscreen responds. *Verify:* the Pi boots to a desktop and touch works. Do not proceed with a Pi you have not already seen working by itself.
+
+**2. Wire GND, then TX, then RX.** In that order. *Verify:* continuity Teensy GND ↔ Pi GND.
+
+**3. Build the firmware with `DISPLAY_TARGET_PI`.** One line in `config.h`. The boot banner prints `[Main] Display target: Pi 5 (UART)` — confirm that on USB Serial before looking at the Pi. If it says anything else you are testing the wrong binary.
+
+**4. Observe raw bytes on the Pi before writing any parser.** `stty -F /dev/serial0 460800 raw` then `xxd /dev/serial0 | head`. *Verify:* you can see the `55 AA` sync word recurring at roughly 11 Hz. **Stop here and fix the link if you cannot** — every later problem is easier to diagnose than a physical-layer fault.
+
+**5. Read HELLO before anything else.** On connect the Teensy sends a structured HELLO packet (type `0x06`) carrying `protocol_version`, `live_bins`, `fft_bins`, `decim_ratio`, baud, sample rate, a capability bitmap and the firmware version. *Verify:* `protocol_version == 2`. A receiver that does not check this will eventually misparse a future layout silently.
+
+**6. Bring up the receiver against known data.** Per TODO-36. Acceptance is a **synthetic or recorded** packet stream rendering correctly — not "the analyzer looks right". Real analyzer data as the first test conflates a protocol bug with a measurement bug.
+
+**7. Verify the clamp contract is honoured.** This is the defect that motivated protocol v2, so it gets its own step. With **nothing connected to RETURN_NODE**, the true TF sits far below the −24 dB clamp rail and the firmware rails essentially the whole curve. *Verify:* the Pi does **not** draw a flat −24 dB line as though it were measured — it marks those bins as saturated, and `tf_clamped_count` in the live frame reads near `FFT_BINS`. A renderer that draws the rail has ignored the per-bin clamped nibble, and has reproduced on the Pi the exact defect that printed `1kHz=-24.0dB` in 33 of 33 windows on 2026-09-07.
+
+**8. Demonstrate CRC rejection.** Deliberately corrupt a payload byte in a replayed stream. *Verify:* the Pi discards that packet and resynchronises on the next sync word. It must not render corrupted data and must not wedge.
+
+**9. Demonstrate unknown-packet tolerance.** Inject a synthetic packet with type `0xFE` and a valid length/CRC. *Verify:* the receiver skips `payload_length` bytes and carries on. This is what lets a future packet type be added without a version break.
+
+**10. Demonstrate reboot recovery.** Reset the Teensy while the Pi is receiving. *Verify:* the Pi recovers without being restarted, and re-reads HELLO.
+
+**11. [STOP] Run the T1 acceptance matrix. This is the decisive step of the phase.**
+
+The question is NOT "does UART work". It is one narrow engineering question:
+
+> **Can the presentation transport become unavailable without measurably perturbing the Teensy's audio/measurement timing?**
+
+The firmware carries a harness for exactly this (`timing_probe.{h,cpp}`). Two serial commands: **`t`** starts a measurement window, **`T`** prints a fixed-format `key=value` report. The format is deliberately machine-diffable — run the four configurations, paste each report verbatim into `ai/journal.md`, and diff them rather than eyeballing.
+
+**Run all four under identical window length and identical signal conditions.** A guitar left plugged in and untouched is fine; an inconsistent input is not, because block timing depends on it.
+
+| Run | Build | Condition | Role |
+|---|---|---|---|
+| **1** | `DISPLAY_TARGET_NONE` | no display hardware | **THE CONTROL.** Every other run is judged against this |
+| **2** | `DISPLAY_TARGET_PI` | Pi connected, reader consuming normally | normal operation |
+| **3** | `DISPLAY_TARGET_PI` | Pi connected, reader **suspended** (`kill -STOP <pid>`) so the UART backs up and stays full | sustained backpressure |
+| **4** | `DISPLAY_TARGET_PI` | TX wire **pulled while a RESULT is draining** (arm a measurement with `m`, yank during delivery) | loss mid-transaction |
+
+Procedure per run: flash → let it settle → press `t` → leave it for the same fixed window (≥60 s; longer is better for the max figures) → press `T` → save the output.
+
+**Metrics the report emits.** The acquisition block is the one that decides pass/fail:
+
+| Key | Must be |
+|---|---|
+| `block_ms_mean`, `block_ms_max`, `block_ms_spread` | **indistinguishable from run 1** |
+| `blocks_skipped`, `skip_events`, `largest_block_gap` | **0 in every run, no exceptions** |
+| `loop_us_max` | comparable to run 1 |
+| `audio_blocks_high_water` | comparable to run 1 |
+| `[Link] Live frames` sent/dropped/streak | drops **expected** in runs 3 and 4 |
+| `[Link] Call time` max | microseconds, not milliseconds |
+| `[Link] TX room min` | 0 in runs 3/4 — that is the backpressure, correctly absorbed |
+| `[Link] Results` abandoned bytes | non-zero in run 4 is correct |
+
+> **⚠️ DO NOT PASS THIS STEP ON A SMALL CALL TIME.** A microsecond-fast `presentation_*()` can still disturb the instrument indirectly — through interrupt load, UART ISR activity, DMA contention, or buffer servicing — and none of that appears in a call-duration figure. **The pass condition is the comparison against run 1.** There is no absolute threshold to argue about; the control run *is* the threshold.
+>
+> This matters more here than in a typical embedded project: the firmware is built around a single capture owner and a single canonical timebase (the audio block counter), and every time-sensitive operation references it. Perturbing that layer compromises far more than the display.
+
+**Also verify in runs 3 and 4:** the firmware stays fully responsive on USB Serial, and the validation suite (`1`–`4`) still runs and passes with the Pi stalled. A dead renderer must not be able to fail a measurement.
+
+*If block timing degrades in any run:* **stop.** The non-blocking policy has been violated somewhere, and no amount of Pi-side work will fix it. Find the blocking path first — acceptance test B in [the protocol audit](pi_link_protocol_audit.md) is the place to start.
+
+**12. Freeze the transport and record the milestone.** Once runs 2–4 match run 1 on the acquisition metrics with `blocks_skipped = 0` throughout, T1 closes, protocol v2 goes from *schema-frozen, transport-unproven* to fully proven, and the milestone is **v0.6.0 — Pi presentation architecture validated**. Only then start the Pi parser/renderer (TODO-36): at that point it is being built on a transport demonstrated to be physically incapable of stealing timing from the instrument, rather than on a speculative one.
+
+## End-of-phase verify
+
+| Check | Expected | [STOP] |
+|---|---|---|
+| Common ground | continuity Teensy GND ↔ Pi GND | **[STOP]** |
+| Banner | `[Main] Display target: Pi 5 (UART)` | |
+| Raw bytes | `55 AA` sync word at ~11 Hz | **[STOP]** |
+| HELLO | `protocol_version == 2` | |
+| Known data renders | synthetic stream renders correctly | |
+| **Clamp contract** | railed bins marked saturated, **not** drawn as −24 dB data | **[STOP]** |
+| CRC rejection | corrupted packet discarded, stream resyncs | **[STOP]** |
+| Unknown packet type | skipped by length, receiver continues | |
+| Reboot recovery | Pi recovers from a Teensy reset unaided | |
+| Loop blocking | max call time in **microseconds**, measured | **[STOP]** |
+| Block timing with Pi consuming | indistinguishable from `DISPLAY_TARGET_NONE` | **[STOP]** |
+| Dead / stalled / yanked Pi | block timing unchanged in all three cases | **[STOP]** |
+
+## Background — why this phase is last, and separate
+
+The Teensy does the hard real-time work and the Pi does presentation. The interface between them is the one place a mistake is expensive in both directions, which is why it gets its own phase with its own acceptance criteria rather than being folded into the validation harness.
+
+The audit that created this phase found the Pi hardware listed in this runbook's parts table as "used in Phase 9" while Phase 9 was the validation harness — the Pi had been bought with nowhere to be installed, and the firmware had a complete, zero-caller UART module pointed at it. That is what an unbuilt phase looks like from the inside: the parts arrive, the code gets written, and nothing ever connects the two.
 
 ---
 

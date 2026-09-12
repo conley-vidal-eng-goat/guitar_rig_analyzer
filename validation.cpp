@@ -1,5 +1,5 @@
 // =============================================================================
-// validation.cpp   —   Guitar Rig Analyzer   v0.5.0
+// validation.cpp   —   Guitar Rig Analyzer
 // =============================================================================
 // Known-signal validation harness — implementation.
 // See validation.h for the full changelog of audit-driven changes.
@@ -33,7 +33,10 @@
 
 #include "validation.h"
 #include "audio_capture.h"     // for audioCap_update() in polling loops
-#include "display_engine.h"
+#include "presentation.h"      // presentation boundary — NOT display_engine
+                               // directly. The harness must report through
+                               // whichever renderer is selected; see
+                               // docs/adr/ADR-001-display-architecture.md.
 #include <math.h>
 #include <stdlib.h>
 
@@ -448,7 +451,7 @@ void validation_waitForUser(const char* prompt) {
      Serial.println(">>> WAITING FOR USER <<<");
      Serial.println(prompt);
      Serial.println(">>> Press Enter to continue <<<");
-     displayEngine_drawStatusMessage("VALIDATION: waiting — see Serial");
+     presentation_status("VALIDATION: waiting — see Serial");
      while (Serial.available()) Serial.read();
 
      // FIX [drain-audio]: previously this loop just delay(10)'d. While the
@@ -511,7 +514,7 @@ ValidationResult validation_runPreflightLevelCheck() {
 
      ValidationResult result;
      initResult(&result, "Preflight Level Check");
-     displayEngine_drawStatusMessage("PREFLIGHT: checking signal levels...");
+     presentation_status("PREFLIGHT: checking signal levels...");
      Serial.println("\n[Validation] Preflight Level Check");
      Serial.printf ("[Validation] Target: %.0f to %.0f dBFS      Gate gap: %.0f dB min\n",
                        VALIDATION_TARGET_LEVEL_MIN_DBFS,
@@ -616,7 +619,7 @@ addCriterion(&result, "Source-to-gate gap (> min)",
 
 
      validation_printResult(result);
-     displayEngine_drawStatusMessage(result.all_passed
+     presentation_status(result.all_passed
          ? "PREFLIGHT: PASS — levels OK"
          : "PREFLIGHT: FAIL — adjust gain, see Serial");
      return result;
@@ -637,7 +640,7 @@ ValidationResult validation_runFlatLoopback() {
 
      ValidationResult result;
      initResult(&result, "Flat Loopback     (expect 0 dB flat)");
-     displayEngine_drawStatusMessage("VALIDATION 1: Flat loopback — collecting...");
+     presentation_status("VALIDATION 1: Flat loopback — collecting...");
      Serial.println("\n[Validation] Test 1: Flat Loopback");
      // CHANGED [audit-1]: Print the settle count using the named constant.
      Serial.printf ("[Validation] Collecting %d blocks + %d settle blocks...\n",
@@ -711,7 +714,7 @@ Serial.printf("[Validation] Confidence: %.1f%%     NaN bins: %d/%d\n",
     }
 
 
-    displayEngine_drawStatusMessage(result.all_passed
+    presentation_status(result.all_passed
         ? "VALIDATION 1: PASS — loopback flat"
         : "VALIDATION 1: FAIL — see Serial");
     return result;
@@ -736,7 +739,7 @@ ValidationResult validation_runChannelSwapSymmetry() {
 
 
     // Pass A
-    displayEngine_drawStatusMessage("VALIDATION 2A: default route — collecting...");
+    presentation_status("VALIDATION 2A: default route — collecting...");
     Serial.println("[Validation] Pass A: default route");
     audioEngine_resetSmoothing();
     CollectionStats stats_a;
@@ -756,7 +759,7 @@ ValidationResult validation_runChannelSwapSymmetry() {
 SignalRoute swapped = { RETURN_NODE_PHYSICAL_CH, SOURCE_NODE_PHYSICAL_CH,
                             "Symmetry check: SOURCE/RETURN nodes swapped" };
 audioEngine_setRoute(swapped);
-displayEngine_drawStatusMessage("VALIDATION 2B: swapped route — collecting...");
+presentation_status("VALIDATION 2B: swapped route — collecting...");
 Serial.println("[Validation] Pass B: swapped route");
 audioEngine_resetSmoothing();
 
@@ -881,7 +884,7 @@ addCriterion(&result, "Pass A peak-to-peak (< tol)",
 
 
      validation_printResult(result);
-     displayEngine_drawStatusMessage(result.all_passed
+     presentation_status(result.all_passed
          ? "VALIDATION 2: PASS — channels symmetric"
          : "VALIDATION 2: FAIL — see Serial");
      return result;
@@ -906,7 +909,7 @@ ValidationResult result;
 initResult(&result, "Known Gain Offset");
 Serial.println("\n[Validation] Test 3: Known Gain Offset");
 Serial.printf ("[Validation] Expected TF: %+.1f dB flat\n", expected_offset_db);
-displayEngine_drawStatusMessage("VALIDATION 3: Gain offset — collecting...");
+presentation_status("VALIDATION 3: Gain offset — collecting...");
 
 
 audioEngine_resetSmoothing();
@@ -956,7 +959,7 @@ addCriterion(&result, "Measured mean TF (info only)",
 
 
 validation_printResult(result);
-     displayEngine_drawStatusMessage(result.all_passed
+     presentation_status(result.all_passed
          ? "VALIDATION 3: PASS — gain offset correct"
          : "VALIDATION 3: FAIL — see Serial");
      return result;
@@ -988,7 +991,7 @@ ValidationResult validation_runKnownFilter(float corner_freq_hz,
                       corner_freq_hz, expected_slope_db_per_octave);
      // CHANGED [audit-7]: White noise requirement noted in Serial output.
      Serial.println("[Validation] Stimulus: WHITE NOISE required (not pink noise).");
-     displayEngine_drawStatusMessage("VALIDATION 4: Filter check — collecting...");
+     presentation_status("VALIDATION 4: Filter check — collecting...");
 
 
      audioEngine_resetSmoothing();
@@ -1114,7 +1117,7 @@ if (!isnan(measured_slope)) {
 
 
      validation_printResult(result);
-     displayEngine_drawStatusMessage(result.all_passed
+     presentation_status(result.all_passed
             ? "VALIDATION 4: PASS — filter response correct"
             : "VALIDATION 4: FAIL — see Serial");
      return result;
@@ -1156,7 +1159,7 @@ if (preflight.all_passed) {
 } else {
     Serial.println("[Validation] PREFLIGHT FAILED — stopping suite.");
     Serial.println("[Validation] Adjust signal level and re-run.");
-    displayEngine_drawStatusMessage("PREFLIGHT FAIL — suite stopped");
+    presentation_status("PREFLIGHT FAIL — suite stopped");
     return false;
 }
 
@@ -1244,7 +1247,7 @@ if (passed == total) {
     }
 
 
-    displayEngine_drawStatusMessage(
+    presentation_status(
         passed == total ? "ALL VALIDATION PASSED" : "VALIDATION: failures — see Serial");
     return (passed == total);
 }

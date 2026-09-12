@@ -1,5 +1,5 @@
 // =============================================================================
-// calibration_store.cpp    —   Guitar Rig Analyzer    v0.5.0
+// calibration_store.cpp    —   Guitar Rig Analyzer
 // =============================================================================
 // Implementation of the calibration buffer owner.
 //

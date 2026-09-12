@@ -111,7 +111,7 @@
 <text class="note" x="690" y="922" text-anchor="start">   DOUT is the conductor that caused the corruption fault.</text>
 <text class="note" x="690" y="940" text-anchor="start">   Do not re-seat this bundle from memory. Risk R3.</text>
 <rect class="dash" x="100" y="1020" width="990" height="300" rx="6"/>
-<text class="ttl" x="104" y="1011" text-anchor="start">D — PHASES 5–9: NOT INSTALLED (reserved)</text>
+<text class="ttl" x="104" y="1011" text-anchor="start">D — PHASES 5–10: NOT INSTALLED (reserved)</text>
 <text class="note" x="130" y="1056" text-anchor="start">Firmware pin definitions exist in config.h:77-101. NO HARDWARE IS FITTED.</text>
 <text class="note" x="130" y="1072" text-anchor="start">Add each block here as its phase is built, then regenerate.</text>
 <text class="pin" x="130" y="1106" text-anchor="start">NET / FUNCTION</text>
@@ -143,10 +143,14 @@
 <text class="gh" x="430" y="1244" text-anchor="start">Teensy 24</text>
 <text class="gh" x="560" y="1244" text-anchor="start">XLR return</text>
 <text class="gh" x="890" y="1244" text-anchor="start">Phase 8</text>
-<text class="gh" x="130" y="1266" text-anchor="start">RA8875_CS / INT / RESET</text>
-<text class="gh" x="430" y="1266" text-anchor="start">Teensy 10 / 9 / 5</text>
-<text class="gh" x="560" y="1266" text-anchor="start">SPI display</text>
-<text class="gh" x="890" y="1266" text-anchor="start">deferred</text>
+<text class="gh" x="130" y="1266" text-anchor="start">PI_LINK_UART TX / RX</text>
+<text class="gh" x="430" y="1266" text-anchor="start">Teensy 1 / 0</text>
+<text class="gh" x="560" y="1266" text-anchor="start">Pi 5 display link (Serial1)</text>
+<text class="gh" x="890" y="1266" text-anchor="start">Phase 10</text>
+<text class="gh" x="130" y="1288" text-anchor="start">RA8875_CS / INT / RESET</text>
+<text class="gh" x="430" y="1288" text-anchor="start">Teensy 10 / 9 / 5</text>
+<text class="gh" x="560" y="1288" text-anchor="start">SPI display (debug only)</text>
+<text class="gh" x="890" y="1288" text-anchor="start">deferred</text>
 <text class="note" x="130" y="1390" text-anchor="start">SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).</text>
 <rect class="box" x="710" y="1440" width="620" height="150" rx="0"/>
 <polyline class="w" points="710,1486 1330,1486"/>

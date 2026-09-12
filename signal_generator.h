@@ -1,5 +1,5 @@
 // =============================================================================
-// signal_generator.h     —   Guitar Rig Analyzer   v0.5.0
+// signal_generator.h     —   Guitar Rig Analyzer
 // =============================================================================
 // Public interface for the signal generator module.
 //

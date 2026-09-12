@@ -1,17 +1,25 @@
 // =============================================================================
-// guitar_rig_analyzer.ino     —     Guitar Rig Analyzer     v0.5.0
+// guitar_rig_analyzer.ino     —     Guitar Rig Analyzer
+// (no module-local version — FIRMWARE_VERSION in config.h is authoritative)
 // =============================================================================
 //
 // TARGET HARDWARE
 //   • Teensy 4.1    (600 MHz ARM Cortex-M7, 1 MB DTCM + 1 MB OCRAM)
 //   • Teensy Audio Shield     (SGTL5000 via I2S audio + I2C control — not SPI)
-//   • Adafruit RA8875 + 800×480 5" IPS touchscreen           (SPI)
 //   • OPA1642 ultra-high-impedance input buffer           (analogue, pre-codec)
+//   • DISPLAY: selected by DISPLAY_TARGET in config.h —
+//       DISPLAY_TARGET_PI      Raspberry Pi 5 + 7" Touch Display 2, binary UART
+//                              on Serial1 (pins 0/1).  *** PRODUCTION ***
+//       DISPLAY_TARGET_RA8875 Adafruit RA8875 + 800×480 5" IPS, SPI. Debug only.
+//       DISPLAY_TARGET_NONE    No display hardware. Bench DSP work.
+//     See docs/adr/ADR-001-display-architecture.md.
 //
 // REQUIRED LIBRARIES
+//   • Teensy Audio Library        (bundled with Teensyduino)
 //   • Adafruit RA8875             v1.4.x or later   (Library Manager)
 //   • Adafruit BusIO              (auto-installed with RA8875)
-//   • Teensy Audio Library        (bundled with Teensyduino)
+//     — the two Adafruit libraries are needed ONLY for DISPLAY_TARGET_RA8875.
+//       The PI and NONE builds do not include display_engine.h at all.
 //
 // ARDUINO IDE SETTINGS
 //   Board: Teensy 4.1 | Optimize: Fastest | CPU: 600 MHz | USB: Serial
@@ -37,8 +45,8 @@
 // RETURN_NODE_PHYSICAL_CH)
 // and managed by audio_capture.cpp via the SignalRoute mechanism.
 //
-// ACTIVE MODULES (v0.5.0)
-// -----------------------
+// ACTIVE MODULES
+// --------------
 //   audio_capture           — single I2S acquisition owner, dual consumer model,
 //                             AudioRecordQueue for raw sample capture
 //   audio_engine            — live display consumer (EMA TF, spectrum, peaks)
@@ -49,13 +57,28 @@
 //   export_engine           — JSON fingerprint + CSV export to SD
 //   insights_engine         — measurement/advisory interpretation layer
 //   validation              — known-signal validation harness
+//   presentation            — THE PRESENTATION BOUNDARY. The only display-facing
+//                             API this file may call. Dispatches at compile time
+//                             to data_sender (Pi), display_engine (RA8875), or a
+//                             null backend, per DISPLAY_TARGET in config.h.
+//   data_sender             — binary UART protocol to the Pi 5 renderer
+//                             (DISPLAY_TARGET_PI backend)
 //   display_engine          — RA8875 live display + result view + insight panel
+//                             (DISPLAY_TARGET_RA8875 backend, debug only)
+//
+// THE GOVERNING INVARIANT   (docs/adr/ADR-001-display-architecture.md)
+// -------------------------
+//   *** The Teensy determines truth. The renderer presents truth. ***
+// Nothing in this file asks which renderer exists, and no renderer returns a
+// measurement value, validity verdict or quality grade back into this path.
 //
 // STILL TO ADD (future milestones)
 // ---------------------------------
 //   signal_router           — hardware jack detection + relay control
-//   display_engine          — touch UI (result view and insight panel now
-//                             implemented)
+//   Pi-side receiver/UI     — parser, state model, plots, touch navigation,
+//                             fingerprint visualization          (TODO-36)
+//   wire-format freeze      — packet protocol audit against the canonical
+//                             512-bin result model               (TODO-34)
 //   insights refinement     — threshold tuning against real hardware data
 //
 // HEADPHONE MONITORING (temporary bench behaviour)
@@ -79,7 +102,8 @@
 #include "config.h"
 #include "audio_capture.h"     // v0.4: single acquisition layer — include before audio_engine
 #include "audio_engine.h"
-#include "display_engine.h"
+#include "presentation.h"
+#include "timing_probe.h"   // T1 acceptance harness (Phase 10)
 #include "validation.h"      // Known-signal validation harness (v0.3.0)
 #include "measurement_engine.h"     // precision measurement state machine
 #include "calibration_store.h"      // calibration buffer and file I/O
@@ -111,7 +135,7 @@ static const float EXPECTED_DISPLAY_MS =
 
 
 // Current analysis frame — global to avoid ~4 KB stack allocation per loop.
-// Written by audioEngine_update(), read by displayEngine_update() and the
+// Written by audioEngine_update(), read by presentation_updateLive() and the
 // Serial diagnostics in this file.
 static AudioFrame s_frame;
 
@@ -182,6 +206,12 @@ void setup() {
     Serial.println("================================================");
     Serial.println("     Guitar Rig Analyzer   v" FIRMWARE_VERSION);
     Serial.println("================================================");
+    // Record the renderer in the banner, not just at init: every serial log
+    // pasted into ai/journal.md should state which display architecture the
+    // firmware was built against, so a bench observation can never be
+    // misattributed to the wrong backend later.
+    Serial.printf ("[Main] Display target:               %s\n",
+                      presentation_backendName());
     Serial.printf ("[Main] Expected block period:       %.1f ms\n",
 EXPECTED_BLOCK_MS);
     Serial.printf ("[Main] Expected display period: %.1f ms (~%.1f fps)\n",
@@ -190,14 +220,24 @@ EXPECTED_BLOCK_MS);
                       SOURCE_NODE_PHYSICAL_CH, RETURN_NODE_PHYSICAL_CH);
 
 
-    // --- Display first ---
-    // Gives visual feedback during audio init and allows error messages
-    // if codec init fails.
-    Serial.println("[Main] Initialising display...");
-    if (!displayEngine_init()) {
-           Serial.println("[Main] WARNING: Display init failed. Continuing without display.");
+    // --- Presentation boundary first ---
+    // Brought up before audio so the operator gets feedback during audio init
+    // and so codec failures can be reported somewhere visible.
+    //
+    // NON-FATAL BY CONTRACT (ADR-001): a renderer failure must never prevent
+    // acquisition or DSP from starting. With the RA8875 absent, the Adafruit
+    // library's waitPoll() spin once stretched the audio block period from
+    // 46 ms to 2194 ms — a display defect that destroyed acquisition
+    // (journal 2026-09-05 (10), TODO-25). Warn and continue; every
+    // presentation_* call stays safe after a failed init.
+    Serial.printf("[Main] Initialising presentation backend: %s\n",
+                      presentation_backendName());
+    if (!presentation_init()) {
+           Serial.printf("[Main] WARNING: %s init failed. Continuing without a"
+                             " renderer — acquisition and DSP are unaffected.\n",
+                             presentation_backendName());
     }
-    displayEngine_drawStatusMessage("Initialising audio...");
+    presentation_status("Initialising audio...");
 
 
     // --- Audio capture layer (v0.4: must init before audio_engine) ---
@@ -205,7 +245,7 @@ EXPECTED_BLOCK_MS);
     // audio_engine depends on audio_capture being initialised first.
     Serial.println("[Main] Initialising audio capture layer...");
     if (!audioCap_init()) {
-           displayEngine_drawStatusMessage("ERROR: Codec not found — check shield");
+           presentation_status("ERROR: Codec not found — check shield");
            Serial.println("[Main] FATAL: audioCap_init() failed. Halting.");
            while (true) { delay(500); }
     }
@@ -214,7 +254,7 @@ EXPECTED_BLOCK_MS);
     // --- Audio engine (live analysis consumer) ---
     Serial.println("[Main] Initialising audio engine...");
     if (!audioEngine_init()) {
-           displayEngine_drawStatusMessage("ERROR: Audio engine init failed");
+           presentation_status("ERROR: Audio engine init failed");
            Serial.println("[Main] FATAL: audioEngine_init() failed. Halting.");
            while (true) { delay(500); }
     }
@@ -241,7 +281,12 @@ EXPECTED_BLOCK_MS);
     measurementEngine_init();      // arms self-test; runs during first update() calls
 
 
-    displayEngine_drawStatusMessage("Ready — play to begin");
+    // Start a T1 measurement window at boot so a run is always measurable even if
+    // the operator forgets to press 't'. Done AFTER all init so boot-time audio
+    // spikes do not contaminate the high-water figure.
+    timingProbe_reset();
+
+    presentation_status("Ready — play to begin");
     Serial.println("[Main] Serial commands:");
     Serial.println("[Main]      v = run all validation tests");
     Serial.println("[Main]      1-4 = run individual validation test");
@@ -271,6 +316,25 @@ void loop() {
 
     s_loop_iterations++;
 
+    // T1 harness: time the WHOLE loop body. Catches anything that blocks,
+    // wherever it lives — not just presentation calls. A transport layer that is
+    // individually fast but collectively starves the loop shows up only here.
+    const uint32_t loop_t0 = micros();
+
+
+    // -------------------------------------------------------------------------
+    // Presentation transport service — EVERY iteration, unconditionally.
+    //
+    // Deliberately OUTSIDE the `if (new_block)` guard below. The Pi backend's
+    // reliable RESULT path drains across loop iterations, and a result queued
+    // just as the signal goes quiet must still finish sending — so transport
+    // progress must not depend on audio activity.
+    //
+    // Non-blocking by contract, and a no-op for the RA8875 and NONE backends.
+    // See presentation.h.
+    // -------------------------------------------------------------------------
+    presentation_service();
+
 
     // -------------------------------------------------------------------------
     // Serial command handler
@@ -285,6 +349,9 @@ void loop() {
     //    '3' — run Test 3: Known Gain Offset (prompts for expected value)
     //    '4' — run Test 4: Known Filter (prompts for corner frequency)
     //      'r' — reset EMA smoothing and accumulators
+    //    'u' — print presentation/link transport diagnostics
+    //    't' — start a fresh T1 measurement window
+    //    'T' — print the T1 acceptance report (Phase 10)
     // -------------------------------------------------------------------------
     if (Serial.available()) {
          char cmd = Serial.read();
@@ -321,7 +388,7 @@ void loop() {
                }
                case 'r': case 'R':
                    audioEngine_resetSmoothing();
-                   displayEngine_drawStatusMessage("Smoothing reset.");
+                   presentation_status("Smoothing reset.");
                    Serial.println("[Main] EMA and accumulators reset.");
                    break;
                case 'm': case 'M': {
@@ -331,13 +398,34 @@ void loop() {
                    // The internal generator does not yet reach the RIG SEND jack.
                    MeasurementParams mp = measureParams_rigAnalysis();
                    if (measurementEngine_arm(mp)) {
-                       displayEngine_drawStatusMessage("Measuring — external" " " "stimulus");
+                       presentation_status("Measuring — external" " " "stimulus");
                        Serial.println("[Main] Rig analysis measurement armed.");
                    } else {
                        Serial.println("[Main] Could not arm measurement.");
                    }
                    break;
                }
+               case 'T':
+                   // T1 acceptance report (Phase 10 steps 11-12). Fixed-format
+                   // key=value output so the four required runs can be diffed
+                   // mechanically rather than eyeballed.
+                   timingProbe_report();
+                   break;
+               case 't':
+                   // Start a fresh T1 measurement window. Press 't' at the start
+                   // of each run so the four windows are comparable, then 'T' at
+                   // the end. Also resets the audio high-water, which would
+                   // otherwise carry a boot-time spike into every run.
+                   timingProbe_reset();
+                   Serial.println("[T1] Measurement window reset — press 'T' to report.");
+                   break;
+               case 'u': case 'U':
+                   // Transport health. Printed next to the 5 s block-timing
+                   // window below so the two can be compared — the question is
+                   // never "how many frames dropped" alone, it is "did
+                   // transmission perturb acquisition".
+                   presentation_printDiagnostics();
+                   break;
                case 'i': case 'I':
                    insightsEngine_printToSerial();
                    break;
@@ -345,7 +433,7 @@ void loop() {
                    // Cancel an active measurement, OR acknowledge a sticky abort.
                    if (measurementEngine_getState() == MeasurementState::ABORTED) {
                        measurementEngine_acknowledgeAbort();
-                       displayEngine_restoreLive();
+                       presentation_restoreLive();
                        Serial.println("[Main] Abort acknowledged. Returned to live" " " "view.");
                    } else if (measurementEngine_getState() ==
 MeasurementState::RESULT) {
@@ -355,7 +443,7 @@ MeasurementState::RESULT) {
                        // display gate (IDLE or ARMED only) unblocks on the
                        // next loop iteration.
                        measurementEngine_returnToLive();
-                       displayEngine_restoreLive();
+                       presentation_restoreLive();
                        Serial.println("[Main] Returned to live view.");
                    } else {
                        measurementEngine_cancel();
@@ -374,9 +462,9 @@ MeasurementState::RESULT) {
                   // Save the current result as a baseline TF CSV.
                   if (measurementEngine_getState() == MeasurementState::RESULT) {
                        if (exportEngine_saveBaselineCSV(measurementEngine_getResult(), nullptr)) {
-                             displayEngine_drawStatusMessage("Baseline CSV saved.");
+                             presentation_status("Baseline CSV saved.");
                        } else {
-                             displayEngine_drawStatusMessage("CSV save FAILED — check" " " "SD");
+                             presentation_status("CSV save FAILED — check" " " "SD");
                        }
                   } else {
                        Serial.println("[Main] 'b' ignored: no RESULT state" " " "measurement.");
@@ -390,10 +478,10 @@ MeasurementState::RESULT) {
                        if (calStore_saveFromResult(measurementEngine_getResult(),
                                                     CAL_FILE_DEFAULT,
                                                     "bench loopback")) {
-                             displayEngine_drawStatusMessage("Calibration saved.");
+                             presentation_status("Calibration saved.");
                              Serial.println("[Main] Calibration saved to SD.");
                        } else {
-                             displayEngine_drawStatusMessage("Cal save FAILED — check" " " "SD");
+                             presentation_status("Cal save FAILED — check" " " "SD");
                              Serial.println("[Main] ERROR: calibration save failed.");
                        }
                   } else {
@@ -455,26 +543,26 @@ MeasurementState::RESULT) {
         // Analyse insights then render result screen
         insightsEngine_analyse(r);
            insightsEngine_printToSerial();
-           displayEngine_showResult(r, insightsEngine_getInsights());
+           presentation_showResult(r, insightsEngine_getInsights());
     } else if (meas_ev == MeasurementEvent::EXPORT_COMPLETE) {
            Serial.println("[Main] Export complete.");
            // Result view stays on screen — update only the provenance line
-           displayEngine_drawStatusMessage("Saved — press x to return");
+           presentation_status("Saved — press x to return");
     } else if (meas_ev == MeasurementEvent::EXPORT_FAILED) {
            Serial.println("[Main] Export FAILED.");
-           displayEngine_drawStatusMessage("Export FAILED — check SD");
+           presentation_status("Export FAILED — check SD");
     } else if (meas_ev == MeasurementEvent::ABORTED) {
            // Sticky abort: leave latched until user presses x.
            Serial.printf("[Main] MEASUREMENT ABORTED: %s\n",
                          measurementEngine_getAbortDescription());
            Serial.println("[Main] Press 'x' to acknowledge and return to live" " " "view.");
-           displayEngine_showAborted(measurementEngine_getAbortDescription());
+           presentation_showAborted(measurementEngine_getAbortDescription());
     } else if (meas_ev == MeasurementEvent::SELF_TEST_PASSED) {
            Serial.println("[Main] Self-test passed.");
-           displayEngine_drawStatusMessage("Pipeline alive — ready");
+           presentation_status("Pipeline alive — ready");
     } else if (meas_ev == MeasurementEvent::SELF_TEST_FAILED) {
            Serial.println("[Main] WARNING: Self-test FAILED — see Serial.");
-           displayEngine_drawStatusMessage("PIPELINE CHECK FAILED — see Serial");
+           presentation_status("PIPELINE CHECK FAILED — see Serial");
     }
 
 
@@ -485,6 +573,12 @@ MeasurementState::RESULT) {
 
 
            s_total_blocks++;
+
+           // T1 harness: record block period and detect skipped analysis blocks.
+           // Called as early as possible after the block is recognised so the
+           // measured period is the acquisition cadence, not the cadence plus
+           // whatever this iteration goes on to do.
+           timingProbe_noteBlock(s_frame.output_block_number);
 
 
            // FIX [display-gate]: Only run the live display update when the
@@ -503,7 +597,7 @@ MeasurementState::RESULT) {
 
            if (live_display_active &&
                s_total_blocks % DISPLAY_UPDATE_EVERY_N_FRAMES == 0) {
-               displayEngine_update(&s_frame);
+               presentation_updateLive(&s_frame);
                s_total_displays++;
           }
 
@@ -512,13 +606,13 @@ MeasurementState::RESULT) {
           bool clipping = s_frame.source_clipping || s_frame.return_clipping;
           if (clipping && !s_was_clipping) {
               if (s_frame.source_clipping && s_frame.return_clipping)
-                     displayEngine_drawStatusMessage("!! CLIP: SOURCE + RETURN — reduce" " " "gain");
+                     presentation_status("!! CLIP: SOURCE + RETURN — reduce" " " "gain");
               else if (s_frame.source_clipping)
-                     displayEngine_drawStatusMessage("!! CLIP: SOURCE_NODE — reduce" " " "input gain");
+                     presentation_status("!! CLIP: SOURCE_NODE — reduce" " " "input gain");
               else
-                     displayEngine_drawStatusMessage("!! CLIP: RETURN_NODE — check rig" " " "output level");
+                     presentation_status("!! CLIP: RETURN_NODE — check rig" " " "output level");
           } else if (!clipping && s_was_clipping) {
-              displayEngine_drawStatusMessage("Ready");
+              presentation_status("Ready");
           }
           s_was_clipping = clipping;
     }
@@ -562,6 +656,14 @@ MeasurementState::RESULT) {
 
         Serial.printf("[Main] Loop:         %lu iterations/5s = ~%.0f/sec\n",
                           s_loop_iterations, (float)s_loop_iterations / 5.0f);
+
+
+        // Transport health, printed HERE so it sits directly beneath the block
+        // timing above. Audit finding T1 predicts presentation transmission
+        // could consume ~73% of an audio block period; the only way to know is
+        // to read these two together. A rising drop count with unchanged
+        // ms/block is the delivery policy working as designed.
+        presentation_printDiagnostics();
 
 
         // Levels
@@ -627,6 +729,12 @@ MeasurementState::RESULT) {
             s_loop_iterations    = 0;
             s_last_diag_ms       = now;
        }
+
+
+    // T1 harness: close the loop-body timing. Must be the LAST statement in
+    // loop() so the measured duration covers everything above it, including the
+    // 5 s diagnostic print on the iterations where that fires.
+    timingProbe_noteLoopIteration(micros() - loop_t0);
 }
 
 
@@ -649,7 +757,7 @@ role
             "CALIBRATION: SOURCE/RETURN nodes swapped"
        };
        audioEngine_setRoute(swapped);
-       displayEngine_drawStatusMessage("CAL: nodes swapped");
+       presentation_status("CAL: nodes swapped");
 }
 
 
@@ -661,7 +769,7 @@ void calibrationRestoreDefault() {
             "Default bench: SOURCE_NODE=L, RETURN_NODE=R"
        };
        audioEngine_setRoute(normal);
-       displayEngine_drawStatusMessage("Ready");
+       presentation_status("Ready");
 }
 */
 

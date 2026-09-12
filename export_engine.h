@@ -1,5 +1,5 @@
 // =============================================================================
-// export_engine.h       —   Guitar Rig Analyzer   v0.5.0
+// export_engine.h       —   Guitar Rig Analyzer
 // =============================================================================
 // Owner of all durable file output for the guitar rig analyzer.
 //

@@ -57,7 +57,13 @@ FUTURE_ITEMS = [
     ("JACK_RIG_SEND",   "Teensy 17", "jack detect",            "Phase 7"),
     ("JACK_RETURN_TS",  "Teensy 22", "jack detect",            "Phase 7"),
     ("JACK_RETURN_XLR", "Teensy 24", "XLR return",             "Phase 8"),
-    ("RA8875_CS / INT / RESET", "Teensy 10 / 9 / 5", "SPI display", "deferred"),
+    # ADR-001 (2026-09-11): the Pi 5 UART link is the PRODUCTION display
+    # interface and was missing from this list entirely, while the RA8875 — now
+    # demoted to debug hardware — was the only display entry present. That
+    # inversion is how the as-built record came to corroborate the wrong
+    # architecture. See docs/adr/ADR-001-display-architecture.md.
+    ("PI_LINK_UART TX / RX", "Teensy 1 / 0", "Pi 5 display link (Serial1)", "Phase 10"),
+    ("RA8875_CS / INT / RESET", "Teensy 10 / 9 / 5", "SPI display (debug only)", "deferred"),
 ]
 
 
@@ -421,7 +427,7 @@ def draw_digital(s, ox, oy):
 def draw_future(s, ox, oy):
     s.origin(ox, oy)
     s.blockframe(-30, -30, 990, 300,
-                 "D — PHASES 5–9: NOT INSTALLED (reserved)")
+                 "D — PHASES 5–10: NOT INSTALLED (reserved)")
     s.t(0, 6, "Firmware pin definitions exist in config.h:77-101. NO HARDWARE IS FITTED.", "note")
     s.t(0, 22, "Add each block here as its phase is built, then regenerate.", "note")
     s.t(0, 56, "NET / FUNCTION", "pin"); s.t(300, 56, "PIN", "pin")

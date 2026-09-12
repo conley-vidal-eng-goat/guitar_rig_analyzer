@@ -1,5 +1,5 @@
 // =============================================================================
-// insights_engine.h     —   Guitar Rig Analyzer   v0.5.0
+// insights_engine.h     —   Guitar Rig Analyzer
 // =============================================================================
 // Interprets a MeasurementResult into labelled, quality-gated observations.
 //

@@ -1,5 +1,5 @@
 // =============================================================================
-// measurement_engine.cpp   —     Guitar Rig Analyzer   v0.5.0
+// measurement_engine.cpp   —     Guitar Rig Analyzer
 // =============================================================================
 // Precision measurement state machine and result production.
 //

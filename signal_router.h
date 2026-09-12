@@ -1,5 +1,5 @@
 // =============================================================================
-// signal_router.h  —  Guitar Rig Analyzer  v0.6.0
+// signal_router.h  —  Guitar Rig Analyzer
 // =============================================================================
 // Hardware signal routing: relay control, jack detection, and routing policy.
 //

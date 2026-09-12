@@ -1,22 +1,28 @@
 # Guitar Rig Analyzer
 
-Teensy 4.1 firmware that measures what a guitar rig (pedalboard, amp front-end, cable, FX loop) does to a signal — bin-by-bin transfer function, coherence, group delay, and a live spectrum/meter UI on an 800×480 touchscreen.
+Teensy 4.1 firmware that measures what a guitar rig (pedalboard, amp front-end, cable, FX loop) does to a signal — bin-by-bin transfer function, coherence, group delay, and a live spectrum/meter UI.
+
+> **Display architecture (ADR-001, 2026-09-11).** The **Raspberry Pi 5 + 7" Touch Display 2** is the production renderer; the Teensy streams measurement data to it over a binary UART link. The on-board **RA8875** panel is retained as **debug/fallback hardware only**. The governing invariant is **"the Teensy determines truth, the Pi presents truth."** Selected by `DISPLAY_TARGET` in [config.h](config.h). See [docs/adr/ADR-001-display-architecture.md](docs/adr/ADR-001-display-architecture.md) — and read it before doing any display work, because this README described an RA8875-only product until that date.
 
 ## Overview
 
-Guitar Rig Analyzer is bench-grade embedded firmware for an instrument-signal measurement instrument. The user routes a signal from the instrument through a **SOURCE_NODE** measurement point, through the rig under test, back through a **RETURN_NODE** measurement point, and the firmware computes the per-bin transfer function `H(f) = RETURN / SOURCE` together with coherence γ², group delay, peak levels, and clipping flags. Results render live on an RA8875 800×480 IPS panel and can be exported to SD as JSON fingerprints or CSV baselines.
+Guitar Rig Analyzer is bench-grade embedded firmware for an instrument-signal measurement instrument. The user routes a signal from the instrument through a **SOURCE_NODE** measurement point, through the rig under test, back through a **RETURN_NODE** measurement point, and the firmware computes the per-bin transfer function `H(f) = RETURN / SOURCE` together with coherence γ², group delay, peak levels, and clipping flags. Results are published through a renderer-agnostic **presentation boundary** ([presentation.h](presentation.h)) to whichever display backend the build selects, and can be exported to SD as JSON fingerprints or CSV baselines.
 
 The firmware is structured around **logical signal nodes** (SOURCE_NODE, RETURN_NODE) rather than physical channels, so the same code will move from the current bench harness (stereo I2S into a Teensy Audio Shield) onto the final hardware (relay-/mux-routed mono inputs) without changes above the audio_capture layer.
 
 This is a working in-tree firmware project — not a library and not packaged for distribution. There is no installer, no CI, no release artefact. You build it with the Arduino IDE (or `arduino-cli`) targeting Teensy 4.1 and flash directly.
 
-Current version (from [config.h](config.h#L49)): **0.5.0**.
+Current version (from [config.h](config.h)): **0.6.0** — the first firmware baseline implementing the Pi 5 production display architecture. The Teensy↔Pi wire format carries its own independent `PI_PROTOCOL_VERSION` (currently **2**); a firmware bump that does not change the wire format must not invalidate a working receiver, so the two are deliberately separate constants.
 
 ## Key features
 
 Concrete capabilities present in the source today:
 
-- **Live spectrum + transfer function display.** Source/return spectra and EMA-smoothed `tf_db[]` curve, 10.8 fps target on RA8875 (see [audio_engine.cpp](audio_engine.cpp), [display_engine.cpp](display_engine.cpp)).
+- **Live spectrum + transfer function display.** Source/return spectra and EMA-smoothed `tf_db[]` curve (see [audio_engine.cpp](audio_engine.cpp)), published through [presentation.h](presentation.h) to the selected backend: [data_sender.cpp](data_sender.cpp) (Pi 5 over UART, production) or [display_engine.cpp](display_engine.cpp) (RA8875, debug).
+- **Renderer-agnostic presentation boundary.** The application and the validation harness call `presentation_*` only; `DISPLAY_TARGET` dispatches to the Pi backend, the RA8875 backend, or a null backend at compile time. The boundary is deliberately one-way — no return path exists through which a renderer could feed a measurement value or validity verdict back into the measurement path ([presentation.h](presentation.h), [presentation.cpp](presentation.cpp)).
+- **Binary UART measurement protocol** to the Pi — sync word, typed packets, little-endian payloads, CRC-16/CCITT, structured HELLO handshake with a capability bitmap, and a per-baud bin-resolution budget ([data_sender.h](data_sender.h)).
+- **Non-blocking presentation transport.** Live frames are best-effort and droppable; completed results are reliable, staged and drained across loop iterations. Every write is gated on UART room, so **a dead, slow or disconnected Pi cannot perturb acquisition timing** — presentation transport is lossy before measurement is. Instrumented: `dataSender_getStats()`, the `u` serial command, and transport figures printed beneath block timing in the 5 s diagnostic window.
+- **Verdicts travel as verdicts.** Per-bin TF clamp and validity coverage, `result_valid`, quality grade, calibration type/warnings/provenance all cross the wire as facts the Teensy computed, so the renderer never reconstructs a judgement. Protocol **v2** is a freeze candidate pending one bench measurement — see [docs/pi_link_protocol_audit.md](docs/pi_link_protocol_audit.md).
 - **Precision measurement state machine** (`IDLE → ARMED → CAPTURE → PROCESSING → RESULT → IDLE`, with sticky `ABORTED`) that performs complex-FFT accumulation, H1 estimator, cross-spectrum, coherence γ², and atan2-unwrapped group delay via CMSIS-DSP `arm_cfft_f32()` ([measurement_engine.cpp](measurement_engine.cpp), [measurement_core.h](measurement_core.h)).
 - **Calibration store** with binary `.cal` files protected by CRC-32 (IEEE 802.3, `0xEDB88320`), enum range validation, ASCII-sanitised description field, and atomic save (backup → write → verify CRC by readback → restore on failure) ([calibration_store.cpp](calibration_store.cpp)).
 - **Block-aligned stimulus generator** (sine, white noise, pink noise — log sweep stubbed) with explicit start-block synchronisation and missed-start detection ([signal_generator.cpp](signal_generator.cpp)).
@@ -31,11 +37,15 @@ Items mentioned in source comments as **not yet implemented**:
 - `signal_router` module (relay/mux hardware routing) — referenced for v0.3 milestone.
 - `MODE_PRECISION` and `MODE_LF` measurement modes — `measurementEngine_arm()` rejects them today; all factories use `MODE_LIVE` ([measurement_engine.h:14-18](measurement_engine.h#L14-L18)).
 - Internal log sweep generator — `signal_generator.cpp` emits a loud warning for `INTERNAL_LOG_SWEEP` and falls back.
-- Touch UI on RA8875 — pin is wired (`RA8875_INT_PIN = 9`) but the touch handler is not present.
+- Touch UI — moved to the Pi under ADR-001. `RA8875_INT_PIN = 9` stays defined for the debug backend, but no RA8875 touch handler will be written.
+- Pi-side receiver and UI (parser, state model, plots, touch navigation, fingerprint visualization) — does not exist yet; `ai/todo.md` TODO-36.
+- Pi link wire-format freeze — `ai/todo.md` TODO-34, blocks the above.
 
 ## Architecture
 
 Single-threaded super-loop running on the Teensy 4.1's ARM Cortex-M7 at 600 MHz. The Teensy Audio Library DMAs I²S samples into an `AudioRecordQueue` owned by `audio_capture`; the codec, capture queue, peak/FFT objects, and routing mixers all live in that module. Two consumers read from it: `audio_engine` (live display) and `measurement_engine` (precision capture). The only module that owns its own Audio Library objects upstream is `signal_generator`, which produces the stimulus and patches into `s_mixer_ret` slot 2 by contract.
+
+**The Teensy is the sole authority for measurement truth.** Acquisition, DSP, calibration, routing, insight generation and quality grading all happen on the Teensy, and they leave it as *verdicts* through the presentation boundary. The renderer — a Pi 5 in the production build — formats, plots, animates and navigates; it never computes anything that determines whether a measurement is valid. That division is the subject of [ADR-001](docs/adr/ADR-001-display-architecture.md), and it is what keeps a display from being able to break an analyzer: a renderer failure is non-fatal by contract, because an absent RA8875 once stretched the audio block period from 46 ms to 2194 ms and destroyed acquisition.
 
 ```mermaid
 flowchart LR
@@ -44,11 +54,17 @@ flowchart LR
     Codec --> Cap[audio_capture\nsingle owner]
     Cap -- CONSUMER_LIVE --> Eng[audio_engine\nEMA TF, spectrum, peaks]
     Cap -- CONSUMER_PRECISION --> Meas[measurement_engine\nCMSIS-DSP complex FFT,\ncoherence, group delay]
-    Eng --> Disp[display_engine\nRA8875 800x480]
-    Meas --> Disp
+    Eng --> Pres[presentation\nrenderer-agnostic boundary]
+    Meas --> Pres
     Meas --> Cal[calibration_store\nbinary .cal + CRC-32]
     Meas --> Ins[insights_engine]
-    Ins --> Disp
+    Ins --> Pres
+    Val --> Pres
+    Pres -- DISPLAY_TARGET_PI --> DS[data_sender\nbinary UART, CRC-16]
+    Pres -- DISPLAY_TARGET_RA8875 --> Disp[display_engine\nRA8875 800x480, debug]
+    Pres -- DISPLAY_TARGET_NONE --> Null[null backend]
+    DS -- 460800 baud --> Pi[Raspberry Pi 5\nreceiver, plots, touch UI,\ncompare / recall, fingerprint]
+    Pi --> Panel[7in Touch Display 2]
     Meas --> Exp[export_engine\nJSON / CSV]
     Cal --> SD[(microSD\nSDIO)]
     Exp --> SD
@@ -63,6 +79,8 @@ Key invariants enforced by the code:
 - Logical nodes (`SOURCE_NODE`, `RETURN_NODE`) are the abstraction every module above `audio_capture` uses; physical I²S channel numbers live inside `SignalRoute` and stay internal.
 - State transitions in `measurement_engine` happen only inside `measurement_engine`. External callers can only `arm()`, `cancel()`, and `acknowledgeAbort()` ([measurement_engine.h:68-72](measurement_engine.h#L68-L72)).
 - A latched `ABORTED` state is **sticky** — the user must explicitly acknowledge with `x` before the live view resumes — so the abort reason stays visible.
+- **No module above the presentation boundary names a renderer.** The application ([guitar_rig_analyzer.ino](guitar_rig_analyzer.ino)) and the validation harness ([validation.cpp](validation.cpp)) call `presentation_*` only. `display_engine.cpp` and `data_sender.cpp` each compile only under their own `DISPLAY_TARGET`, so the unselected backend is not merely unused — it is not built ([presentation.h](presentation.h)).
+- **A renderer failure must never stop acquisition.** `presentation_init()` returning false is a warning, not a halt, and every other `presentation_*` call stays safe afterwards.
 
 ## Tech stack
 
@@ -72,15 +90,18 @@ Key invariants enforced by the code:
 | Toolchain | Arduino IDE + Teensyduino (or `arduino-cli` with `teensy:avr:teensy41`) |
 | Audio | Teensy Audio Library (bundled with Teensyduino) — I²S to SGTL5000 |
 | DSP | CMSIS-DSP `arm_cfft_f32` for complex FFT in precision path |
-| Display | Adafruit RA8875 (SPI) |
+| Display (production) | Raspberry Pi 5 + 7" Touch Display 2, over binary UART from Teensy `Serial1` |
+| Display (debug) | Adafruit RA8875 800×480 (SPI) — `DISPLAY_TARGET_RA8875` |
 | Storage | microSD via Teensy 4.1 on-board SDIO (binary `.cal` + JSON/CSV exports) |
 | Language | C++ (Arduino dialect, single `.ino` translation unit + headers/`.cpp` files) |
 
 Pinned library versions (from [guitar_rig_analyzer.ino:12-14](guitar_rig_analyzer.ino#L12-L14)):
 
-- Adafruit RA8875 ≥ v1.4.x
-- Adafruit BusIO (auto-installed alongside RA8875)
 - Teensy Audio Library (bundled with Teensyduino — no separate install)
+- Adafruit RA8875 ≥ v1.4.x — **only required for `DISPLAY_TARGET_RA8875`**
+- Adafruit BusIO (auto-installed alongside RA8875) — same condition
+
+Verified by `arduino-cli compile -v`: the Adafruit RA8875 / GFX / BusIO libraries appear in the build's library list **only** under `DISPLAY_TARGET_RA8875`. The `_PI` and `_NONE` builds do not need them installed.
 
 ## Repository structure
 
@@ -96,35 +117,40 @@ Pinned library versions (from [guitar_rig_analyzer.ino:12-14](guitar_rig_analyze
 ├── calibration_store.{h,cpp}     Binary .cal load/save/validate with CRC-32 + atomic write
 ├── export_engine.{h,cpp}         JSON fingerprint + CSV baseline export to SD
 ├── insights_engine.{h,cpp}       MEASUREMENT vs ADVISORY interpretation layer
-├── display_engine.{h,cpp}        RA8875 live + result + insight panel rendering
+├── presentation.{h,cpp}          THE PRESENTATION BOUNDARY — renderer-agnostic API,
+│                                 compile-time dispatch on DISPLAY_TARGET
+├── data_sender.{h,cpp}           Binary UART protocol to the Pi 5 (production backend)
+├── display_engine.{h,cpp}        RA8875 live + result + insight panel (debug backend)
+├── signal_router.{h,cpp}         Relay/mux routing + jack detection (partially promoted)
 ├── validation.{h,cpp}            Four-test known-signal validation harness
-├── audit/
-│   └── Remediation_Report_2026-05-15.md   v0.5.0 fixes + appendix folding in the 2026-03 review
-├── development/                            Pre-integration firmware staging (signal_router,
-│                                           data_sender, audiocap_injection_api) — see its README
-├── visualizations/                         RA8875 display design spec + React mockups
-│                                           (panel concepts plus an unrelated 3D music-viz prototype)
-├── mock-test/                              Host-side dependency-free regression checks
-├── .github/
-│   ├── copilot-instructions.md            Always-on AI assistant context for this repo
-│   └── prompts/                           Reusable slash-command prompts (`/review-firmware`, etc.)
+├── ai/
+│   ├── todo.md                   Outstanding work, with proof criteria and maturity tags
+│   ├── journal.md                Chronological reasoning/decision trail
+│   └── evidence/                 Captured bench evidence files
 ├── docs/
-│   └── ai/                                Human-facing onboarding for the AI-assist assets
-├── .claude/                               Claude Code per-developer settings (gitignored body)
-├── CLAUDE.md                              One-line pointer to .github/copilot-instructions.md
+│   ├── adr/
+│   │   └── ADR-001-display-architecture.md   Pi 5 = production renderer; RA8875 = debug
+│   ├── pi_link_protocol_audit.md            Wire-format audit — NOT YET FROZEN
+│   ├── breadboard_bringup_v3.md             Canonical hardware bring-up runbook (Phases 0–10)
+│   └── asbuilt/                             Frozen as-built breadboard record + schematics
+├── tools/
+│   └── gen_schematic.py          Generates all three as-built SVGs from one source
 └── .gitignore                    Excludes build/, *.elf/*.hex/*.bin/*.eep/*.lst/*.map
 ```
 
-> **Build inputs are direct children of the repo root only** (`*.ino`, `*.cpp`, `*.h` at this level). Everything in a subdirectory — `development/`, `visualizations/`, `mock-test/`, `audit/`, `.github/`, `docs/`, `.claude/` — is **not** compiled into the firmware. Do **not** `cp -r * <sketch>/` when copying into a temp sketch folder; copy the root files explicitly. See the "Running locally" section below for the correct flow.
+> **Build inputs are direct children of the repo root only** (`*.ino`, `*.cpp`, `*.h` at this level). Everything in a subdirectory — `ai/`, `docs/`, `tools/` — is **not** compiled into the firmware. Do **not** `cp -r * <sketch>/` when copying into a temp sketch folder; copy the root files explicitly. See the "Running locally" section below for the correct flow.
 
-> AI assistants (Claude Code, GitHub Copilot, Codex, etc.) are first-class citizens in this repo. Their customization assets (always-on context, slash-command prompts, per-folder docs) live under [`.github/`](./.github/) and [`docs/ai/`](./docs/ai/). New here? Start at [docs/ai/README.md](./docs/ai/README.md).
+> **⚠️ This section was stale until 2026-09-11** and described six directories that do not exist in this repository (`audit/`, `development/`, `visualizations/`, `mock-test/`, `.github/`, `docs/ai/`) plus a `CLAUDE.md` that is also absent. It notably claimed `signal_router` and `data_sender` were staged in `development/` when both have been at the repo root for some time. That mattered more than ordinary documentation debt: AI assistants read this file as authority, and a stale architecture description leads them to reconstruct the wrong project. Verify before citing it — and if you restore any of those directories, update this tree in the same commit.
 
 ## Prerequisites
 
 - **Teensy 4.1** board.
 - **Teensy Audio Shield (Rev D)** with SGTL5000 codec.
-- **Adafruit RA8875 driver board + 800×480 5" IPS panel** on SPI.
 - **OPA1642 analogue buffer** between the instrument and the codec line input.
+- **A display, depending on `DISPLAY_TARGET`** — none of these is required to build or to run the DSP path:
+  - `DISPLAY_TARGET_PI` (production): Raspberry Pi 5 + 7" Touch Display 2 + Freenove GPIO breakout HAT, wired to Teensy `Serial1` (pins 0/1) with a **common ground**. Pi-side software does not exist yet (TODO-36).
+  - `DISPLAY_TARGET_RA8875` (debug): Adafruit RA8875 driver board + 800×480 5" IPS panel on SPI. Requires the pin 8→5 reset rewire (TODO-24).
+  - `DISPLAY_TARGET_NONE`: no display hardware. **This is the correct setting for breadboard bring-up Phases 1–9.**
 - **microSD card** in the Teensy 4.1's SDIO slot.
 - **Arduino IDE 2.x** with **Teensyduino** installed, or **`arduino-cli`** with the Teensy core.
 - USB cable to the Teensy.
@@ -148,6 +174,7 @@ All compile-time configuration lives in [config.h](config.h). There is no runtim
 
 | Constant | Default | Purpose |
 |---|---|---|
+| `DISPLAY_TARGET` | `DISPLAY_TARGET_PI` | **Which renderer the build uses.** `_PI` (production, UART to Pi 5), `_RA8875` (debug SPI panel), `_NONE` (no display — use for bring-up Phases 1–9). See [ADR-001](docs/adr/ADR-001-display-architecture.md). |
 | `FIRMWARE_VERSION` | `"0.5.0"` | Stamped into measurement results and Serial banner. |
 | `RA8875_CS_PIN` / `_INT_PIN` / `_RESET_PIN` | 10 / 9 / 8 | RA8875 SPI control pins. |
 | `SGTL5000_LINE_IN_LEVEL` | `5` (0–15) | Analogue PGA gain. **Calibration placeholder — recalibrate per build.** |
@@ -187,9 +214,15 @@ arduino-cli compile --fqbn teensy:avr:teensy41 /tmp/grig_compile/GuitarRigCompil
 arduino-cli upload  --fqbn teensy:avr:teensy41 /tmp/grig_compile/GuitarRigCompile
 ```
 
-Do **not** `cp -r *` — that would pull every subdirectory (`development/`, `visualizations/`, `audit/`, `mock-test/`, `.github/`, `docs/`) into the sketch folder. `development/` in particular contains C++ source for the *next* milestone (`signal_router`, `data_sender`) that is intentionally not yet wired in — silently including it would either break the build or worse, change behavior. Copy `.ino`, `.cpp`, `.h` from the root explicitly. The Arduino IDE handles this transparently and does not need the workaround.
+Do **not** `cp -r *` — that would pull every subdirectory (`ai/`, `docs/`, `tools/`) into the sketch folder. Copy `.ino`, `.cpp`, `.h` from the root explicitly, as above. The Arduino IDE handles this transparently and does not need the workaround.
 
-Then open a serial monitor at 115200 baud. On boot the firmware prints `[Main] Guitar Rig Analyzer v0.5.0 ...`, initialises capture/codec/display, and enters the live view.
+> Note that `arduino-cli` compiles **every** `.cpp` in the sketch folder regardless of what includes its header. That is precisely why `display_engine.cpp` and `data_sender.cpp` each carry an internal `#if DISPLAY_TARGET == ...` guard — without it, selecting one renderer would still compile and link the other, and `DISPLAY_TARGET_NONE` would not actually be free.
+
+Then open a serial monitor at 115200 baud. On boot the firmware prints the banner, including a `[Main] Display target: ...` line naming the compiled-in renderer, then initialises the presentation backend, capture/codec and audio engine, and enters the live view.
+
+**Always check the `Display target:` line before interpreting a bench observation.** It exists so that a serial log pasted into `ai/journal.md` can never be misattributed to the wrong display architecture.
+
+To build for a different renderer, change the single `DISPLAY_TARGET` line in [config.h](config.h). All three targets are compile-verified; the unselected backend is not compiled at all.
 
 ### Serial commands
 
@@ -227,7 +260,7 @@ Tolerances are intentionally conservative on first pass. `printResult()` emits a
 
 ## Operational notes
 
-- **Logging surface.** The firmware logs to USB Serial. There is no remote telemetry. Calibration files, JSON fingerprints, and CSV exports are written to the microSD card.
+- **Logging surface.** The firmware logs to USB Serial. Calibration files, JSON fingerprints, and CSV exports are written to the microSD card. Under `DISPLAY_TARGET_PI` it additionally streams binary measurement packets out of `Serial1` to the Pi — a local point-to-point display link, not network telemetry.
 - **Sticky abort.** A measurement that aborts (route changed mid-capture, hard parameter mismatch on stored calibration, etc.) latches in the `ABORTED` state until `x` is pressed. This is deliberate — see [measurement_engine.h:55-66](measurement_engine.h#L55-L66).
 - **Headphone passthrough** (SOURCE → left, RETURN → right) is a **temporary** bench convenience for ear-checking the signal path. It will be replaced by a user-selectable monitor source when `signal_router` and the touch UI land.
 - **FFT block timing.** Averaged output block ≈ 92.9 ms (4 × 1024 / 44100); target display rate ≈ 10.8 fps. If the display stalls audio, raise `DISPLAY_UPDATE_EVERY_N_FRAMES` to 2.
@@ -235,6 +268,8 @@ Tolerances are intentionally conservative on first pass. `printResult()` emits a
 ## Security / trust boundaries
 
 This is a bench instrument with no network surface. The only externally-controlled inputs are:
+
+- **The Pi display link (`DISPLAY_TARGET_PI`)** — currently **outbound only**: `data_sender` transmits and never reads from `Serial1`, so the link adds no input trust boundary today. That changes the moment Pi→Teensy control is added (TODO-36 contemplates touch actions driving `measurement_engine`), at which point inbound packets become an externally-controlled input and need the same validation discipline as the `.cal` path. Note also that the Pi is a *renderer*, not an authority: under ADR-001 it cannot originate a measurement value or a validity verdict.
 
 - **microSD card contents** — `.cal` files are validated for safe root-level filenames, CRC-32, enum range (mode/sample rate/window/etc.), finite calibration floats, and ASCII-printable description before being committed to RAM ([calibration_store.cpp](calibration_store.cpp)). Stage-to-temp + commit-on-success means a truncated or corrupted file cannot overwrite a known-good in-RAM calibration.
 - **USB Serial** — single-key commands, plus two numeric bench prompts parsed through fixed-size buffers while the audio queues continue to drain. No authentication; the device is assumed physically controlled.
@@ -252,7 +287,9 @@ There is no secret material in this codebase. There is **no LICENSE file** commi
 
 ## Recent work
 
-See [audit/Remediation_Report_2026-05-15.md](audit/Remediation_Report_2026-05-15.md) for the v0.5.0 remediation pass: 13 critical compile-blocking truncations fixed, NaN-poisoning chains blocked in the EMA path, atomic calibration save implemented, validation harness made deterministic, JSON escapes brought to RFC 8259.
+**2026-09-11 — display architecture reconciliation.** An audit found the repository building an RA8875 product while still carrying the Pi 5 design as documentation and dead code: `data_sender` had zero callers, the `USE_PI_DISPLAY` flag the runbook promised existed nowhere in the source, and the as-built drawings reserved the RA8875 while omitting the Pi link entirely. Resolved by [ADR-001](docs/adr/ADR-001-display-architecture.md): the Pi 5 is the production renderer, the RA8875 is debug hardware, and all display access now goes through a renderer-agnostic presentation boundary selected by one build constant. See `ai/todo.md` Track C (TODO-33 … TODO-37) and [docs/pi_link_protocol_audit.md](docs/pi_link_protocol_audit.md).
+
+**v0.5.0 remediation pass:** 13 critical compile-blocking truncations fixed, NaN-poisoning chains blocked in the EMA path, atomic calibration save implemented, validation harness made deterministic, JSON escapes brought to RFC 8259. *(The report that documented this, `audit/Remediation_Report_2026-05-15.md`, is referenced throughout the source comments but is **not present in this repository** — the `audit/` directory does not exist here.)*
 
 ## License
 
@@ -260,4 +297,6 @@ See [audit/Remediation_Report_2026-05-15.md](audit/Remediation_Report_2026-05-15
 
 ## Maintainers
 
-> _TBD: no `CODEOWNERS` file, no package author metadata, and the project is not on a hosted git server with a clear owner. The only authoring evidence is the single recent commit (`0e9fd4b Initial import: Guitar Rig Analyzer v0.5.0`)._
+Conley Vidal — sole author and maintainer. There is no `CODEOWNERS` file and no package author metadata.
+
+*(This section previously claimed "the only authoring evidence is the single recent commit `0e9fd4b`". That is long out of date — the repository now has a substantial commit history plus a dated reasoning trail in [ai/journal.md](ai/journal.md) and [ai/todo.md](ai/todo.md).)*

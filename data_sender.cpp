@@ -1,16 +1,80 @@
 // =============================================================================
-// data_sender.cpp  —  Guitar Rig Analyzer  v0.6.1
+// CONDITIONAL COMPILATION — Pi 5 (UART) backend
 // =============================================================================
-// Binary UART data sender. See data_sender.h for protocol documentation.
+// This entire translation unit is compiled ONLY when DISPLAY_TARGET selects this
+// backend. Authority: docs/adr/ADR-001-display-architecture.md.
+//
+// WHY THE GUARD IS HERE AND NOT JUST IN presentation.cpp: an Arduino/arduino-cli
+// build compiles EVERY .cpp in the sketch folder, whether or not anything
+// includes its header. Without this guard, selecting a different DISPLAY_TARGET
+// would still compile and link the UART packet protocol, so DISPLAY_TARGET_NONE
+// would not actually be free and the unselected backend would remain a build
+// dependency. Verified by compile, not assumed.
+//
+// The guard deliberately wraps the #includes too — the include itself is the
+// dependency being removed.
+//
+// Nothing else in the firmware calls into this file directly. The application
+// and the validation harness both go through presentation_* (data_sender.h is
+// reached only by presentation.cpp's matching arm).
+// =============================================================================
+
+#include "config.h"
+
+#if DISPLAY_TARGET == DISPLAY_TARGET_PI
+
+// =============================================================================
+// data_sender.cpp  —  Guitar Rig Analyzer
+// =============================================================================
+// Wire format, packet layouts and delivery policy: see data_sender.h.
+//
+// *** THE CENTRAL RULE OF THIS FILE: NO BLOCKING WRITES. ***
+//
+// Presentation transport must be lossy before measurement becomes lossy. A dead,
+// slow or disconnected Pi must never perturb acquisition timing. Every byte
+// written here is gated on availableForWrite(); a packet that does not fit is
+// dropped whole and counted, never partially emitted.
+//
+// If you add a code path that calls DS_UART_PORT.write() without first checking
+// room for the ENTIRE packet, you have reintroduced the failure this
+// architecture exists to prevent — the same shape as the RA8875 waitPoll() spin
+// that stretched the audio block period from 46 ms to 2194 ms.
 // =============================================================================
 
 #include "data_sender.h"
-#include "measurement_engine.h"   // for measurementEngine_getState()
+#include "measurement_engine.h"   // measurementEngine_getState()
 #include "signal_router.h"
+#include <math.h>
 
 // =============================================================================
-// CRC-16/CCITT (same polynomial as export_engine, different from CRC-32)
+// STATE
 // =============================================================================
+
+static DataSenderStats s_stats;
+static uint32_t s_live_drop_streak = 0;
+
+// Extended UART TX buffer. Without this the default Serial1 TX buffer is far
+// smaller than one live frame, availableForWrite() could never report room, and
+// every single live frame would be dropped — a silent total failure of the live
+// path that would look like a Pi-side bug. DMAMEM keeps it out of the tight
+// RAM1 budget.
+DMAMEM static uint8_t s_tx_buffer[DS_TX_BUFFER_BYTES];
+
+// Staging buffer for the reliable RESULT path, holding one fully framed packet
+// (header + payload + CRC) drained across loop iterations.
+DMAMEM static uint8_t s_result_stage[DS_RESULT_STAGE_BYTES];
+static uint32_t s_result_len  = 0;   // total framed bytes staged
+static uint32_t s_result_sent = 0;   // bytes already on the wire
+static uint32_t s_result_queued_ms = 0;
+
+// Scratch for live frame assembly. Static rather than stack: the worst-case
+// live payload at 512 bins is ~6.7 KB, which has no business on the loop stack.
+DMAMEM static uint8_t s_live_payload[DS_LIVE_PAYLOAD_BYTES];
+
+// =============================================================================
+// CRC-16/CCITT  (same polynomial as export_engine's, distinct from its CRC-32)
+// =============================================================================
+
 static uint16_t crc16_update(uint16_t crc, uint8_t data) {
     crc ^= (uint16_t)data << 8;
     for (uint8_t i = 0; i < 8; i++) {
@@ -22,62 +86,130 @@ static uint16_t crc16_update(uint16_t crc, uint8_t data) {
 
 static uint16_t crc16_block(const uint8_t* buf, size_t len) {
     uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc = crc16_update(crc, buf[i]);
-    }
+    for (size_t i = 0; i < len; i++) crc = crc16_update(crc, buf[i]);
     return crc;
 }
 
 // =============================================================================
-// PRIVATE: Packet framing helpers
+// PRIVATE: UART pressure and non-blocking emission
 // =============================================================================
+// Framing decisions are always made against the WHOLE packet length before any
+// byte is emitted. The two paths frame differently by necessity — the live path
+// writes header/payload/CRC as three writes after one room check, the reliable
+// path frames into its staging buffer so it can be drained in chunks — so there
+// is deliberately no shared frame() helper to tempt a partial write.
 
-// Write the 5-byte packet header: SYNC(2) + type(1) + payload_length(2)
-static void writeHeader(uint8_t packet_type, uint16_t payload_length) {
+// Copy a C string into a fixed-width NUL-padded wire field.
+// Uses memset + bounded memcpy rather than strncpy: strncpy on a source exactly
+// as long as the limit does not NUL-terminate, which is safe here only because
+// of the memset, and compilers correctly warn about the pattern. Being explicit
+// is clearer than silencing it.
+static void writeFixedString(uint8_t* dst, size_t field_bytes, const char* src) {
+    memset(dst, 0, field_bytes);
+    if (src == nullptr) return;
+    const size_t n = strnlen(src, field_bytes - 1);   // always leave a NUL
+    memcpy(dst, src, n);
+}
+
+// Record UART pressure on every decision point.
+static inline uint32_t txRoom() {
+    const int room = DS_UART_PORT.availableForWrite();
+    const uint32_t r = (room > 0) ? (uint32_t)room : 0u;
+    if (r < s_stats.tx_room_min) s_stats.tx_room_min = r;
+    return r;
+}
+
+// -----------------------------------------------------------------------------
+// trySendBestEffort()
+// Frames into a scratch buffer and emits only if the WHOLE packet fits.
+// Returns true if sent. Never blocks, never partially writes.
+// -----------------------------------------------------------------------------
+static bool trySendBestEffort(uint8_t packet_type,
+                              const uint8_t* payload, uint16_t len) {
+    const uint32_t total = (uint32_t)len + DS_FRAMING_BYTES;
+    if (txRoom() < total) return false;
+
+    // Small packets frame into a local buffer; the live frame is pre-framed by
+    // its caller because its payload is already in a static buffer.
     uint8_t hdr[5];
-    hdr[0] = DS_SYNC_WORD & 0xFF;         // 0x55
-    hdr[1] = (DS_SYNC_WORD >> 8) & 0xFF;  // 0xAA
+    hdr[0] = DS_SYNC_WORD & 0xFF;
+    hdr[1] = (DS_SYNC_WORD >> 8) & 0xFF;
     hdr[2] = packet_type;
-    hdr[3] = payload_length & 0xFF;
-    hdr[4] = (payload_length >> 8) & 0xFF;
+    hdr[3] = len & 0xFF;
+    hdr[4] = (len >> 8) & 0xFF;
+    const uint16_t crc = crc16_block(payload, len);
+    uint8_t tail[2] = { (uint8_t)(crc & 0xFF), (uint8_t)((crc >> 8) & 0xFF) };
+
+    // Room was confirmed for the whole packet above, so these three writes
+    // cannot block.
     DS_UART_PORT.write(hdr, 5);
-}
-
-// Write the 2-byte CRC trailer
-static void writeCRC(uint16_t crc) {
-    uint8_t tail[2];
-    tail[0] = crc & 0xFF;
-    tail[1] = (crc >> 8) & 0xFF;
-    DS_UART_PORT.write(tail, 2);
-}
-
-// Send a complete packet: header + payload + CRC
-static void sendPacket(uint8_t packet_type, const uint8_t* payload, uint16_t len) {
-    writeHeader(packet_type, len);
     DS_UART_PORT.write(payload, len);
-    writeCRC(crc16_block(payload, len));
+    DS_UART_PORT.write(tail, 2);
+    return true;
+}
+
+// Wrap a best-effort send with call-duration instrumentation.
+static bool timedBestEffort(uint8_t type, const uint8_t* payload, uint16_t len) {
+    const uint32_t t0 = micros();
+    const bool ok = trySendBestEffort(type, payload, len);
+    const uint32_t dt = micros() - t0;
+
+    s_stats.send_calls++;
+    s_stats.send_us_last = dt;
+    s_stats.send_us_total += dt;
+    if (dt > s_stats.send_us_max) s_stats.send_us_max = dt;
+    return ok;
 }
 
 // =============================================================================
-// PRIVATE: Bin decimation
+// PRIVATE: decimation with coverage accounting
 // =============================================================================
-// Decimates FFT_BINS (512) source bins into DS_LIVE_BINS output bins by
-// simple block averaging. Each output bin is the mean of (FFT_BINS / DS_LIVE_BINS)
-// consecutive source bins. NaN bins in the source are skipped.
+// One pass produces the transmitted value AND the per-bin coverage nibbles, so
+// the value and the statement of how much to trust it cannot drift apart.
+//
+// Protocol v1 used a single arithmetic mean for all three arrays and discarded
+// both the clamp state and the NaN coverage (audit L1/L2/L3). Those are not
+// independent bugs: they are all "the Teensy knew something and did not say so."
 
-static void decimateBins(const float* src, float* dst, uint16_t src_bins, uint16_t dst_bins) {
-    const uint16_t ratio = src_bins / dst_bins;
-    for (uint16_t d = 0; d < dst_bins; d++) {
-        float sum = 0.0f;
-        uint16_t count = 0;
-        for (uint16_t j = 0; j < ratio; j++) {
-            uint16_t idx = d * ratio + j;
-            if (idx < src_bins && !isnan(src[idx])) {
-                sum += src[idx];
-                count++;
-            }
+// Peak-preserving decimation for the linear magnitude spectra. An arithmetic
+// mean buries narrow peaks — exactly the features a spectrum display exists to
+// show — so take the maximum instead. NaN inputs are ignored.
+static void decimateMax(const float* src, float* dst) {
+    for (uint16_t d = 0; d < DS_LIVE_BINS; d++) {
+        float peak = NAN;
+        for (uint16_t j = 0; j < DS_DECIM_RATIO; j++) {
+            const float v = src[d * DS_DECIM_RATIO + j];
+            if (isnan(v)) continue;
+            if (isnan(peak) || v > peak) peak = v;
         }
-        dst[d] = (count > 0) ? (sum / count) : NAN;
+        dst[d] = peak;
+    }
+}
+
+// Mean-in-dB decimation for the TF curve, plus the coverage nibbles.
+//   high nibble = number of source bins CLAMPED (saturation rails)
+//   low  nibble = number of source bins VALID   (non-NaN)
+// A bin whose valid count is 0 emits NaN so the receiver pen-lifts.
+static void decimateTf(const AudioFrame* frame, float* dst, uint8_t* coverage) {
+    for (uint16_t d = 0; d < DS_LIVE_BINS; d++) {
+        float sum = 0.0f;
+        uint8_t valid = 0;
+        uint8_t clamped = 0;
+
+        for (uint16_t j = 0; j < DS_DECIM_RATIO; j++) {
+            const int bin = (int)(d * DS_DECIM_RATIO + j);
+            const float v = frame->tf_db[bin];
+
+            // Clamp state is counted over every source bin in the group,
+            // independently of whether the value is NaN — a railed bin is a
+            // fact about the bin, not about its arithmetic contribution.
+            if (audioEngine_tfBinClamped(frame, bin)) clamped++;
+
+            if (!isnan(v)) { sum += v; valid++; }
+        }
+
+        dst[d]      = (valid > 0) ? (sum / (float)valid) : NAN;
+        coverage[d] = (uint8_t)((clamped << 4) | (valid & 0x0F));
     }
 }
 
@@ -85,254 +217,472 @@ static void decimateBins(const float* src, float* dst, uint16_t src_bins, uint16
 // PUBLIC API
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// dataSender_init()
-// -----------------------------------------------------------------------------
 bool dataSender_init() {
     DS_UART_PORT.begin(DS_BAUD_RATE);
 
-    // Wait for UART to be ready
-    delay(10);
+    // Install the extended TX buffer BEFORE any write. This is what makes the
+    // non-blocking policy possible at all — see the s_tx_buffer comment.
+    DS_UART_PORT.addMemoryForWrite(s_tx_buffer, sizeof(s_tx_buffer));
 
-    // Send identification packet as a status message so the receiver
-    // knows what to expect.
-    char id_msg[128];
-    snprintf(id_msg, sizeof(id_msg),
-             "GRA v%s | protocol=1 | live_bins=%d | baud=%ld | full_bins=%d",
-             FIRMWARE_VERSION, DS_LIVE_BINS, (long)DS_BAUD_RATE, FFT_BINS);
+    dataSender_resetStats();
+    s_result_len = s_result_sent = 0;
 
-    dataSender_sendStatus(id_msg);
+    delay(10);   // let the UART settle before the first frame
 
-    Serial.printf("[DataSender] Initialised: %ld baud, %d live bins, UART %s\n",
-                  (long)DS_BAUD_RATE, DS_LIVE_BINS, "Serial1");
+    // HELLO — structured, not a string the receiver has to parse (audit T2).
+    uint8_t p[40];
+    memset(p, 0, sizeof(p));
+    uint16_t u16;
+    uint32_t u32;
+
+    u16 = (uint16_t)PI_PROTOCOL_VERSION; memcpy(&p[0],  &u16, 2);
+    u16 = (uint16_t)DS_LIVE_BINS;        memcpy(&p[2],  &u16, 2);
+    u16 = (uint16_t)FFT_BINS;            memcpy(&p[4],  &u16, 2);
+    u16 = (uint16_t)DS_DECIM_RATIO;      memcpy(&p[6],  &u16, 2);
+    u32 = (uint32_t)DS_BAUD_RATE;        memcpy(&p[8],  &u32, 4);
+    u32 = (uint32_t)SAMPLE_RATE;         memcpy(&p[12], &u32, 4);
+    u16 = (uint16_t)INSIGHTS_MAX_COUNT;  memcpy(&p[16], &u16, 2);
+    // [18-19] reserved, already zero
+
+    // Capability bitmap: lets the Pi distinguish "feature off" from "feature not
+    // compiled in", which v1's ROUTER_STATUS could not express (audit T4). A
+    // receiver must not render a control for a capability that cannot respond.
+    u32 = 0;
+#if ENABLE_DUT_INJECTION
+    u32 |= 0x01;
+#endif
+#if ENABLE_MONITOR_MODE
+    u32 |= 0x02;
+#endif
+    // bits 2/3 (MODE_PRECISION / MODE_LF) stay clear: measurementEngine_arm()
+    // still rejects both. Advertising them would be a lie the Pi would act on.
+    memcpy(&p[20], &u32, 4);
+
+    writeFixedString(&p[24], 16, FIRMWARE_VERSION);
+
+    if (!timedBestEffort(DS_PACKET_HELLO, p, sizeof(p))) s_stats.events_dropped++;
+    else                                                 s_stats.events_sent++;
+
+    Serial.printf("[DataSender] Protocol v%d | %ld baud | %d live bins "
+                  "(%d:1) | TX buffer %d B | firmware %s\n",
+                  PI_PROTOCOL_VERSION, (long)DS_BAUD_RATE, DS_LIVE_BINS,
+                  DS_DECIM_RATIO, DS_TX_BUFFER_BYTES, FIRMWARE_VERSION);
+    Serial.printf("[DataSender] Live frame %d B framed; RESULT up to %d B "
+                  "(reliable, drained across loop iterations)\n",
+                  DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES,
+                  DS_RESULT_STAGE_BYTES);
     return true;
 }
 
 // -----------------------------------------------------------------------------
-// dataSender_sendLiveFrame(frame)
+// dataSender_service()
 // -----------------------------------------------------------------------------
-// Live frame payload layout (all little-endian):
-//   [0]       uint8   measurement_state
-//   [1]       uint8   flags (bit 0: source_clip, bit 1: return_clip,
-//                             bit 2: tf_persistence, bit 3..7: reserved)
-//   [2-3]     uint16  output_block_number (lower 16 bits)
-//   [4-7]     float   peak_source_dbfs
-//   [8-11]    float   peak_return_dbfs
-//   [12-15]   float   tf_confidence
-//   [16..X]   float[DS_LIVE_BINS]   fft_source (decimated)
-//   [X..Y]    float[DS_LIVE_BINS]   fft_return (decimated)
-//   [Y..Z]    float[DS_LIVE_BINS]   tf_db      (decimated)
-// Total: 16 + DS_LIVE_BINS * 3 * 4
+void dataSender_service() {
+    s_stats.service_calls++;
 
-void dataSender_sendLiveFrame(const AudioFrame* frame) {
-    const uint16_t float_block_size = DS_LIVE_BINS * sizeof(float);
-    const uint16_t payload_size = 16 + float_block_size * 3;
-
-    // Use a stack buffer for the payload. At 128 bins this is 1552 bytes.
-    // At 256 bins this is 3088 bytes. Both fit comfortably in the Teensy's
-    // 1 MB RAM, but not in the 8 KB default stack on some platforms.
-    // Teensy 4.1 has ample stack space.
-    uint8_t payload[16 + 512 * 3 * sizeof(float)]; // max possible size
-    uint16_t pos = 0;
-
-    // State
-    payload[pos++] = (uint8_t)measurementEngine_getState();
-
-    // Flags
-    uint8_t flags = 0;
-    if (frame->source_clipping)     flags |= 0x01;
-    if (frame->return_clipping)     flags |= 0x02;
-    if (frame->tf_persistence_active) flags |= 0x04;
-    payload[pos++] = flags;
-
-    // Block number (lower 16 bits)
-    uint16_t block_lo = (uint16_t)(frame->output_block_number & 0xFFFF);
-    memcpy(&payload[pos], &block_lo, 2); pos += 2;
-
-    // Peak levels
-    memcpy(&payload[pos], &frame->peak_source_dbfs, 4); pos += 4;
-    memcpy(&payload[pos], &frame->peak_return_dbfs, 4); pos += 4;
-
-    // TF confidence
-    memcpy(&payload[pos], &frame->tf_confidence, 4); pos += 4;
-
-    // Decimated spectra
-    float dec_buf[512]; // reusable decimation buffer
-
-    decimateBins(frame->fft_source, dec_buf, FFT_BINS, DS_LIVE_BINS);
-    memcpy(&payload[pos], dec_buf, float_block_size); pos += float_block_size;
-
-    decimateBins(frame->fft_return, dec_buf, FFT_BINS, DS_LIVE_BINS);
-    memcpy(&payload[pos], dec_buf, float_block_size); pos += float_block_size;
-
-    decimateBins(frame->tf_db, dec_buf, FFT_BINS, DS_LIVE_BINS);
-    memcpy(&payload[pos], dec_buf, float_block_size); pos += float_block_size;
-
-    sendPacket(DS_PACKET_LIVE_FRAME, payload, pos);
-}
-
-// -----------------------------------------------------------------------------
-// dataSender_sendResult(result, insights)
-// -----------------------------------------------------------------------------
-// Result payload is large — sent at full 512-bin resolution.
-// Layout:
-//   [0]       uint8   result_quality
-//   [1]       uint8   flags (bit 0: clip_detected, bit 1: cal_applied,
-//                             bit 2: generator_active)
-//   [2-3]     uint16  n_averages_completed
-//   [4-7]     float   mean_coherence
-//   [8-11]    float   valid_bin_fraction
-//   [12-15]   uint32  timestamp_ms
-//   [16-19]   uint8[4] estimator, stimulus, fft_mode, window_function
-//   [20-2067] float[512]  tf_cal_mag_db
-//   [2068-4115] float[512] tf_cal_phase_rad
-//   [4116-6163] float[512] group_delay_ms
-//   [6164-8211] float[512] coherence
-//   [8212-8215] uint16 clip_source_count, uint16 clip_return_count
-//   [8216]      uint8  insight_count
-//   [8217..]    insight entries (variable)
-//
-// Each insight entry:
-//   [0]       uint8   mode
-//   [1]       uint8   severity
-//   [2-5]     float   frequency_hz
-//   [6-9]     float   magnitude_db
-//   [10-73]   char[64] title (null-terminated, padded)
-//   [74-137]  char[64] detail (null-terminated, padded)
-//   = 138 bytes per insight
-
-void dataSender_sendResult(const MeasurementResult& result,
-                           const InsightList& insights) {
-    const uint16_t spec_block = FFT_BINS * sizeof(float);  // 2048
-    const uint16_t header_size = 20;
-    const uint16_t insight_entry_size = 138;
-    const uint16_t payload_size = header_size
-                                + spec_block * 4        // 4 spectra × 2048
-                                + 4                     // clip counts
-                                + 1                     // insight_count
-                                + insights.count * insight_entry_size;
-
-    // This is a large payload (~8–10 KB). We stream it in sections rather
-    // than building the entire buffer in RAM.
-
-    // Start the packet manually — write header, accumulate CRC as we go.
-    writeHeader(DS_PACKET_RESULT, payload_size);
-
-    uint16_t crc = 0xFFFF;
-
-    // Helper: write a block and update CRC
-    auto writeAndCRC = [&](const uint8_t* data, uint16_t len) {
-        DS_UART_PORT.write(data, len);
-        for (uint16_t i = 0; i < len; i++) {
-            crc = crc16_update(crc, data[i]);
-        }
-    };
-
-    // Header fields
-    uint8_t hdr[20];
-    hdr[0] = (uint8_t)result.result_quality;
-    hdr[1] = (result.clip_detected ? 0x01 : 0)
-           | (result.calibration_applied ? 0x02 : 0)
-           | (result.generator_active ? 0x04 : 0);
-    memcpy(&hdr[2], &result.n_averages_completed, 2);
-    memcpy(&hdr[4], &result.mean_coherence, 4);
-    memcpy(&hdr[8], &result.valid_bin_fraction, 4);
-    memcpy(&hdr[12], &result.timestamp_ms, 4);
-    hdr[16] = (uint8_t)result.estimator;
-    hdr[17] = (uint8_t)result.stimulus;
-    hdr[18] = (uint8_t)result.fft_mode;
-    hdr[19] = (uint8_t)result.window_function;
-    writeAndCRC(hdr, 20);
-
-    // Four full-resolution spectral arrays
-    writeAndCRC((const uint8_t*)result.tf_cal_mag_db,    spec_block);
-    writeAndCRC((const uint8_t*)result.tf_cal_phase_rad, spec_block);
-    writeAndCRC((const uint8_t*)result.group_delay_ms,   spec_block);
-    writeAndCRC((const uint8_t*)result.coherence,        spec_block);
-
-    // Clip counts
-    uint8_t clips[4];
-    memcpy(&clips[0], &result.clip_source_count, 2);
-    memcpy(&clips[2], &result.clip_return_count, 2);
-    writeAndCRC(clips, 4);
-
-    // Insights
-    uint8_t ic = insights.count;
-    writeAndCRC(&ic, 1);
-
-    for (uint8_t i = 0; i < insights.count; i++) {
-        const Insight& ins = insights.items[i];
-        uint8_t entry[138];
-        memset(entry, 0, sizeof(entry));
-        entry[0] = (uint8_t)ins.mode;
-        entry[1] = (uint8_t)ins.severity;
-        memcpy(&entry[2], &ins.frequency_hz, 4);
-        memcpy(&entry[6], &ins.magnitude_db, 4);
-        strncpy((char*)&entry[10], ins.title, 63);
-        strncpy((char*)&entry[74], ins.detail, 63);
-        writeAndCRC(entry, insight_entry_size);
+    if (s_result_len == 0) {
+        s_stats.result_pending = false;
+        s_stats.result_pending_bytes = 0;
+        return;
     }
 
-    // CRC trailer
-    writeCRC(crc);
+    s_stats.result_pending = true;
+
+    const uint32_t t0 = micros();
+    uint32_t room = txRoom();
+
+    while (room > 0 && s_result_sent < s_result_len) {
+        uint32_t chunk = s_result_len - s_result_sent;
+        if (chunk > room) chunk = room;
+
+        // Room was just measured, so this write cannot block.
+        DS_UART_PORT.write(&s_result_stage[s_result_sent], chunk);
+        s_result_sent += chunk;
+        room -= chunk;
+    }
+
+    const uint32_t dt = micros() - t0;
+    s_stats.send_calls++;
+    s_stats.send_us_last = dt;
+    s_stats.send_us_total += dt;
+    if (dt > s_stats.send_us_max) s_stats.send_us_max = dt;
+
+    s_stats.result_pending_bytes = s_result_len - s_result_sent;
+
+    if (s_result_sent >= s_result_len) {
+        const uint32_t drain_ms = millis() - s_result_queued_ms;
+        if (drain_ms > s_stats.result_drain_ms_max) {
+            s_stats.result_drain_ms_max = drain_ms;
+        }
+        s_stats.results_sent++;
+        s_result_len = s_result_sent = 0;
+        s_stats.result_pending = false;
+        s_stats.result_pending_bytes = 0;
+    }
 }
 
 // -----------------------------------------------------------------------------
-// dataSender_sendAborted(reason)
+// dataSender_sendLiveFrame()  —  best effort, droppable, latest-wins
+// -----------------------------------------------------------------------------
+void dataSender_sendLiveFrame(const AudioFrame* frame) {
+    if (frame == nullptr) return;
+
+    const uint32_t t0 = micros();
+
+    // Drop before doing the decimation work if there is no room for the packet.
+    // Checking first is not just an optimisation: when the Pi is gone, this path
+    // runs every block forever, and the decimation is the expensive part.
+    const uint32_t total = (uint32_t)DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES;
+    if (txRoom() < total) {
+        s_stats.live_dropped++;
+        s_live_drop_streak++;
+        if (s_live_drop_streak > s_stats.live_dropped_streak_max) {
+            s_stats.live_dropped_streak_max = s_live_drop_streak;
+        }
+        const uint32_t dt = micros() - t0;
+        s_stats.send_calls++;
+        s_stats.send_us_last = dt;
+        s_stats.send_us_total += dt;
+        if (dt > s_stats.send_us_max) s_stats.send_us_max = dt;
+        return;
+    }
+
+    uint8_t* p = s_live_payload;
+    uint16_t pos = 0;
+
+    p[pos++] = (uint8_t)measurementEngine_getState();
+
+    uint8_t flags = 0;
+    if (frame->source_clipping)        flags |= 0x01;
+    if (frame->return_clipping)        flags |= 0x02;
+    if (frame->tf_persistence_active)  flags |= 0x04;
+    p[pos++] = flags;
+
+    const uint16_t block_lo = (uint16_t)(frame->output_block_number & 0xFFFF);
+    memcpy(&p[pos], &block_lo, 2);                 pos += 2;
+    memcpy(&p[pos], &frame->peak_source_dbfs, 4);  pos += 4;
+    memcpy(&p[pos], &frame->peak_return_dbfs, 4);  pos += 4;
+    memcpy(&p[pos], &frame->tf_confidence, 4);     pos += 4;
+
+    // Whole-curve clamp summary over all FFT_BINS source bins — a cheap figure
+    // for the renderer and for logs, independent of the per-bin nibbles below.
+    memcpy(&p[pos], &frame->tf_clamped_count, 2);  pos += 2;
+
+    const uint16_t fblock = DS_LIVE_BINS * sizeof(float);
+
+    decimateMax(frame->fft_source, (float*)&p[pos]);  pos += fblock;
+    decimateMax(frame->fft_return, (float*)&p[pos]);  pos += fblock;
+
+    // TF value and its coverage nibbles are produced together, so a receiver can
+    // never be handed a number without the statement of how much of it is real.
+    float*   tf_dst    = (float*)&p[pos];            pos += fblock;
+    uint8_t* cov_dst   = &p[pos];                    pos += DS_LIVE_BINS;
+    decimateTf(frame, tf_dst, cov_dst);
+
+    const bool ok = trySendBestEffort(DS_PACKET_LIVE_FRAME, p, pos);
+
+    const uint32_t dt = micros() - t0;
+    s_stats.send_calls++;
+    s_stats.send_us_last = dt;
+    s_stats.send_us_total += dt;
+    if (dt > s_stats.send_us_max) s_stats.send_us_max = dt;
+
+    if (ok) {
+        s_stats.live_sent++;
+        s_live_drop_streak = 0;
+    } else {
+        // Room was checked above, so reaching here means the buffer drained
+        // differently than measured. Counted the same way; still never blocks.
+        s_stats.live_dropped++;
+        s_live_drop_streak++;
+        if (s_live_drop_streak > s_stats.live_dropped_streak_max) {
+            s_stats.live_dropped_streak_max = s_live_drop_streak;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// dataSender_sendResult()  —  reliable, staged, latest-wins on supersession
+// -----------------------------------------------------------------------------
+void dataSender_sendResult(const MeasurementResult& result,
+                           const InsightList& insights) {
+    const uint32_t t0 = micros();
+
+    if (s_result_len != 0) {
+        // A previous result had not finished draining. Replace it: a stale
+        // result is worth less than the current one, and interleaving two
+        // packets would corrupt both.
+        s_stats.results_superseded++;
+        s_stats.result_bytes_abandoned += (s_result_len - s_result_sent);
+    }
+
+    // Build the payload directly inside the staging buffer, after the 5-byte
+    // header, so the whole thing is framed in place with no second copy.
+    uint8_t* payload = &s_result_stage[5];
+    uint32_t pos = 0;
+
+    // --- Verdicts the Teensy owns. v1 omitted the first four entirely. ---
+    payload[pos++] = result.result_valid ? 1 : 0;              // audit R1
+    payload[pos++] = (uint8_t)result.result_quality;
+
+    uint8_t flags = 0;
+    if (result.clip_detected)        flags |= 0x01;
+    if (result.calibration_applied)  flags |= 0x02;
+    if (result.generator_active)     flags |= 0x04;
+    payload[pos++] = flags;
+
+    payload[pos++] = (uint8_t)result.calibration_type;         // audit R3
+
+    const CalibrationWarnings& w = result.calibration_warnings;
+    uint8_t wbits = 0;
+    if (w.calibration_missing)           wbits |= 0x01;
+    if (w.line_in_level_mismatch)        wbits |= 0x02;
+    if (w.partial_calibration_applied)   wbits |= 0x04;
+    if (w.calibration_from_import)       wbits |= 0x08;
+    if (w.hard_parameter_mismatch)       wbits |= 0x10;
+    payload[pos++] = wbits;                                    // audit R3
+
+    payload[pos++] = 0;                                        // reserved
+
+    memcpy(&payload[pos], &result.n_averages_completed, 2);  pos += 2;
+    memcpy(&payload[pos], &result.mean_coherence, 4);        pos += 4;
+    memcpy(&payload[pos], &result.valid_bin_fraction, 4);    pos += 4;
+    memcpy(&payload[pos], &result.timestamp_ms, 4);          pos += 4;
+
+    payload[pos++] = (uint8_t)result.estimator;
+    payload[pos++] = (uint8_t)result.stimulus;
+    payload[pos++] = (uint8_t)result.fft_mode;
+    payload[pos++] = (uint8_t)result.window_function;
+
+    // --- Hardware and capture context (audit R6) ---
+    memcpy(&payload[pos], &result.fft_size, 2);             pos += 2;
+    memcpy(&payload[pos], &result.capture_start_block, 4);  pos += 4;
+    memcpy(&payload[pos], &result.capture_end_block, 4);    pos += 4;
+    payload[pos++] = result.source_node_ch;
+    payload[pos++] = result.return_node_ch;
+    payload[pos++] = result.line_in_level;
+    payload[pos++] = 0;                                     // reserved
+
+    memcpy(&payload[pos], &result.clip_source_count, 2);    pos += 2;
+    memcpy(&payload[pos], &result.clip_return_count, 2);    pos += 2;
+
+    // --- Provenance (audit R2/R5) ---
+    writeFixedString(&payload[pos], 16, result.firmware_version);   pos += 16;
+    writeFixedString(&payload[pos], 96, result.calibration_provenance);
+    pos += 96;
+
+    payload[pos++] = 0;   // reserved
+    payload[pos++] = 0;
+
+    // ---- LAYOUT SELF-CHECK ----------------------------------------------
+    // pos must now equal the fixed-block size documented in data_sender.h. If a
+    // future edit adds or removes a field without updating the layout comment,
+    // every subsequent offset in the Pi's parser silently shifts and the symptom
+    // is garbage floats, not an error. Cheap to check, expensive to debug.
+    //
+    // The static_assert pins the constant; the runtime check pins the code that
+    // is supposed to fill it. Both are needed — they fail for different reasons.
+    static_assert(DS_RESULT_FIXED_BYTES == 156,
+                  "RESULT fixed-block size changed — update the layout comment "
+                  "in data_sender.h and bump PI_PROTOCOL_VERSION");
+    if (pos != DS_RESULT_FIXED_BYTES) {
+        // Report once per occurrence and abandon the packet rather than sending
+        // a result the Pi will misparse into plausible-looking wrong numbers.
+        Serial.printf("[DataSender] FATAL LAYOUT DRIFT: RESULT fixed block filled "
+                      "%lu bytes, header documents %d. Packet NOT sent — fix the "
+                      "layout and bump PI_PROTOCOL_VERSION.\n",
+                      (unsigned long)pos, DS_RESULT_FIXED_BYTES);
+        s_result_len = s_result_sent = 0;
+        return;
+    }
+
+    // --- Canonical 512-bin arrays ---
+    const uint16_t spec = FFT_BINS * sizeof(float);
+    memcpy(&payload[pos], result.tf_cal_mag_db,    spec);  pos += spec;
+    memcpy(&payload[pos], result.tf_cal_phase_rad, spec);  pos += spec;
+    memcpy(&payload[pos], result.group_delay_ms,   spec);  pos += spec;
+    memcpy(&payload[pos], result.coherence,        spec);  pos += spec;
+
+    // --- Insights ---
+    uint8_t count = insights.count;
+    if (count > INSIGHTS_MAX_COUNT) count = INSIGHTS_MAX_COUNT;
+    payload[pos++] = count;
+
+    for (uint8_t i = 0; i < count; i++) {
+        const Insight& ins = insights.items[i];
+        uint8_t* e = &payload[pos];
+        memset(e, 0, DS_INSIGHT_ENTRY_BYTES);
+        e[0] = (uint8_t)ins.mode;
+        e[1] = (uint8_t)ins.severity;
+        memcpy(&e[2], &ins.frequency_hz, 4);
+        memcpy(&e[6], &ins.magnitude_db, 4);
+        writeFixedString(&e[10], 64, ins.title);
+        writeFixedString(&e[74], 64, ins.detail);
+        pos += DS_INSIGHT_ENTRY_BYTES;
+    }
+
+    // Frame in place around the payload already sitting at offset 5.
+    s_result_stage[0] = DS_SYNC_WORD & 0xFF;
+    s_result_stage[1] = (DS_SYNC_WORD >> 8) & 0xFF;
+    s_result_stage[2] = DS_PACKET_RESULT;
+    s_result_stage[3] = (uint8_t)(pos & 0xFF);
+    s_result_stage[4] = (uint8_t)((pos >> 8) & 0xFF);
+    const uint16_t crc = crc16_block(payload, (size_t)pos);
+    s_result_stage[5 + pos]     = crc & 0xFF;
+    s_result_stage[5 + pos + 1] = (crc >> 8) & 0xFF;
+
+    s_result_len       = pos + DS_FRAMING_BYTES;
+    s_result_sent      = 0;
+    s_result_queued_ms = millis();
+    s_stats.results_queued++;
+    s_stats.result_pending = true;
+    s_stats.result_pending_bytes = s_result_len;
+
+    const uint32_t dt = micros() - t0;
+    s_stats.send_calls++;
+    s_stats.send_us_last = dt;
+    s_stats.send_us_total += dt;
+    if (dt > s_stats.send_us_max) s_stats.send_us_max = dt;
+
+    // Opportunistically push the first chunk now rather than waiting a loop.
+    dataSender_service();
+}
+
+// -----------------------------------------------------------------------------
+// Event packets — best effort. A dropped ABORTED costs the reason string only;
+// measurement_state rides in every live frame, so the Pi still learns the fact.
 // -----------------------------------------------------------------------------
 void dataSender_sendAborted(const char* reason) {
-    uint16_t len = strlen(reason);
-    if (len > 200) len = 200;
-    sendPacket(DS_PACKET_ABORTED, (const uint8_t*)reason, len);
+    if (reason == nullptr) return;
+    uint16_t len = (uint16_t)strlen(reason);
+    if (len > DS_MAX_STRING_PAYLOAD) len = DS_MAX_STRING_PAYLOAD;
+    if (timedBestEffort(DS_PACKET_ABORTED, (const uint8_t*)reason, len))
+         s_stats.events_sent++;
+    else s_stats.events_dropped++;
+}
+
+void dataSender_sendStatus(const char* message) {
+    if (message == nullptr) return;
+    uint16_t len = (uint16_t)strlen(message);
+    if (len > DS_MAX_STRING_PAYLOAD) len = DS_MAX_STRING_PAYLOAD;
+    if (timedBestEffort(DS_PACKET_STATUS, (const uint8_t*)message, len))
+         s_stats.events_sent++;
+    else s_stats.events_dropped++;
 }
 
 // -----------------------------------------------------------------------------
-// dataSender_sendStatus(message)
+// dataSender_sendView()
+// Best effort. A dropped view packet is recoverable: measurement_state rides in
+// every live frame, so a receiver that missed this can still reconcile its view
+// from the next frame.
 // -----------------------------------------------------------------------------
-void dataSender_sendStatus(const char* message) {
-    uint16_t len = strlen(message);
-    if (len > 200) len = 200;
-    sendPacket(DS_PACKET_STATUS, (const uint8_t*)message, len);
+void dataSender_sendView(uint8_t view_id) {
+    const uint8_t payload[1] = { view_id };
+    if (timedBestEffort(DS_PACKET_VIEW, payload, 1)) s_stats.events_sent++;
+    else                                             s_stats.events_dropped++;
 }
 
 // -----------------------------------------------------------------------------
 // dataSender_sendRouterStatus()
+// Payload:
+//   [0] jack_states (bit0 instrument, 1 send, 2 ts, 3 xlr)
+//   [1] return_source   [2] injection_active   [3] monitor_mode
+//   [4] route_valid     [5] can_inject         [6] description_length
+//   [7..] description
+// Whether injection/monitor EXIST in this build is advertised once in HELLO's
+// capability bitmap, not inferred from these bytes (audit T4).
 // -----------------------------------------------------------------------------
-// Router status payload:
-//   [0]     uint8   jack_states (packed: bit 0=instrument, 1=send, 2=ts, 3=xlr)
-//   [1]     uint8   return_source
-//   [2]     uint8   injection_active
-//   [3]     uint8   monitor_mode
-//   [4]     uint8   route_valid
-//   [5]     uint8   can_inject
-//   [6]     uint8   description_length
-//   [7..N]  char[]  description string
-
 void dataSender_sendRouterStatus() {
     const RouterStatus& rs = signalRouter_getStatus();
-    uint8_t desc_len = strlen(rs.description);
+    uint8_t desc_len = (uint8_t)strlen(rs.description);
     if (desc_len > 100) desc_len = 100;
-    uint16_t payload_len = 7 + desc_len;
 
-    uint8_t payload[128];
-    uint8_t jacks = 0;
-    if (rs.jacks.instrument_in) jacks |= 0x01;
-    if (rs.jacks.rig_send)      jacks |= 0x02;
-    if (rs.jacks.return_ts)     jacks |= 0x04;
-    if (rs.jacks.return_xlr)    jacks |= 0x08;
+    uint8_t payload[7 + 100];
+    memset(payload, 0, sizeof(payload));
 
-    payload[0] = jacks;
+    payload[0] = (uint8_t)((rs.jacks.instrument_in ? 0x01 : 0)
+                         | (rs.jacks.rig_send       ? 0x02 : 0)
+                         | (rs.jacks.return_ts      ? 0x04 : 0)
+                         | (rs.jacks.return_xlr     ? 0x08 : 0));
     payload[1] = (uint8_t)rs.return_source;
+#if ENABLE_DUT_INJECTION
     payload[2] = rs.injection_active ? 1 : 0;
-    #if ENABLE_MONITOR_MODE
-payload[3] = (uint8_t)rs.monitor_mode;
 #else
-payload[3] = 0;
+    payload[2] = 0;
+#endif
+#if ENABLE_MONITOR_MODE
+    payload[3] = (uint8_t)rs.monitor_mode;
+#else
+    payload[3] = 0;
 #endif
     payload[4] = rs.route_valid ? 1 : 0;
-    payload[5] = rs.can_inject ? 1 : 0;
+    payload[5] = rs.can_inject  ? 1 : 0;
     payload[6] = desc_len;
     memcpy(&payload[7], rs.description, desc_len);
 
-    sendPacket(DS_PACKET_ROUTER, payload, payload_len);
+    if (timedBestEffort(DS_PACKET_ROUTER, payload, (uint16_t)(7 + desc_len)))
+         s_stats.events_sent++;
+    else s_stats.events_dropped++;
 }
+
+// =============================================================================
+// DIAGNOSTICS
+// =============================================================================
+
+const DataSenderStats& dataSender_getStats() { return s_stats; }
+
+void dataSender_resetStats() {
+    memset(&s_stats, 0, sizeof(s_stats));
+    s_stats.tx_room_min = 0xFFFFFFFFu;
+    s_live_drop_streak = 0;
+}
+
+void dataSender_printDiagnostics() {
+    const DataSenderStats& s = s_stats;
+    const uint32_t live_total = s.live_sent + s.live_dropped;
+    const float drop_pct = live_total ? (100.0f * s.live_dropped / live_total) : 0.0f;
+    const float mean_us  = s.send_calls ? ((float)s.send_us_total / s.send_calls) : 0.0f;
+
+    Serial.println("[Link] --- Pi link transport (measured) ---");
+    Serial.printf("[Link] Live frames:  %lu sent, %lu dropped (%.1f%%), "
+                  "longest drop streak %lu\n",
+                  (unsigned long)s.live_sent, (unsigned long)s.live_dropped,
+                  drop_pct, (unsigned long)s.live_dropped_streak_max);
+    Serial.printf("[Link] Results:      %lu queued, %lu delivered, %lu superseded "
+                  "(%lu B abandoned), max drain %lu ms%s\n",
+                  (unsigned long)s.results_queued, (unsigned long)s.results_sent,
+                  (unsigned long)s.results_superseded,
+                  (unsigned long)s.result_bytes_abandoned,
+                  (unsigned long)s.result_drain_ms_max,
+                  s.result_pending ? "  [one pending now]" : "");
+    if (s.result_pending) {
+        Serial.printf("[Link]               pending bytes: %lu\n",
+                      (unsigned long)s.result_pending_bytes);
+    }
+    Serial.printf("[Link] Events:       %lu sent, %lu dropped\n",
+                  (unsigned long)s.events_sent, (unsigned long)s.events_dropped);
+
+    // THE T1 NUMBER. The audit predicts ~33.8 ms of blocking write time per live
+    // frame from baud rate and packet size. With the non-blocking policy the
+    // real figure should be MICROSECONDS, because a frame that does not fit is
+    // dropped rather than waited on. A max approaching a millisecond means
+    // something is blocking and the policy has been violated somewhere.
+    Serial.printf("[Link] Call time:    max %lu us, mean %.1f us, last %lu us "
+                  "(%lu calls)\n",
+                  (unsigned long)s.send_us_max, mean_us,
+                  (unsigned long)s.send_us_last, (unsigned long)s.send_calls);
+    Serial.printf("[Link] TX room min:  %lu B of %d B buffer   "
+                  "(0 = the Pi is not draining)\n",
+                  (s.tx_room_min == 0xFFFFFFFFu) ? 0UL : (unsigned long)s.tx_room_min,
+                  DS_TX_BUFFER_BYTES);
+    Serial.printf("[Link] Frame size:   %d B framed, %d:1 decimation, "
+                  "%d live bins, protocol v%d\n",
+                  DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES, DS_DECIM_RATIO,
+                  DS_LIVE_BINS, PI_PROTOCOL_VERSION);
+    Serial.println("[Link] Interpretation: a high drop count with a LOW max call "
+                   "time is the policy working correctly —");
+    Serial.println("[Link] the Pi is absent or slow and measurement timing is "
+                   "unaffected. Compare against block timing above.");
+}
+
+#endif // DISPLAY_TARGET == DISPLAY_TARGET_PI

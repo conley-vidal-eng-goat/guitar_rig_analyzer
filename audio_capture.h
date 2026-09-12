@@ -1,5 +1,5 @@
 // =============================================================================
-// audio_capture.h    —   Guitar Rig Analyzer   v0.5.0
+// audio_capture.h    —   Guitar Rig Analyzer
 // =============================================================================
 // Single audio acquisition layer. Captures stereo I2S blocks from the
 // SGTL5000 codec exactly once per block and distributes snapshots to

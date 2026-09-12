@@ -1,5 +1,5 @@
 // =============================================================================
-// display_engine.cpp     —   Guitar Rig Analyzer   v0.5.0
+// display_engine.cpp     —   Guitar Rig Analyzer
 // =============================================================================
 // All visual output to the RA8875-driven 800×480 IPS display.
 //
@@ -19,6 +19,31 @@
 // • No functional changes from v0.2.0.
 // =============================================================================
 
+
+// =============================================================================
+// CONDITIONAL COMPILATION — RA8875 (SPI) backend
+// =============================================================================
+// This entire translation unit is compiled ONLY when DISPLAY_TARGET selects this
+// backend. Authority: docs/adr/ADR-001-display-architecture.md.
+//
+// WHY THE GUARD IS HERE AND NOT JUST IN presentation.cpp: an Arduino/arduino-cli
+// build compiles EVERY .cpp in the sketch folder, whether or not anything
+// includes its header. Without this guard, selecting a different DISPLAY_TARGET
+// would still compile and link the Adafruit RA8875 and GFX libraries,
+// so DISPLAY_TARGET_NONE would not actually be free and the unselected backend
+// would remain a build dependency. Verified by compile, not assumed.
+//
+// The guard deliberately wraps the #includes too — the include itself is the
+// dependency being removed.
+//
+// Nothing else in the firmware calls into this file directly. The application
+// and the validation harness both go through presentation_* (display_engine.h is
+// reached only by presentation.cpp's matching arm).
+// =============================================================================
+
+#include "config.h"
+
+#if DISPLAY_TARGET == DISPLAY_TARGET_RA8875
 
 #include "display_engine.h"
 #include "measurement_core.h"
@@ -790,3 +815,6 @@ void displayEngine_restoreLive() {
 
     Serial.println("[DisplayEngine] Live view restored.");
 }
+
+
+#endif // DISPLAY_TARGET == DISPLAY_TARGET_RA8875

@@ -1,5 +1,5 @@
 // =============================================================================
-// signal_generator.cpp   —   Guitar Rig Analyzer   v0.5.0
+// signal_generator.cpp   —   Guitar Rig Analyzer
 // =============================================================================
 // Controlled stimulus generator with block-aligned start capability.
 //

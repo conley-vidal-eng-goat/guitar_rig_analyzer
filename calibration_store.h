@@ -1,5 +1,5 @@
 // =============================================================================
-// calibration_store.h     —     Guitar Rig Analyzer   v0.5.0
+// calibration_store.h     —     Guitar Rig Analyzer
 // =============================================================================
 // Owner of the resident CalibrationBuffer and all calibration file I/O.
 //

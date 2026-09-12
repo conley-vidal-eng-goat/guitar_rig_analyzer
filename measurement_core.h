@@ -1,5 +1,5 @@
 // =============================================================================
-// measurement_core.h     —   Guitar Rig Analyzer   v0.5.0
+// measurement_core.h     —   Guitar Rig Analyzer
 // =============================================================================
 // Core data structures for the precision measurement path.
 //
