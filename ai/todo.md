@@ -146,7 +146,37 @@ Compare each candidate on, at minimum: **input common-mode range at 5 V · outpu
 **🚨 CONFOUND, recorded so it is not lost:** both boards are new, so this run changed topology **and** hardware simultaneously. The pin-8 contention-damage hypothesis for the *old* Teensy (journal 2026-09-07 (4)) was weakened but never disproved, and new silicon eliminates any such damage. **"The stack fixed it" and "the old hardware was degraded" are not separated by this measurement.** The configuration works, which is what matters for proceeding; the causal claim stays conditional. Only a flying-wire re-creation on the new boards would separate them, and that is not worth the disturbance.
 **Also first-on-hardware in this run, recorded separately:** Pi link measured at **max 283 µs call time, 1077 frames, 0 dropped**, TX room min 2482/4096 B, block period unchanged at 46.3 ms — against T1's ~33.8 ms blocking prediction. First hardware evidence for `c64e876`; **does not close T1**, which needs the controlled `timing_probe` comparison against the `_NONE` control. And `TF clamped bins: 0 of 512` — TODO-29 running on hardware for the first time. New normal loop rate ~1.50 M/s (was ~2.15 M) — the Pi link work, not a regression.
 
-### TODO-41B — Stimulated I²S validation against run D 🔴 **NOT YET RUN — do not let TODO-41A be promoted into this**
+### TODO-41B — Post-stack stimulated I²S validation 🟢 **PASS 2026-09-13 — 324/324 clean windows, zero outliers**
+**Conclusion, stated narrowly:** under the new native Teensy 4.1 + PJRC Audio Shield Rev D stacked configuration, with a continuous external ~1 kHz stimulus applied through the real instrument-input analog path, **324 diagnostic windows spanning 26.9 minutes contained zero outliers on either SOURCE_NODE or RETURN_NODE under Outlier detector v1.** All 324 windows clean, zero clipping events, no quarter-to-quarter emergence of corruption. **This establishes the post-stack stimulated reference for I²S integrity under the tested conditions.**
+**🚫 NOT concluded: "the stack fixed the corruption" or "the old Teensy was damaged."** Hardware and topology changed together (TODO-41A confound). Established is stronger than a hypothesis, narrower than causality: **the current assembled system does not reproduce the corruption under this test.**
+**Stimulus (recorded WITH the result):** phone → USB-C adapter → real 1/4" jack, 1 kHz L+R, **0.141 V<sub>rms</sub> at `48e`** (0.140 avg / 0.143 max, 995–997 Hz, clean sine). SOURCE **−29.88 dBFS mean**, raw |max| 1179 counts.
+**Numbers:** 9 720 samples evaluated per node (10 368 captured; 2/window have no 2nd difference) · worst window 0 of 30 evaluable on both nodes · quarterly bands all 0.000/win, n=81 each · block period 46.43 ms mean · `AudioMemoryUsageMax` pinned at 19 · `TF clamped bins` constant at 3/512.
+**Control channel:** RETURN averaged **−66.22 dBFS**. No evidence of a stimulus-correlated RETURN rise; RETURN remained at approximately the established post-stack idle-floor region. **Any crosstalk is below what this measurement can resolve from the RETURN noise floor.**
+
+```
+Outlier detector v1
+For each 32-sample window, evaluate interior samples i=1..30 using
+d2[i] = x[i-1] - 2x[i] + x[i+1].
+Let m = median(|d2|) over those 30 values; if m=0, use m=1.
+Flag sample i only when |d2[i]| > 10m and |d2[i]| > 100 counts.
+Report 30 evaluated samples/window and 32 captured samples/window separately.
+```
+Both comparisons strictly greater-than, not ≥. `m` is the median of the 30 interior second-difference magnitudes of **that same window**.
+**Evidence committed:** `ai/evidence/2026-09-13-41B-stimulated-validation.md` · raw log `ai/evidence/2026-09-13-41B-capture.log.gz` · analyser `tools/analyze_corruption.py`. **Reproduce:** `gunzip -c ai/evidence/2026-09-13-41B-capture.log.gz > /tmp/41B.log && python3 tools/analyze_corruption.py /tmp/41B.log`
+**Run D retired as a quantitative benchmark** — historical evidence that corruption existed and motivated the DOUT reworks, but it recorded neither stimulus level nor outlier criterion, so its numbers cannot be recomputed.
+**Still open, separately (does NOT downgrade this PASS):** the **19.4 dB** amplitude discrepancy — 0.141 V<sub>rms</sub> at `48e` → −29.88 dBFS against −10.5 dBFS predicted from `SGTL5000_LINE_IN_LEVEL = 5`. Tracked as TODO-43.
+**Remaining deviations to restore, one at a time with re-measurement after each:** LINE-IN-L ground jumper, J2 if wanted, `col 30` → GND jumper.
+
+### TODO-43 — 19.4 dB amplitude discrepancy between `48e` and the ADC 🔴 **OPEN — reference datum established, no explanation attached**
+**Observation, and nothing more:** **0.141 V<sub>rms</sub> measured at `48e` produced −29.88 dBFS mean SOURCE** over the 324-window stimulated run on the current stacked system, against **−10.5 dBFS predicted** from `SGTL5000_LINE_IN_LEVEL = 5` (1.33 V<sub>pp</sub> full scale ⇒ 0.4702 V<sub>rms</sub>). **Discrepancy 19.4 dB.** No divider hypothesis, no codec-configuration hypothesis is attached — both were raised prematurely and withdrawn.
+**Why this datum is good:** a 324-window mean on a stable stimulus, not a single-window reading. Prior single-window figure was 20.2 dB.
+**Historical contrast worth keeping:** on the **old** board the same 0.143 V<sub>rms</sub> gave **−9.0 dBFS**, agreeing with the same arithmetic to 1.3 dB (journal 2026-09-07 (7)). The relationship held then and does not now.
+**Next test — each measurement referenced to its OWN local ground** (the 2026-09-12 (3) lesson): measure `48e` → breadboard GND and record V<sub>rms</sub>; then move only the probe tip to the Audio Shield **LINE-IN-L pad** using the shield's **own GND pad** as reference, and record V<sub>rms</sub>.
+- LINE-IN-L ≈ 0.014 V<sub>rms</sub> while `48e` ≈ 0.141 ⇒ a real ~10:1 loss in the physical path.
+- LINE-IN-L still ≈ 0.141 V<sub>rms</sub> ⇒ the discrepancy is downstream of the pad — codec configuration, line-input gain interpretation, or digital-path scaling.
+**Does not block anything measured so far.** 41B's corruption result is independent of absolute level.
+
+
 **Why this is separate:** the instruction to run the 360/360 validation *while leaving LINE-IN-L disconnected* cannot be satisfied — run D (journal 2026-09-07 (6)) injected a 1 kHz tone **through** LINE-IN-L. The idle data is strong evidence against obvious corruption (both channels inside ±16 counts, no impulses, and a corrupted word would be unmissable against a floor that low — arguably more sensitive than run D, which had a full-scale tone to hide in) **but it is not the same test.** Run D's claim is about a *stimulated* pipeline over ≥300 windows.
 **🚨 Run D's stimulus level was NEVER RECORDED — see journal 2026-09-13 (2).** Entry 2026-09-07 (6) documents outliers, clean %, worst window and `+0 dBFS %` but no level, V<sub>rms</sub> or amplitude. And run D predates the headphone-jack fix, so its stimulus went through the **wrong jack** at ≈0.027 V<sub>rms</sub> — reproducing it exactly would mean recreating a known-faulty path.
 **What — use 0.143 V<sub>rms</sub> at LINE-IN-L instead** (documented, reproducible, previously gave **−9.0 dBFS** through the correct path, journal 2026-09-07 (7)). LINE-IN-L reconnected to `48e`, 1 kHz, then ≥300 windows counting outliers per 32 samples on both nodes. Margin is ≈51 dB against the −60.3 dBFS idle floor — **more than run D had.**

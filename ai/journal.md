@@ -11,6 +11,56 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (3) — ✅ TODO-41B PASS: 324/324 clean windows, zero detector-v1 outliers on either node across 26.9 minutes of continuous stimulus
+
+**TODO-41B — PASS.** Under the new native Teensy 4.1 + PJRC Audio Shield Rev D stacked configuration, with a continuous external ~1 kHz stimulus applied through the real instrument-input analog path, **324 diagnostic windows spanning 26.9 minutes contained zero outliers on either SOURCE_NODE or RETURN_NODE under Outlier detector v1.** All 324 windows were clean, with zero clipping events and no quarter-to-quarter emergence of corruption. This establishes the **post-stack stimulated reference** for I²S integrity under the tested conditions.
+
+**Deliberately NOT concluded: "the stack fixed the corruption" or "the old Teensy was damaged."** Both physical hardware and topology changed together (the TODO-41A confound). What is established is stronger than a hypothesis and narrower than causality: **the current assembled system does not reproduce the corruption under this test.**
+
+### Claim 1 — stimulus validity
+
+Phone → USB-C adapter → **real 1/4" instrument jack**, 1 kHz L+R, **0.141 V<sub>rms</sub> measured at `48e`** with the board powered (0.140 avg, 0.143 max, 995–997 Hz, clean sine, no visible clipping). Path: jack → C1 → OPA1642 → C2 → `48e` → LINE-IN-L. SOURCE observed at **−29.88 dBFS mean** (−30.4 … −28.9), raw |max| 1179 counts. **The test was genuinely driven for its full duration.**
+
+### Claim 2 — corruption result
+
+| | |
+|---|---|
+| Windows analysed | **324** (uptime 630 → 2245 s, 26.9 min) |
+| Samples evaluated | **9 720 per node** (10 368 captured; 2/window have no 2nd difference) |
+| SOURCE outliers/window | **0.000 — total 0** |
+| RETURN outliers/window | **0.000 — total 0** |
+| Completely clean windows | **324/324 = 100.0 %** |
+| Worst window | **0 of 30 evaluable**, both nodes |
+| Clip events | **0 (0.0 %)** |
+
+Quarterly bands all **0.000/win** — 81 windows each, no drift. That matters: the original fault wandered 3.4× on its own (journal 2026-09-07 (1)), so a drifting rate would have surfaced here.
+
+Housekeeping steady throughout: block period **46.43 ms mean** (46.3–46.7), `AudioMemoryUsageMax` pinned at **19**, `TF clamped bins` constant at 3 of 512.
+
+### Claim 3 — control-channel behaviour
+
+**RETURN averaged −66.22 dBFS during 41B** (−67.4 … −64.7), raw |max| 18 counts. **There was no evidence of a stimulus-correlated RETURN rise; RETURN remained at approximately the established post-stack idle-floor region. Any crosstalk is below what this measurement can resolve from the RETURN noise floor.**
+
+*(Wording note: an earlier draft said RETURN was "against its established post-stack idle floor of −65.3 to −65.5." That turned two means from different idle configurations into artificial bounds. Corrected.)*
+
+### 🔓 Follow-up required — OPEN, and it does not downgrade 41B
+
+**0.141 V<sub>rms</sub> measured at `48e` → −29.88 dBFS mean SOURCE**, against −10.5 dBFS predicted from `SGTL5000_LINE_IN_LEVEL = 5`. A **19.4 dB** discrepancy (refined from a single-window 20.2 dB). **No explanation attached.** This is now an excellent reference datum: a 324-window mean on the current stacked system, not a one-window reading.
+
+Next test: 48e referenced to breadboard GND, then LINE-IN-L referenced to the **shield's own** GND pad — each measurement to its own local ground, per the 33.1 dB lesson of 2026-09-12 (3).
+
+### 📦 Reproducibility — the point of this entry
+
+**Committed with the result:** the raw serial log (`ai/evidence/2026-09-13-41B-capture.log.gz`, 542 054 B raw), the stimulus conditions, the frozen **Outlier detector v1** criterion, and the analyser itself (`tools/analyze_corruption.py`).
+
+**Run D is retired as a quantitative benchmark.** It remains historical evidence that corruption existed and motivated the DOUT reworks — but it recorded **neither its stimulus level nor its outlier criterion**, so its numbers (5.95 / 24.72 / 8.54 / 0.00) cannot be recomputed by anyone. They still drove three reworks and a hardware-damage hypothesis. **That is the failure mode this entry exists to not repeat.**
+
+### Acquisition note
+
+Two acquisition-script attempts failed before data collection began (`nohup` child termination; macOS `timeout` unavailable). Neither altered stimulus, wiring, power state, or firmware, **so they are tooling events, not bench events.**
+
+---
+
 ## 2026-09-13 (2) — Front end reconnected on the stack: connecting it now costs 5.07 dB instead of 25.7 dB. And run D's stimulus level turns out never to have been recorded
 
 ### Measured — 24 idle windows, uptime 40–155 s, `48e` → LINE-IN-L reconnected, stack ground path untouched
