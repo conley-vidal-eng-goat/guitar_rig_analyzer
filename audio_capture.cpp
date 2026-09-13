@@ -397,6 +397,9 @@ s_sgtl5000.volume(SGTL5000_HEADPHONE_VOL);
     const uint16_t anac = (uint16_t)s_sgtl5000.read(0x0024);  // CHIP_ANA_CTRL
     const uint16_t anap = (uint16_t)s_sgtl5000.read(0x0030);  // CHIP_ANA_POWER
     const uint16_t digp = (uint16_t)s_sgtl5000.read(0x0002);  // CHIP_DIG_POWER
+    const uint16_t refc = (uint16_t)s_sgtl5000.read(0x0028);  // CHIP_REF_CTRL
+    const uint16_t lreg = (uint16_t)s_sgtl5000.read(0x0026);  // CHIP_LINREG_CTRL
+    const uint16_t clkc = (uint16_t)s_sgtl5000.read(0x0004);  // CHIP_CLK_CTRL
 
     Serial.println("[SGTL] ===== SGTL5000 REGISTER DUMP (read-only) =====");
     Serial.printf ("[SGTL] REQUESTED  input        = AUDIO_INPUT_LINEIN\n");
@@ -427,12 +430,41 @@ s_sgtl5000.volume(SGTL5000_HEADPHONE_VOL);
     Serial.printf ("[SGTL]   HEADPHONE_PWRUP %u\n", (anap >> 4) & 0x01);
     Serial.printf ("[SGTL]   VAG_POWERUP     %u\n", (anap >> 7) & 0x01);
     Serial.printf ("[SGTL]   VCOAMP_POWERUP  %u\n", (anap >> 8) & 0x01);
+    Serial.printf ("[SGTL]   ADC_MONO        %u      (1 = stereo ADC)\n", (anap >> 6) & 0x01);
+    Serial.printf ("[SGTL]   DAC_MONO        %u      (1 = stereo DAC)\n", (anap >> 14) & 0x01);
 
-    Serial.printf ("[SGTL] CHIP_DIG_POWER    0x%04X\n", digp);
+    Serial.printf ("[SGTL] CHIP_DIG_POWER    (0x0002) = 0x%04X\n", digp);
     Serial.printf ("[SGTL]   ADC_POWERUP     %u\n", (digp >> 5) & 0x01);
     Serial.printf ("[SGTL]   DAC_POWERUP     %u\n", (digp >> 4) & 0x01);
+    Serial.printf ("[SGTL]   DAP_POWERUP     %u\n", (digp >> 6) & 0x01);
     Serial.printf ("[SGTL]   I2S_OUT_POWERUP %u\n", (digp >> 1) & 0x01);
     Serial.printf ("[SGTL]   I2S_IN_POWERUP  %u\n", (digp >> 0) & 0x01);
+
+    // CHIP_REF_CTRL — VAG_VAL is the ADC/DAC voltage reference. NXP states that
+    // changing it scales the ADC output signal, so it sits directly in the
+    // volts-to-counts relationship under investigation (TODO-43). Programmable
+    // range is only 0.800-1.575 V (< 6 dB end to end), so it cannot by itself
+    // account for a ~19 dB discrepancy.
+    Serial.printf ("[SGTL] CHIP_REF_CTRL     (0x0028) = 0x%04X\n", refc);
+    Serial.printf ("[SGTL]   VAG_VAL         %2u     = %.3f V  (0.800 V + 25 mV/step, max 1.575 V)\n",
+                      (refc >> 4) & 0x1F,
+                      0.800f + 0.025f * (float)((refc >> 4) & 0x1F));
+    Serial.printf ("[SGTL]   BIAS_CTRL       %u      (0 = nominal; raw code, not decoded)\n", (refc >> 1) & 0x07);
+    Serial.printf ("[SGTL]   SMALL_POP       %u\n", refc & 0x01);
+
+    // NOTE: CHIP_LINREG_CTRL is at ADDRESS 0x0026. Do not confuse that with the
+    // VALUE 0x0026 that CHIP_ANA_CTRL (address 0x0024) happened to read back on
+    // 2026-09-13. Coincidence, not a conflict.
+    Serial.printf ("[SGTL] CHIP_LINREG_CTRL  (0x0026) = 0x%04X\n", lreg);
+    Serial.printf ("[SGTL]   D_PROGRAMMING   %2u     (VDDD regulator, 50 mV/step: 0x0=1.60 V .. 0xF=0.85 V)\n", lreg & 0x0F);
+    Serial.printf ("[SGTL]   VDDC_ASSN_OVRD  %u      (0 = automatic charge-pump source)\n", (lreg >> 5) & 0x01);
+    Serial.printf ("[SGTL]   VDDC_MAN_ASSN   %u      (0 = VDDA, 1 = VDDIO; only if OVRD = 1)\n", (lreg >> 6) & 0x01);
+
+    Serial.printf ("[SGTL] CHIP_CLK_CTRL     (0x0004) = 0x%04X\n", clkc);
+    Serial.printf ("[SGTL]   SYS_FS          %u      (0=32k 1=44.1k 2=48k 3=96k)\n", clkc & 0x03);
+    Serial.printf ("[SGTL]   MCLK_FREQ       %u      (0=256Fs 1=384Fs 2=512Fs 3=PLL)\n", (clkc >> 2) & 0x03);
+    Serial.printf ("[SGTL]   RATE_MODE       %u      (0=SYS_FS 1=1/2 2=1/4 3=1/6)\n", (clkc >> 4) & 0x03);
+
     Serial.println("[SGTL] ================ end register dump ================");
 }
 #endif
