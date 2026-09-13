@@ -256,6 +256,25 @@ set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 // These features are present in future/staged routing work but are NOT yet
 // promoted into the active breadboard firmware.
 
+// -----------------------------------------------------------------------------
+// ENABLE_SGTL_REGISTER_DUMP — read-only codec state diagnostic (TODO-43)
+//
+// 1 = at the end of audioCap_init(), after the codec has been enabled and
+//     configured, print the REQUESTED configuration alongside the ACTUAL
+//     contents of five SGTL5000 registers, raw hex plus decoded fields.
+// 0 = compiled out entirely.
+//
+// Added to investigate TODO-43: ~0.123 Vrms measured at the LINE-IN-L pad
+// yields SOURCE ~-29.9 dBFS, which implies a full-scale input of ~10.85 Vpp.
+// lineInLevel() spans only 3.12 Vpp (level 0) to 0.24 Vpp (level 15), so no
+// value of that register can produce the observed result. This reads back what
+// the codec actually holds rather than what the firmware asked for.
+//
+// STRICTLY READ-ONLY. It performs no register writes and does not touch audio
+// routing. Remove cleanly by setting to 0.
+// -----------------------------------------------------------------------------
+#define ENABLE_SGTL_REGISTER_DUMP 1
+
 #define ENABLE_DUT_INJECTION 0
 #define ENABLE_MONITOR_MODE 0
 

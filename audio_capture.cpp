@@ -125,7 +125,23 @@ static AudioRecordQueue      s_queue_ret;      // Raw samples — RETURN_NODE
 
 
 // Codec control
+#if ENABLE_SGTL_REGISTER_DUMP
+// -----------------------------------------------------------------------------
+// SGTL5000RegisterReader — minimal subclass exposing the protected read().
+//
+// AudioControlSGTL5000::read() is protected, not private, so a subclass can
+// publish it without touching any library file. This adds no state and no
+// virtual overrides; it exists purely so the diagnostic below can observe the
+// codec. write() is deliberately NOT exposed — this diagnostic is read-only.
+// -----------------------------------------------------------------------------
+class SGTL5000RegisterReader : public AudioControlSGTL5000 {
+public:
+    using AudioControlSGTL5000::read;
+};
+static SGTL5000RegisterReader s_sgtl5000;
+#else
 static AudioControlSGTL5000 s_sgtl5000;
+#endif
 
 
 // --- Patch cables ---
@@ -368,6 +384,58 @@ s_sgtl5000.lineInLevel(SGTL5000_LINE_IN_LEVEL);
 
 // Set headphone monitoring level (development passthrough — see config.h)
 s_sgtl5000.volume(SGTL5000_HEADPHONE_VOL);
+
+
+#if ENABLE_SGTL_REGISTER_DUMP
+// -----------------------------------------------------------------------------
+// Read-only codec state dump (TODO-43). No writes. See config.h for rationale.
+// Registers per NXP SGTL5000 datasheet Rev. 5.
+// -----------------------------------------------------------------------------
+{
+    const uint16_t id   = (uint16_t)s_sgtl5000.read(0x0000);  // CHIP_ID
+    const uint16_t adcc = (uint16_t)s_sgtl5000.read(0x0020);  // CHIP_ANA_ADC_CTRL
+    const uint16_t anac = (uint16_t)s_sgtl5000.read(0x0024);  // CHIP_ANA_CTRL
+    const uint16_t anap = (uint16_t)s_sgtl5000.read(0x0030);  // CHIP_ANA_POWER
+    const uint16_t digp = (uint16_t)s_sgtl5000.read(0x0002);  // CHIP_DIG_POWER
+
+    Serial.println("[SGTL] ===== SGTL5000 REGISTER DUMP (read-only) =====");
+    Serial.printf ("[SGTL] REQUESTED  input        = AUDIO_INPUT_LINEIN\n");
+    Serial.printf ("[SGTL] REQUESTED  lineInLevel  = %d\n", SGTL5000_LINE_IN_LEVEL);
+    Serial.println("[SGTL] ---------------- actual register state ----------------");
+
+    Serial.printf ("[SGTL] CHIP_ID           0x%04X\n", id);
+    Serial.printf ("[SGTL]   PARTID          0x%02X   (0xA0 = SGTL5000)\n", (id >> 8) & 0xFF);
+    Serial.printf ("[SGTL]   REVID           0x%02X\n", id & 0xFF);
+    Serial.println("[SGTL]   NOTE: codec silicon ID/revision. NOT the shield PCB revision.");
+
+    Serial.printf ("[SGTL] CHIP_ANA_ADC_CTRL 0x%04X\n", adcc);
+    Serial.printf ("[SGTL]   ADC_VOL_LEFT    %2u     (lineInLevel; 0=least gain, 15=most)\n", adcc & 0x0F);
+    Serial.printf ("[SGTL]   ADC_VOL_RIGHT   %2u\n", (adcc >> 4) & 0x0F);
+    Serial.printf ("[SGTL]   ADC_VOL_M6DB    %u      (1 = range reduced by 6.0 dB)\n", (adcc >> 8) & 0x01);
+
+    Serial.printf ("[SGTL] CHIP_ANA_CTRL     0x%04X\n", anac);
+    Serial.printf ("[SGTL]   SELECT_ADC      %u      (0 = MIC, 1 = LINEIN)\n", (anac >> 2) & 0x01);
+    Serial.printf ("[SGTL]   MUTE_ADC        %u\n", anac & 0x01);
+    Serial.printf ("[SGTL]   SELECT_HP       %u      (0 = DAC, 1 = LINEIN)\n", (anac >> 6) & 0x01);
+    Serial.printf ("[SGTL]   MUTE_HP         %u\n", (anac >> 4) & 0x01);
+    Serial.printf ("[SGTL]   MUTE_LO         %u\n", (anac >> 8) & 0x01);
+
+    Serial.printf ("[SGTL] CHIP_ANA_POWER    0x%04X\n", anap);
+    Serial.printf ("[SGTL]   ADC_POWERUP     %u\n", (anap >> 1) & 0x01);
+    Serial.printf ("[SGTL]   LINEOUT_POWERUP %u\n", (anap >> 0) & 0x01);
+    Serial.printf ("[SGTL]   REFTOP_POWERUP  %u\n", (anap >> 5) & 0x01);
+    Serial.printf ("[SGTL]   HEADPHONE_PWRUP %u\n", (anap >> 4) & 0x01);
+    Serial.printf ("[SGTL]   VAG_POWERUP     %u\n", (anap >> 7) & 0x01);
+    Serial.printf ("[SGTL]   VCOAMP_POWERUP  %u\n", (anap >> 8) & 0x01);
+
+    Serial.printf ("[SGTL] CHIP_DIG_POWER    0x%04X\n", digp);
+    Serial.printf ("[SGTL]   ADC_POWERUP     %u\n", (digp >> 5) & 0x01);
+    Serial.printf ("[SGTL]   DAC_POWERUP     %u\n", (digp >> 4) & 0x01);
+    Serial.printf ("[SGTL]   I2S_OUT_POWERUP %u\n", (digp >> 1) & 0x01);
+    Serial.printf ("[SGTL]   I2S_IN_POWERUP  %u\n", (digp >> 0) & 0x01);
+    Serial.println("[SGTL] ================ end register dump ================");
+}
+#endif
 
 
 // Apply Hann windowing to both FFT objects.
