@@ -139,8 +139,17 @@
 // HARDWARE — SPI BUS    (RA8875 display + optional SD)
 // =============================================================================
 // The Teensy Audio Shield uses I2S (audio data) and I2C (codec control).
-// It does NOT use SPI. The SPI bus is therefore free for the RA8875 display
-// and microSD, arbitrated by separate active-LOW chip-select lines.
+//
+// CORRECTED 2026-09-12: an earlier version of this comment said the shield
+// "does NOT use SPI", and that is false for a STACKED Rev D. The Rev D shield
+// carries its own microSD socket on the SPI bus (CS = pin 10, plus the shared
+// 11/12/13) and an optional flash on pin 6. While the shield was connected by
+// selective flying wires, only the pins we chose were live and the claim was
+// harmlessly true in practice. Once the shield is stacked, EVERY populated
+// header position becomes electrically connected — including pin 10.
+//
+// That is the assumption the RA8875 pin-10 conflict hides behind, so it is
+// stated plainly here and enforced by AUDIO_SHIELD_STACKED below.
 //
 // Teensy 4.1 SPI0 (hardware-accelerated):
 //   SCK   → pin 13   (shared)
@@ -153,6 +162,7 @@
 #define RA8875_CS_PIN       10   // RA8875 chip select (active LOW)
 #define RA8875_INT_PIN       9   // RA8875 touch interrupt output (future use)
 #define RA8875_RESET_PIN     5   // RA8875 hardware reset (active LOW)
+
                                  // MOVED 8 -> 5 (2026-09-05): pin 8 is I2S
                                  // RX_DATA0 on Teensy 4.x (Audio library
                                  // input_i2s.cpp, __IMXRT1062__ branch) and
@@ -206,6 +216,29 @@
 // Teensy 4.1 assignments for docs/breadboard_bringup_v3.md.
 // These are breadboard bring-up assignments and are not necessarily the
 // permanent production-PCB pin assignments.
+
+// -----------------------------------------------------------------------------
+// AUDIO_SHIELD_STACKED — hardware topology fact, not a preference.
+//
+// 1 = the Rev D Audio Shield is mounted on the Teensy via stacking headers, so
+//     all of its populated header positions are electrically connected.
+// 0 = the shield is connected by selective flying wires (the pre-2026-09-12
+//     bring-up topology); only deliberately wired pins are live.
+//
+// When stacked, the shield's microSD chip-select occupies pin 10, which is also
+// RA8875_CS_PIN. Two devices cannot hold the same active-LOW CS. The #error
+// below makes that combination a build failure rather than a bench mystery.
+//
+// The analyzer's own calibration storage is unaffected either way: it uses
+// SD.begin(BUILTIN_SDCARD) — the Teensy 4.1's SDIO socket, not SPI.
+// -----------------------------------------------------------------------------
+#define AUDIO_SHIELD_STACKED 1
+
+#if (DISPLAY_TARGET == DISPLAY_TARGET_RA8875) && AUDIO_SHIELD_STACKED
+#error "RA8875_CS_PIN (10) collides with the stacked Audio Shield's microSD CS. \
+Either select DISPLAY_TARGET_PI/_NONE, or move RA8875_CS_PIN to a free pin and \
+set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
+#endif
 
 #define RELAY_SEND_PIN      14
 #define RELAY_RETURN_PIN    15

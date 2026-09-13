@@ -11,6 +11,67 @@ How to use this file:
 
 ---
 
+## 2026-09-12 (4) — Stacking approved on a verified pin map. `AUDIO_SHIELD_STACKED` guard added, and a stale comment that was hiding the pin-10 conflict corrected
+
+**No hardware changed by this session.** Compile proof only. The physical stack is being built at the bench; this entry records the verification that authorised it and the source change that protects it.
+
+### The pin-map question, settled against the active tree
+
+An assisting session flagged two potential conflicts from project PDFs that predate commit `eeaec99` and the `DISPLAY_TARGET` work. **Both dissolve against the current source:**
+
+| Claim from the PDFs | Active tree |
+|---|---|
+| "RA8875 uses 8–10 for display signals" | **`RA8875_RESET_PIN` is 5, not 8.** Moved 8→5 in `eeaec99` *because* pin 8 is I2S RX_DATA0 (TODO-24, already closed in source) |
+| "pin 10 conflicts with the shield's SD CS" | **True only when `DISPLAY_TARGET == RA8875`.** `RA8875_CS_PIN` is referenced only inside `display_engine.cpp`, which is wholly wrapped at lines 46–820. Under `_PI` (current) or `_NONE` that unit is not compiled and **no Adafruit library is linked** — verified from `arduino-cli compile -v`. Nothing configures or drives 5, 9 or 10 |
+
+Confirmed correct: calibration uses `SD.begin(BUILTIN_SDCARD)` — the Teensy 4.1 SDIO socket — so the shield's SPI SD path is irrelevant to the analyzer's storage.
+
+**Verdict: connect all pins.** The shield's 7, 8, 18, 19, 20, 21, 23 are exactly what we want connected. 14, 16, 17, 22, 24 have no Rev D counterpart. 10–13 are free under the production build.
+
+**One caveat recorded rather than fixed:** pin 15 / A1 shares a trace with the Rev D's *unpopulated* VOL pad. A stub, not a driver. `RELAY_RETURN_PIN` stays on 15; relocating it for an unpopulated pad would be motion without benefit, and 15 is also analog-capable.
+
+### 🔧 The stale comment was the real finding
+
+`config.h` stated: *"The Teensy Audio Shield uses I2S and I2C. **It does NOT use SPI.** The SPI bus is therefore free for the RA8875 display and microSD."*
+
+**That is false for a stacked Rev D**, which carries its own microSD on SPI with CS on pin 10. It was harmlessly true while the shield was connected by selective flying wires — only the pins we chose were live — and becomes false the moment every populated header position is connected.
+
+**This is the exact shape of defect that has cost this project the most: a premise that is true of the current topology, written as though it were true of the design.** Corrected in place with the reason stated, not silently.
+
+### `AUDIO_SHIELD_STACKED` — a topology fact, enforced
+
+```
+#define AUDIO_SHIELD_STACKED 1
+#if (DISPLAY_TARGET == DISPLAY_TARGET_RA8875) && AUDIO_SHIELD_STACKED
+#error "RA8875_CS_PIN (10) collides with the stacked Audio Shield's microSD CS..."
+#endif
+```
+
+Deliberately **not** a blanket `#error` on `_RA8875`: the RA8875 is still a legitimate debug backend on a flying-wire rig, and breaking it outright would trade one wrong assumption for another. The flag encodes the *hardware topology*, so the error fires only on the combination that is actually unsafe.
+
+**Proof — all three cases exercised, not assumed:**
+
+| Build | Result |
+|---|---|
+| `_PI` + stacked | compiles, FLASH 154 240 / RAM1 214 880 |
+| `_RA8875` + stacked | **fails with the intended message** |
+| `_RA8875` + not stacked | compiles, FLASH 159 876 / RAM1 220 928 |
+
+### 🔺 Stacking is a ground change, and that may matter more than the pin map
+
+Entry (3) measured **33.1 dB** of improvement from moving the codec's ground return off the breadboard rail onto the shield's own GND pad. **Stacking replaces that flying ground wire with header pins straight into the Teensy's ground plane** — the shortest possible local return, which is precisely what that measurement called for. Same class of structural fix as the short-lead I²S change in entry 2026-09-07 (6).
+
+**Two consequences, both of which must be honoured:**
+
+1. **The −31.49 dBFS pooled baseline and the entire four-condition elimination become HISTORICAL the moment the stack is soldered.** They describe a board with a flying ground return that will no longer exist. Do not compare post-stack readings to them as though the topology were unchanged.
+2. **LINE-IN-L still arrives by flying wire from the breadboard front end.** Stacking bonds shield GND and breadboard GND through the header and breakout — far lower impedance than the flying wire, but they become one net. **That could resolve TODO-40's mechanism or relocate it, and only a measurement will say which.** The provisional wiring rule on TODO-5 stands until then.
+
+### The sequence, and why it is worth stating before 40+ joints
+
+Stack → **immediately re-run the validation that produced 360/360 clean windows** → **take a fresh SOURCE idle baseline** → only then change anything else. Known-good flying-wire → native stacked → validated → new baseline. That preserves the ability to attribute a regression to the stack rather than to whatever came after it, which is the discipline that eventually solved the I²S corruption.
+
+---
+
 ## 2026-09-12 (3) — ✅ THE GROUND-RETURN PATH IS THE MECHANISM. Moving only the return point, breadboard GND → shield GND, improves SOURCE by 33.1 dB
 
 **Observed.** With `48e` disconnected, grounding LINE-IN-L to **breadboard GND** produced **≈−31.9 dBFS**, while grounding the same LINE-IN-L pad with a short jumper to the **Audio Shield's own GND** produced **≈−65.0 dBFS**. **Moving only the return point improved SOURCE by 33.1 dB.**

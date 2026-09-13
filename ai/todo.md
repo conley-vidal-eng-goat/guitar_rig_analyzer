@@ -128,6 +128,17 @@ Compare each candidate on, at minimum: **input common-mode range at 5 V · outpu
 **Root cause of the two-day detour:** the runbook gap in **TODO-18** — Phase 4 says "Unplug USB" and never says to reconnect before demanding live DMM readings. This was correctly identified on 2026-09-03, then wrongly withdrawn on a mistaken report that the 0 V had been measured with power connected. Reinstated.
 **Kept from this item, demoted to housekeeping:** the runbook specifies the **`VUSB` pad** (Phase 1 Step 2, line 561) and never mentions VIN in 1860 lines, while the debugging session probed "5V/VIN." A real documentation inconsistency worth settling for clarity — but **not implicated in any fault.** See journal.md 2026-09-05 (1).
 
+### TODO-41 — Post-stack revalidation: the ONLY thing that may happen after the headers are soldered 🔴 **blocks every other bench action**
+**Why:** stacking the Rev D shield onto the Teensy replaces the flying I²S *and ground* interconnect with the native header path. That is a structural change to the exact thing journal 2026-09-07 (6) identified as the root cause of the digital corruption, and to the ground return that journal 2026-09-12 (3) measured as worth **33.1 dB**. It is very likely an improvement on both counts — and it invalidates every baseline taken before it.
+**What — in this order, with nothing else changed in between:**
+1. **Re-run the I²S validation that produced 360/360 clean windows** (journal 2026-09-07 (6), run D: 0.00 outliers/32 on both nodes, 0 clip events, ≥300 windows). Pass = corruption stays at zero.
+2. **Take a fresh SOURCE idle-floor baseline**, ≥5 windows, and record the RETURN floor alongside it.
+3. **Only then** restore the four outstanding deviations (`48e` → LINE-IN-L, remove the LINE-IN-L ground jumper, re-fit J2 if wanted, remove the `col 30` → GND jumper) — **one at a time, re-measuring after each.**
+**🚨 The −31.49 dBFS pooled baseline is HISTORICAL after stacking.** It describes a board with a flying ground return that no longer exists. Comparing post-stack readings to it as though the topology were unchanged would be the same error class as quoting the −39.1 dBFS figure after the interconnect fix.
+**Watch specifically:** LINE-IN-L still arrives by flying wire from the breadboard front end. Stacking bonds shield GND and breadboard GND through the header/breakout into one net at far lower impedance. **That may resolve TODO-40's mechanism or relocate it** — the post-stack SOURCE floor is the measurement that says which.
+**Also update after stacking:** `docs/asbuilt/netlist.md` §4 (interconnect) and `tools/gen_schematic.py` — the wire map, the physical-form notes and the drawings all describe flying leads and become stale on contact. Regenerate; do not hand-edit the SVGs.
+**Proof:** both (1) and (2) recorded in journal.md with values, before any other change.
+
 ### TODO-40 — The elevated SOURCE floor depends on the external GROUND-RETURN PATH 🟡 **mechanism localised 2026-09-12; which of two mechanisms is still open**
 **Observed.** With `48e` disconnected, grounding LINE-IN-L to **breadboard GND** gave **≈−31.9 dBFS**; grounding the same pad with a short jumper to the **Audio Shield's own GND** gave **≈−65.0 dBFS**. **Moving only the return point improved SOURCE by 33.1 dB.** Termination impedance identical in both — a wire to ground.
 **Inference.** The elevated floor depends on the external ground-return path. **Not** caused merely by terminating LINE-IN-L, and **not** by the front-end signal source.
