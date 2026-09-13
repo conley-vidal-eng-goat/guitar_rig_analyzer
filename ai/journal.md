@@ -11,6 +11,62 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (1) — TODO-41A PASS: native stack takes BOTH channels to ≈−65.3 dBFS and collapses the asymmetry from 29.4 dB to 0.13 dB. First hardware evidence for the Pi link and for TODO-29
+
+**Hardware:** new Teensy 4.1 + new Audio Shield Rev D, soldered as a native stack (shield → Teensy → breakout). Flashed with **`c18fac7`** — the first upload since `e6daac8`, so TODO-29's clamp marking and the whole `c64e876` architecture reach hardware for the first time. Pre-power 3V3→GND resistance check clean. **LINE-IN-L deliberately left disconnected**, so this isolates the effect of the stack itself.
+
+### The result — 8 consecutive windows, uptime 20–55 s
+
+```
+SOURCE:  -65.2 -65.2 -65.7 -65.7 -64.7 -65.7 -65.2 -65.7   mean -65.39
+RETURN:  -65.2 -65.2 -65.2 -65.2 -65.7 -64.7 -65.7 -65.2   mean -65.26
+```
+
+| Topology | SOURCE | RETURN | Δ |
+|---|---|---|---|
+| Flying wires, LINE-IN-L → breadboard GND | −31.9 | −60.9 | 29.0 dB |
+| Flying wires, floating | −57.0 | −58.8 | 1.8 dB |
+| Flying wires, → shield GND | −65.0 | −59.1 | −5.9 dB |
+| **Native stack** | **−65.39** | **−65.26** | **0.13 dB** |
+
+**The channel-dependent disturbance is gone.** And **RETURN improved ≈6 dB**, which nothing in the entire flying-wire investigation moved — it sat near −59 dBFS through every condition. Both inputs getting quieter *together* is the signature of a topology change rather than a per-channel fix.
+
+Raw data is ±15–16 counts on both channels, sample-for-sample near-identical. −65.4 dBFS ⇒ 17.6 counts, so the peak metric and the raw dumps agree.
+
+**⚠️ Language discipline — this is the post-stack SYSTEM idle floor, NOT "the codec's own floor."** An earlier draft said the latter. **The SGTL5000 has not been isolated**, so nothing here establishes its intrinsic noise floor; what is measured is the whole assembled system at idle with LINE-IN-L open.
+
+### 🚨 The confound, stated because it is real and easy to lose
+
+**Both boards are new.** This run changed *two* things at once: the interconnect topology (flying leads → native stack) **and** the physical hardware (new Teensy, new shield). Journal 2026-09-07 (4) hypothesised pin-8 output contention damage on the *old* Teensy while `RA8875_RESET_PIN` was still 8; that hypothesis was weakened by scope evidence but never disproved. **New silicon eliminates any such damage, so "the stack fixed it" and "the old hardware was degraded" are not separated by this measurement.**
+
+It does not diminish the result — the configuration works, which is what matters for proceeding — but the *causal* claim must stay conditional. If an explanation is ever needed, the only clean test is re-creating the flying-wire topology on the new boards, which is not worth the disturbance now.
+
+### First hardware evidence for `c64e876` — the Pi link, measured rather than predicted
+
+| Metric | Value |
+|---|---|
+| Live frames | **1077 sent, 0 dropped**, longest drop streak 0 |
+| Call time | **max 283 µs**, mean 280.7 µs |
+| TX room min | 2482 B of 4096 B |
+| Frame size | 1689 B framed, 4:1 decimation, 128 live bins, protocol v2 |
+| Block period | **46.3 ms throughout — identical to every pre-stack run** |
+
+**The T1 prediction was ~33.8 ms of blocking write time per frame against a 46.3 ms block period. Measured: 283 µs.** Two orders of magnitude below the prediction, and acquisition timing is unmoved. The non-blocking policy and the `addMemoryForWrite()` 4 KB buffer both do what entry 2026-09-11 (2) claimed. **This does not close T1** — the formal acceptance is a controlled comparison against the `_NONE` control using `timing_probe`, with skipped blocks reading zero. But it is the first evidence, and it points the right way.
+
+**`TF clamped bins: 0 of 512`** — TODO-29 on hardware for the first time. The line reports honestly instead of printing a rail as data.
+
+**Loop rate is the new normal: ~1.50 M iterations/s, down from ~2.15 M.** That is the Pi link work and is irrelevant at this margin. Recorded so it is not mistaken for a regression later.
+
+### ❌ TODO-41B is NOT satisfied by this, and must not be promoted
+
+The instruction to *"run the same I²S validation that gave 360/360 clean windows"* while *"leaving LINE-IN-L disconnected"* cannot both hold: run D (journal 2026-09-07 (6)) injected a 1 kHz tone **through** LINE-IN-L.
+
+What the idle data supports: across 8 windows both channels stayed inside ±16 counts with **no impulses, no outliers, no clip events**. Against a floor that low a corrupted I²S word would be unmissable — arguably a more sensitive corruption check than run D's, which had a full-scale tone to hide in. **It is still not the same test.** Run D's claim is about a *stimulated* pipeline over ≥300 windows, and only that test can be compared to it.
+
+**Split recorded as TODO-41A (PASS) and TODO-41B (NOT YET RUN)** specifically so the idle result cannot drift into being cited as a run-D pass.
+
+---
+
 ## 2026-09-12 (4) — Stacking approved on a verified pin map. `AUDIO_SHIELD_STACKED` guard added, and a stale comment that was hiding the pin-10 conflict corrected
 
 **No hardware changed by this session.** Compile proof only. The physical stack is being built at the bench; this entry records the verification that authorised it and the source change that protects it.
