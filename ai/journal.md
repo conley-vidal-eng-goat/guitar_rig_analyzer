@@ -11,6 +11,42 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (2) — Front end reconnected on the stack: connecting it now costs 5.07 dB instead of 25.7 dB. And run D's stimulus level turns out never to have been recorded
+
+### Measured — 24 idle windows, uptime 40–155 s, `48e` → LINE-IN-L reconnected, stack ground path untouched
+
+| | n | mean | range |
+|---|---|---|---|
+| SOURCE | 24 | **−60.32 dBFS** | −58.5 … −62.3 |
+| RETURN | 24 | **−65.50 dBFS** | −64.3 … −66.2 |
+
+| Topology | LINE-IN-L disconnected | front end reconnected | **cost of connecting** |
+|---|---|---|---|
+| Flying wires | −57.0 dBFS | −31.3 dBFS | **25.7 dB** |
+| **Native stack** | −65.39 dBFS | **−60.32 dBFS** | **5.07 dB** |
+
+**Stated as measured, and no further:** *with the native stack, reconnecting the analog front end raises SOURCE by ≈5.1 dB, versus ≈25.7 dB in the old flying-wire configuration.* **The reason is still not isolated**, because topology and physical hardware changed together (TODO-41A confound). This is not written as "hypothesis confirmed."
+
+**RETURN is statistically unmoved** by the reconnection — −65.50 against −65.26 disconnected. Whatever the residual 5.07 dB is, it enters through the SOURCE path specifically.
+
+**⚠️ Correction to an earlier reading of the old data.** A draft of this analysis said that under the old topology connecting the front end "dragged both channels". **It did not.** RETURN's *peak* read −56.3 / −60.9 / −58.8 / −59.1 across the old conditions and never tracked SOURCE's 34 dB swing. What correlated was the *raw waveform shape* at roughly 30× amplitude ratio — a different observation from the floor moving. What the stack did is lower the RETURN floor ≈6 dB outright.
+
+**Residual, stated as expectation not finding:** 5.07 dB above a −65.4 floor is an ordinary amount for attaching a 100 kΩ-referenced JFET front end on a flying LINE-IN-L wire — source impedance and lead dress. Nothing has measured it, so it stays an expectation.
+
+### 🚨 Documentation gap: run D's stimulus amplitude was never recorded
+
+Preparing to "re-establish the exact previously documented Run-D stimulus level" found there is no such record. Entry 2026-09-07 (6) documents interconnect state, window counts, outliers/32, clean %, worst window and `+0 dBFS %` — **and no SOURCE level, no V<sub>rms</sub>, no tone amplitude.** The nearest figure, "~−39 dBFS", appears only in that entry's *next-steps* line as a back-reference to 2026-09-06 (1), a different run under a different analog configuration.
+
+**It is worse than merely missing.** Run D predates the 2026-09-07 (7) headphone-jack discovery, so its stimulus reached the board through the **wrong jack** at roughly 0.027 V<sub>rms</sub>. **Reproducing run D exactly would mean deliberately recreating a known-faulty analog path.**
+
+**Decision: use 0.143 V<sub>rms</sub> at LINE-IN-L**, which is documented, reproducible, and previously produced **−9.0 dBFS** through the correct analog path with the `lineInLevel 5` arithmetic agreeing to 1.3 dB (entry 2026-09-07 (7)).
+
+**Corruption detection does not depend on matching run D's level.** Corruption presented as full-scale impulses ~41 dB above the signal. At −9 dBFS against a −60 dBFS floor the margin is ≈51 dB — **more than run D had.**
+
+**Lesson, and it generalises:** run D was treated as the project's reference validation for six days, and it is not reproducible, because the one parameter needed to repeat it was the one nobody wrote down. **A validation run's stimulus conditions are part of its result.** Record level, frequency, source and injection point alongside every pass/fail figure, or the pass cannot be repeated — only remembered.
+
+---
+
 ## 2026-09-13 (1) — TODO-41A PASS: native stack takes BOTH channels to ≈−65.3 dBFS and collapses the asymmetry from 29.4 dB to 0.13 dB. First hardware evidence for the Pi link and for TODO-29
 
 **Hardware:** new Teensy 4.1 + new Audio Shield Rev D, soldered as a native stack (shield → Teensy → breakout). Flashed with **`c18fac7`** — the first upload since `e6daac8`, so TODO-29's clamp marking and the whole `c64e876` architecture reach hardware for the first time. Pre-power 3V3→GND resistance check clean. **LINE-IN-L deliberately left disconnected**, so this isolates the effect of the stack itself.
