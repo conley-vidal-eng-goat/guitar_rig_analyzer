@@ -128,7 +128,15 @@ Compare each candidate on, at minimum: **input common-mode range at 5 V · outpu
 **Root cause of the two-day detour:** the runbook gap in **TODO-18** — Phase 4 says "Unplug USB" and never says to reconnect before demanding live DMM readings. This was correctly identified on 2026-09-03, then wrongly withdrawn on a mistaken report that the 0 V had been measured with power connected. Reinstated.
 **Kept from this item, demoted to housekeeping:** the runbook specifies the **`VUSB` pad** (Phase 1 Step 2, line 561) and never mentions VIN in 1860 lines, while the debugging session probed "5V/VIN." A real documentation inconsistency worth settling for clarity — but **not implicated in any fault.** See journal.md 2026-09-05 (1).
 
-### TODO-40 — SOURCE reads ~−31 dBFS whenever LINE-IN-L has ANY external low-impedance connection 🔴 **REFRAMED 2026-09-12 — the front end is not the source, and the codec is no longer exonerated**
+### TODO-40 — The elevated SOURCE floor depends on the external GROUND-RETURN PATH 🟡 **mechanism localised 2026-09-12; which of two mechanisms is still open**
+**Observed.** With `48e` disconnected, grounding LINE-IN-L to **breadboard GND** gave **≈−31.9 dBFS**; grounding the same pad with a short jumper to the **Audio Shield's own GND** gave **≈−65.0 dBFS**. **Moving only the return point improved SOURCE by 33.1 dB.** Termination impedance identical in both — a wire to ground.
+**Inference.** The elevated floor depends on the external ground-return path. **Not** caused merely by terminating LINE-IN-L, and **not** by the front-end signal source.
+**Still unresolved.** Whether the mechanism is a real breadboard↔shield **ground-potential difference**, **loop-area pickup**, or a combination. Both predict this result; this test does not separate them.
+**🔽 Next and only bench step:** scope directly between breadboard GND and the Audio Shield GND pad — same short-ground-spring setup, same settings, against the recorded **≈32 mV<sub>pp</sub> probe floor**. A real LF potential difference confirms ground-potential difference; a floor-indistinguishable reading points at loop pickup.
+**Supporting observations — corroboration, NOT proof:** (a) SOURCE became ≈5.9 dB *quieter* than RETURN, the first inversion of the asymmetry all session; (b) the prior SOURCE/RETURN correlation disappeared — a successful prediction of the shared-disturbance hypothesis, since removing the shared path removed the correlation.
+**🔧 Provisional design rule (see TODO-5):** codec analog input returns reference the Audio Shield ground **locally**; do not route the return through the breadboard ground path until the mechanism is characterised.
+**❌ Candidates now dead:** the codec-common-mode explanation (a shield-local ground would have dragged the input just as far and instead gave the quietest reading of the investigation); the front end as source; J2; the pickup and guitar cable.
+**📉 D2 / missing 10 µF on OPA_BIAS — now clearly NOT the cause.** Kept only as a spec deviation worth correcting: with the ≈32 mV<sub>pp</sub> control recorded, the +5 V rail (33) and OPA_BIAS (31) are both indistinguishable from the probe floor. Fit it, record before/after, expect no change to this.
 **🔺 Proven, and this is the whole of it (journal 2026-09-12 (2)):** *the elevated SOURCE reading appears whenever LINE-IN-L is given an external low-impedance connection — even to ground — and largely disappears when LINE-IN-L is left floating.*
 
 | LINE-IN-L | 48e | SOURCE |
@@ -446,6 +454,10 @@ explicitly for every backend, so no future renderer can reintroduce the dependen
 Both are compile-time work. **Neither requires touching the bench.**
 **⚠️ The runbook's Phase 5 repeats the TODO-18 defect.** Step 5 says "Unplug USB" and no reconnect, re-plug, power-restore or upload instruction appears anywhere in the rest of the phase. Same gap that cost two days at Phase 4. Fix before following it.
 **Open measurement question raised during bring-up (2026-09-08):** SOURCE_NODE idles at **≈−31.5 dBFS** against RETURN's **≈−60.8 dBFS** on the same codec, rails and board — a ~29 dB asymmetry. Guitar volume at zero did not change it (means −31.40 → −31.48 dBFS, 0.08 dB), which weakens the pickup/cable-antenna hypothesis without eliminating cable contribution. **Localised to the SOURCE-side analog path, or specific to it — shared power/ground mechanisms are not excluded by this evidence alone.** See journal.md 2026-09-08.
+**🔧 PROVISIONAL WIRING RULE — applies from Phase 5 onward, derived from measurement (journal 2026-09-12 (3)):**
+> **Codec analog input returns should reference the Audio Shield ground locally. Do not route the return through the breadboard ground path until the ground-path mechanism is fully characterised.**
+**Evidence:** moving only the LINE-IN-L ground return from the breadboard rail to the shield's own GND pad improved the SOURCE noise floor by **33.1 dB** (−31.9 → −65.0 dBFS), with termination impedance unchanged. **Provisional** because the 33.1 dB is measured but the mechanism — ground-potential difference vs loop-area pickup — is not yet identified, so the rule states what to do and not yet why. See TODO-40.
+
 **Proof:** unchanged — both halves of the sign-off line, not just the first.
 
 ### TODO-6 — Phase 6: First relay driver, RELAY_SEND (TQ2-5V) 🔴

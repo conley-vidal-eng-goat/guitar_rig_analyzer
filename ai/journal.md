@@ -11,6 +11,54 @@ How to use this file:
 
 ---
 
+## 2026-09-12 (3) — ✅ THE GROUND-RETURN PATH IS THE MECHANISM. Moving only the return point, breadboard GND → shield GND, improves SOURCE by 33.1 dB
+
+**Observed.** With `48e` disconnected, grounding LINE-IN-L to **breadboard GND** produced **≈−31.9 dBFS**, while grounding the same LINE-IN-L pad with a short jumper to the **Audio Shield's own GND** produced **≈−65.0 dBFS**. **Moving only the return point improved SOURCE by 33.1 dB.**
+
+**Inference.** The elevated SOURCE floor depends on the **external ground-return path**. It is not caused merely by terminating LINE-IN-L, and not by the front-end signal source itself.
+
+**Still unresolved.** Whether the mechanism is an actual breadboard↔shield **ground-potential difference**, **loop-area pickup**, or some combination. This test does not separate them — both predict this result.
+
+### The four codec-input states
+
+| LINE-IN-L | 48e | n | mean SOURCE | vs RETURN |
+|---|---|---|---|---|
+| Driven by front end | connected | 5 | −31.3 dBFS | +29.4 dB |
+| Bare jumper → **breadboard** GND | disconnected | 5 | −31.9 dBFS | +29.0 dB |
+| Floating | disconnected | 5 | −57.0 dBFS | +1.8 dB |
+| **Short jumper → shield's OWN GND** | disconnected | 5 | **−65.0 dBFS** | **−5.9 dB** |
+
+Readings for the fourth state: **−66.2 / −64.3 / −65.2 / −64.3 / −65.2 dBFS**; RETURN −58.5 to −59.7, mean −59.1.
+
+**The termination impedance is identical in states 2 and 4** — a wire to ground in both. Only the ground it returns to changed.
+
+### ❌ Candidate (3) from entry (2) is dead
+
+Entry (2) listed a third mechanism: that grounding LINE-IN-L drags the SGTL5000 input outside its common-mode window around VAG. **A shield-local ground would do that just as thoroughly, and instead produced the quietest reading of the entire investigation.** Withdrawn. The candidate set is now (1) ground-potential difference and (2) loop-area pickup.
+
+### Two supporting observations — recorded as supporting, not as proof
+
+1. **SOURCE became ≈5.9 dB quieter than RETURN** — the first inversion of the asymmetry all session. Consistent with SOURCE being properly terminated to local ground while RETURN floats. Raw dumps: SOURCE spans ≈±10 counts, RETURN ≈±35.
+2. **The prior SOURCE/RETURN correlation disappeared.** Through every earlier condition the two channels tracked in sign and direction, breaking at the same sample index. In these five windows they are independent — at uptime 280 s RETURN sweeps −36 → +20 while SOURCE stays flat inside ±8.
+
+Observation 2 is the more interesting of the pair: the correlation was flagged in entry (2) as supporting-not-proof of a shared disturbance, and it now behaves exactly as that hypothesis predicts once the shared path is removed. **That is a successful prediction rather than a post-hoc fit — but it remains corroboration, not proof.**
+
+### 🔧 Provisional design rule, derived from measurement
+
+> **Codec analog input returns should reference the Audio Shield ground locally. Do not route the return through the breadboard ground path until the ground-path mechanism is fully characterised.**
+
+**Provisional** is the operative word: the rule follows from a 33.1 dB measured improvement, but the underlying mechanism is not yet identified, so the rule states what to do and not yet why. Applies from Phase 5 onward — recorded on TODO-5 and TODO-40.
+
+### The discriminator, and why it is now interpretable
+
+**Scope directly between breadboard GND and the Audio Shield GND pad** — same short-ground-spring setup, same settings, against the **recorded ≈32 mV<sub>pp</sub> probe floor**. A real low-frequency potential difference confirms (1); a reading indistinguishable from the floor points at (2). That control is what makes this measurement meaningful, and its absence is what made the earlier 31 → 38 → 46 mV<sub>pp</sub> sequence uninterpretable.
+
+### Bench state
+
+Still four deviations from the −31.49 dBFS pooled baseline: `48e` lifted · LINE-IN-L now grounded **to shield GND** · J2 removed · `col 30` → GND jumper fitted. Restore and re-baseline before any reading is compared to it.
+
+---
+
 ## 2026-09-12 (2) — CORRECTION to entry (1): grounding LINE-IN-L reproduces the floor with the front end disconnected. "The codec is exonerated" is withdrawn; the proven claim is narrower
 
 **Entry (1) concluded that the elevated SOURCE floor is delivered by the analog front end and that "the codec, its routing and the digital capture path are exonerated."** A third codec-input state was then measured and **that conclusion does not survive it.**
