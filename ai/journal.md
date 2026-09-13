@@ -11,6 +11,26 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (4) — ⚠️ Lesson: a clean compile is not verification that a diagnostic decodes correctly
+
+**What happened.** While writing the read-only SGTL5000 register dump (TODO-43, commit `a298f1c`) I got two bit positions wrong in my own decode: `REFTOP_POWERUP` and `HEADPHONE_POWERUP` were both read from `CHIP_ANA_POWER` bit 4, and `CHIP_DIG_POWER`'s ADC/DAC were placed at bits 6/5 instead of 5/4. Then a patch intended to fix them **failed silently** on a string-escaping error inside a heredoc, and the compile I ran afterwards passed — against the *uncorrected* file.
+
+**Why this matters more than the bug.** Every field in a register dump is a bit-shift of a value the compiler cannot check. `(anap >> 4) & 1` and `(anap >> 5) & 1` are both perfectly valid C. A diagnostic can therefore be 100% compilable, 100% read-only, produce plausibly-shaped output, and still be **confidently wrong** — which is strictly worse than having no diagnostic, because it manufactures evidence. This project has already had to withdraw several claims (see 2026-09-12 (2), and the D2/OPA_BIAS gradient withdrawal); a mis-decoded register would be a much harder withdrawal to catch, because nothing about the output would look anomalous.
+
+**What actually served as verification, and what did not:**
+- ❌ *Compiling clean* — proved nothing about correctness here, and in the failed-patch window actively misled: it was a green light on a file that had not changed.
+- ❌ *Output looking reasonable* — every wrong decode still printed `0` or `1`.
+- ✅ *Reading the corrected source back off disk* after patching, rather than trusting the patch tool's exit status.
+- ✅ *Checking each bit position against the NXP SGTL5000 datasheet field map independently of the code* — `CHIP_ANA_POWER`: LINEOUT b0, ADC b1, DAC b3, HEADPHONE b4, REFTOP b5, VAG b7, VCOAMP b8; `CHIP_DIG_POWER`: I2S_IN b0, I2S_OUT b1, DAC b4, ADC b5.
+- ✅ *Grepping the diagnostic block for `.write(`* (result: 0) to prove the read-only property structurally, not by intention.
+- ✅ *Compiling with the flag OFF and comparing to the pre-change baseline* — FLASH 154240 / RAM1 214880, byte-identical, which proves clean removability (a different claim from correctness, and worth keeping separate).
+
+**Standing rule for this project going forward:** the dump prints **raw hex alongside every decoded field**, deliberately. If a decode bug survives all of the above, the raw register value in the log lets any future reader reconstruct the truth independently. Never log a decoded field without the raw value it came from.
+
+**Next session should know:** the dump is on hardware as of this entry, captured in `ai/evidence/2026-09-13-sgtl-register-dump.log`. Treat the decoded lines in that log as *derived*; the five raw values are the evidence.
+
+---
+
 ## 2026-09-13 (3) — ✅ TODO-41B PASS: 324/324 clean windows, zero detector-v1 outliers on either node across 26.9 minutes of continuous stimulus
 
 **TODO-41B — PASS.** Under the new native Teensy 4.1 + PJRC Audio Shield Rev D stacked configuration, with a continuous external ~1 kHz stimulus applied through the real instrument-input analog path, **324 diagnostic windows spanning 26.9 minutes contained zero outliers on either SOURCE_NODE or RETURN_NODE under Outlier detector v1.** All 324 windows were clean, with zero clipping events and no quarter-to-quarter emergence of corruption. This establishes the **post-stack stimulated reference** for I²S integrity under the tested conditions.

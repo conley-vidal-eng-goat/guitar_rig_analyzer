@@ -1,0 +1,296 @@
+
+[Main] --- 5s diagnostics (uptime 390s) ---
+[Main] Block:      107 in 5000ms = 46.7 ms/block (expected 92.9 ms, delta -46.2 ms)
+[Main] Display: 107 updates = 46.7 ms/update (expected 92.9 ms)
+[Main] Loop:         7497848 iterations/5s = ~1499570/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  8290 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       6 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 282.1 us, last 282 us (8296 calls)
+[Link] TX room min:  2482 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -55.0 dBFS          |   RETURN_NODE peak: -64.7 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 12 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 8 3 13 7 -11 -7 -2 -3 -4 -3 -1 -3 -7 -6 -6 1 3 13 12 18 18 15 12 6 5 12 6 3 13 3 -7 -15
+[RAWDUMP] RETURN: 11 5 3 9 4 -10 -8 -8 -9 -10 -3 -1 -11 -13 -10 -13 -8 1 8 9 11 8 6 9 10 9 10 9 -2 0 -6 -15
+
+[Main] --- 5s diagnostics (uptime 395s) ---
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 92.9 ms, delta -46.6 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 92.9 ms)
+[Main] Loop:         7497047 iterations/5s = ~1499409/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  8398 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       6 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 282.1 us, last 282 us (8404 calls)
+[Link] TX room min:  2482 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -53.7 dBFS          |   RETURN_NODE peak: -65.2 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 10 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 18 20 5 1 15 3 7 8 -2 4 4 5 0 1 3 -3 1 -8 10 -4 36 24 19 38 9 -10 55 19 46 30 -35 -18
+[RAWDUMP] RETURN: 8 10 9 2 1 11 -4 2 1 -5 -7 -8 -1 -7 -7 -4 -9 -7 -8 -1 -1 -3 -6 0 -4 -1 -3 1 4 1 9 5
+================================================
+     Guitar Rig Analyzer   v0.6.0
+================================================
+[Main] Display target:               Pi 5 (UART)
+[Main] Expected block period:       92.9 ms
+[Main] Expected display period: 92.9 ms (~10.8 fps)
+[Main] SOURCE_NODE bench channel: 0     |   RETURN_NODE bench channel: 1
+[Main] Initialising presentation backend: Pi 5 (UART)
+[DataSender] Protocol v2 | 460800 baud | 128 live bins (4:1) | TX buffer 4096 B | firmware 0.6.0
+[DataSender] Live frame 1689 B framed; RESULT up to 10012 B (reliable, drained across loop iterations)
+[Main] Initialising audio capture layer...
+[SGTL] ===== SGTL5000 REGISTER DUMP (read-only) =====
+[SGTL] REQUESTED  input        = AUDIO_INPUT_LINEIN
+[SGTL] REQUESTED  lineInLevel  = 5
+[SGTL] ---------------- actual register state ----------------
+[SGTL] CHIP_ID           0xA011
+[SGTL]   PARTID          0xA0   (0xA0 = SGTL5000)
+[SGTL]   REVID           0x11
+[SGTL]   NOTE: codec silicon ID/revision. NOT the shield PCB revision.
+[SGTL] CHIP_ANA_ADC_CTRL 0x0055
+[SGTL]   ADC_VOL_LEFT     5     (lineInLevel; 0=least gain, 15=most)
+[SGTL]   ADC_VOL_RIGHT    5
+[SGTL]   ADC_VOL_M6DB    0      (1 = range reduced by 6.0 dB)
+[SGTL] CHIP_ANA_CTRL     0x0026
+[SGTL]   SELECT_ADC      1      (0 = MIC, 1 = LINEIN)
+[SGTL]   MUTE_ADC        0
+[SGTL]   SELECT_HP       0      (0 = DAC, 1 = LINEIN)
+[SGTL]   MUTE_HP         0
+[SGTL]   MUTE_LO         0
+[SGTL] CHIP_ANA_POWER    0x40FF
+[SGTL]   ADC_POWERUP     1
+[SGTL]   LINEOUT_POWERUP 1
+[SGTL]   REFTOP_POWERUP  1
+[SGTL]   HEADPHONE_PWRUP 1
+[SGTL]   VAG_POWERUP     1
+[SGTL]   VCOAMP_POWERUP  0
+[SGTL] CHIP_DIG_POWER    0x0073
+[SGTL]   ADC_POWERUP     1
+[SGTL]   DAC_POWERUP     1
+[SGTL]   I2S_OUT_POWERUP 1
+[SGTL]   I2S_IN_POWERUP  1
+[SGTL] ================ end register dump ================
+[AudioCapture] SGTL5000 initialised. Acquisition active.
+[AudioCapture] Route: SOURCE_NODE=ch0, RETURN_NODE=ch1
+[AudioCapture] FFT: 512 bins, 43.07 Hz/bin, 23.2 ms/frame
+[AudioCapture] Block period: 4 frames × 23.2 ms = 92.9 ms
+[Main] Initialising audio engine...
+[AudioEngine] Live analysis consumer ready (v0.4).
+[AudioEngine] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[AudioEngine] Codec init is audio_capture's responsibility.
+[Main] Active route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Validation] Harness ready       (v0.5.0).
+[Validation] Analysis band: 200 – 10000 Hz
+[Validation] Collection: 32 blocks (~3.0 s) + 20 settle blocks (~1.9 s)
+[Validation] Target level: -12 to -6 dBFS        Gate gap min: 40 dB
+[Validation] TF computed from raw FFT means (EMA bypassed).
+[CalStore] SD not available. Calibration file I/O disabled.
+[CalStore] Operating uncalibrated.
+[ExportEngine] SD not available. File export disabled.
+[SigGen] Signal generator initialised.
+[SigGen] Output wired to monitoring R (headphone right) via s_mixer_ret slot 2.
+[SigGen] DUT injection pending signal_router — use EXTERNAL stimulus for measurements.
+[SigGen] NOTE: Audio output injection is stubbed — state machine and timing are active.
+[MeasEngine] CMSIS-DSP arm_cfft_f32 ready (FFT_SIZE=1024)
+[MeasEngine] Measurement engine initialised (v0.5 — complex FFT path).
+[MeasEngine] State: IDLE. Call measurementEngine_arm() to begin.
+[MeasEngine] IDLE → SELF_TEST
+[MeasEngine] Self-test started.
+[Main] Serial commands:
+[Main]      v = run all validation tests
+[Main]      1-4 = run individual validation test
+[Main]      m = arm rig analysis measurement
+[Main]          (external stimulus required — generator DUT injection pending signal_router)
+[Main]      s = save current RESULT as JSON fingerprint
+[Main]      b = save current RESULT as baseline CSV
+[Main]      i = re-print insights from last result
+[Main]      c = save current RESULT as system calibration
+[Main]      x = cancel active measurement
+[Main]      r = reset EMA smoothing
+[Main] Setup complete. Entering main loop.
+--------------------------------------------------
+[Main] AudioMemory: 13 in use, 13 max, of 128 allocated
+[MeasEngine] Startup check: audio pipeline alive (I2S + Audio Library producing blocks).
+[MeasEngine] For full signal-path validation, run 'v'.
+[MeasEngine] SELF_TEST → IDLE
+[Main] Self-test passed.
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 0 0 -7 12 18 16 8 -6 -11 -6 0 -2 12 16 13 5 -4 -4 1 17 38 -56 -52 -47 -46 -43 -47 -33 -31 -35 -46 -45
+[RAWDUMP] RETURN: -4 -3 -7 -14 2 3 3 6 -5 -7 -6 1 -10 -1 3 -1 -4 -7 -12 -2 4 13 -2 3 -4 -3 -1 -5 4 10 0 -5
+
+[Main] --- 5s diagnostics (uptime 8s) ---
+[Main] Block:      107 in 5000ms = 46.7 ms/block (expected 92.9 ms, delta -46.2 ms)
+[Main] Display: 107 updates = 46.7 ms/update (expected 92.9 ms)
+[Main] Loop:         6794293 iterations/5s = ~1358859/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  107 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 272.1 us, last 282 us (111 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -55.3 dBFS          |   RETURN_NODE peak: -65.7 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 10 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 7 4 -1 -5 0 7 -2 2 -7 1 -15 0 -1 -3 21 5 -4 12 -9 16 34 26 53 33 3 14 35 9 39 8 -39 -20
+[RAWDUMP] RETURN: -2 3 -2 -4 -11 -3 4 -5 -1 -10 1 -14 -7 -3 -7 11 4 -4 8 -8 3 3 6 -6 4 12 7 -2 -2 -8 6 -4
+
+[Main] --- 5s diagnostics (uptime 13s) ---
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 92.9 ms, delta -46.6 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 92.9 ms)
+[Main] Loop:         6793469 iterations/5s = ~1358694/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  215 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 277.1 us, last 283 us (219 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -54.7 dBFS          |   RETURN_NODE peak: -64.3 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 16 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 8 16 4 1 11 -1 3 0 10 4 5 -3 10 5 -2 11 14 -1 -1 -9 5 -8 7 17 4 -1 15 4 7 10 18 9
+[RAWDUMP] RETURN: -3 -4 7 -4 -7 1 -9 0 -8 2 1 -2 -9 0 -3 -8 0 4 -4 -5 -8 -5 -12 -3 2 -6 -8 8 -7 -2 3 12
+
+[Main] --- 5s diagnostics (uptime 18s) ---
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 92.9 ms, delta -46.6 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 92.9 ms)
+[Main] Loop:         6793526 iterations/5s = ~1358705/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  323 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 278.7 us, last 282 us (327 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -54.1 dBFS          |   RETURN_NODE peak: -65.2 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 14 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 7 -1 -4 1 10 6 1 8 19 7 14 12 9 7 9 5 8 -7 -6 3 -8 -3 -4 -6 -5 0 -9 -17 -26 -29 -29 -25
+[RAWDUMP] RETURN: -5 0 -1 -2 -6 4 1 -5 9 10 0 7 4 4 2 4 0 0 -10 -9 1 -11 -6 -6 -8 -2 -6 -6 -11 -5 2 4
+
+[Main] --- 5s diagnostics (uptime 23s) ---
+[Main] Block:      107 in 5000ms = 46.7 ms/block (expected 92.9 ms, delta -46.2 ms)
+[Main] Display: 107 updates = 46.7 ms/update (expected 92.9 ms)
+[Main] Loop:         6794401 iterations/5s = ~1358880/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  430 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 279.6 us, last 282 us (434 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -56.3 dBFS          |   RETURN_NODE peak: -65.2 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 12 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 0 -5 -5 -22 -28 -37 -32 -36 -38 -17 -8 -20 -4 11 8 4 11 3 25 16 22 3 -11 -3 0 -10 -7 -6 -3 -12 -7 -18
+[RAWDUMP] RETURN: -9 -1 -5 4 -7 0 -11 2 -10 -14 4 10 -2 2 11 3 -5 5 -3 4 -3 10 7 -2 3 5 -10 -11 -7 -3 -8 -7
+
+[Main] --- 5s diagnostics (uptime 28s) ---
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 92.9 ms, delta -46.6 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 92.9 ms)
+[Main] Loop:         6793322 iterations/5s = ~1358664/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  538 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 280.1 us, last 282 us (542 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -56.0 dBFS          |   RETURN_NODE peak: -64.3 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 10 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: -31 -32 -29 -30 -14 -6 -1 3 -3 11 14 21 8 16 23 24 11 16 -2 6 40 11 14 25 -31 22 26 9 29 -6 -31 19
+[RAWDUMP] RETURN: 2 0 -5 -3 -11 6 11 4 0 -3 12 10 3 -6 -1 7 9 3 -2 -6 -5 0 -5 -13 -12 -11 2 -4 -8 -11 -3 2
+
+[Main] --- 5s diagnostics (uptime 33s) ---
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 92.9 ms, delta -46.6 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 92.9 ms)
+[Main] Loop:         6793658 iterations/5s = ~1358732/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  646 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 280.4 us, last 282 us (650 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -55.0 dBFS          |   RETURN_NODE peak: -65.7 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 16 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 1 -10 16 2 6 9 5 -1 -18 -32 -31 -36 -21 -27 -38 -34 -27 -15 -9 -3 2 12 11 18 18 9 12 23 22 19 12 -5
+[RAWDUMP] RETURN: -1 -3 -14 7 1 -1 6 2 -7 -15 -15 -12 -9 5 3 -5 -8 -7 -2 -2 1 5 6 4 9 6 0 -2 7 6 6 11
+
+[Main] --- 5s diagnostics (uptime 38s) ---
+[Main] Block:      107 in 5000ms = 46.7 ms/block (expected 92.9 ms, delta -46.2 ms)
+[Main] Display: 107 updates = 46.7 ms/update (expected 92.9 ms)
+[Main] Loop:         6794322 iterations/5s = ~1358864/sec
+[Link] --- Pi link transport (measured) ---
+[Link] Live frames:  753 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       4 sent, 0 dropped
+[Link] Call time:    max 283 us, mean 280.7 us, last 282 us (757 calls)
+[Link] TX room min:  4118 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[Main] SOURCE_NODE peak: -55.2 dBFS          |   RETURN_NODE peak: -65.2 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE (some bins carrying history)
+[Main] TF clamped bins: 0 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=---   5kHz=---   10kHz=---
+[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R
+[Main] AudioMemory: 14 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: -5 -9 6 3 -3 -2 -7 -5 -3 -7 8 1 14 5 0 8 19 11 8 10 13 4 2 -9 2 -3 -7 -11 -3 -8 -9 -4
+[RAWDUMP] RETURN: -6 -8 -10 7 -1 -2 -7 -11 -4 -1 -11 7 -1 9 4 1 1 16 4 5 10 9 5 -4 -5 5 -8 -10 -8 -11 -7 -9
