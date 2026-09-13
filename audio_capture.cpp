@@ -461,8 +461,13 @@ s_sgtl5000.volume(SGTL5000_HEADPHONE_VOL);
     Serial.printf ("[SGTL]   VDDC_MAN_ASSN   %u      (0 = VDDA, 1 = VDDIO; only if OVRD = 1)\n", (lreg >> 6) & 0x01);
 
     Serial.printf ("[SGTL] CHIP_CLK_CTRL     (0x0004) = 0x%04X\n", clkc);
-    Serial.printf ("[SGTL]   SYS_FS          %u      (0=32k 1=44.1k 2=48k 3=96k)\n", clkc & 0x03);
-    Serial.printf ("[SGTL]   MCLK_FREQ       %u      (0=256Fs 1=384Fs 2=512Fs 3=PLL)\n", (clkc >> 2) & 0x03);
+    // Field order verified against control_sgtl5000.cpp, which writes
+    // CHIP_CLK_CTRL = 0x0004 | 0x03 for "use PLL". The PLL code is 0x3 in
+    // MCLK_FREQ, so MCLK_FREQ is bits 1:0 and SYS_FS is bits 3:2 -- the
+    // opposite of this decoder's first version. 0x0004 therefore reads as
+    // 44.1 kHz / 256*Fs, matching the library's own comment.
+    Serial.printf ("[SGTL]   SYS_FS          %u      (0=32k 1=44.1k 2=48k 3=96k)\n", (clkc >> 2) & 0x03);
+    Serial.printf ("[SGTL]   MCLK_FREQ       %u      (0=256Fs 1=384Fs 2=512Fs 3=PLL)\n", clkc & 0x03);
     Serial.printf ("[SGTL]   RATE_MODE       %u      (0=SYS_FS 1=1/2 2=1/4 3=1/6)\n", (clkc >> 4) & 0x03);
 
     Serial.println("[SGTL] ================ end register dump ================");
