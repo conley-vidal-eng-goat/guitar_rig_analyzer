@@ -11,6 +11,47 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (13) — ✅ REQUIREMENTS CORRECTION: jack presence detection is a UX feature, not a hardware requirement. Phase 5 unblocks for $0
+
+**[ADR-003](../docs/adr/ADR-003-jack-presence-is-a-ux-feature.md) accepted.** Keep the Switchcraft #11s. Buy nothing. Phase 5's *"detect events fire"* criterion is removed.
+
+### What the code trace actually showed
+
+`s_jack_instrument.debounced` appears in three places: the status struct and two serial prints. It is absent from **every** decision path — `computeReturnSource()`, `route_valid`, `can_inject`, `buildDescription()`, `applyReturnRelay()`. Its only downstream consumer is `data_sender.cpp:603`, one bit of a UI packet, reached through `presentation_routerStatus()` — **which is never called from the application.** `signalRouter_canMeasure()` and `signalRouter_canInject()` are never called either.
+
+**Instrument presence currently feeds nothing at all.** Phase 5 was blocked waiting on a GPIO transition that no code reads.
+
+| Pin | Jack | Gates | Verdict |
+|---|---|---|---|
+| 16 | Instrument In (#11) | **nothing** | **not required** |
+| 17 | Rig Send (#11) | `can_inject` — never called | inert |
+| 22 | Rig Return TS (#11) | `computeReturnSource()` → **drives the relay** | genuinely load-bearing |
+| 24 | Return XLR | same | microswitch already designed |
+
+### Why this is a requirements correction and not a workaround
+
+The acceptance criterion was written believing the #11 had a switch contact. It does not — established twice, by bench DMM and by Switchcraft's own *"Open circuit"* designation. **The #11 is not failing at being a guitar jack; it was assigned a second job the product does not need.** Keeping the criterion would mean redesigning working hardware to satisfy an obsolete test.
+
+**Revised Phase 5 acceptance:** *a standard 1/4" TS guitar connected to Instrument In passes cleanly through the intended analog signal path with normal level and no unintended loading, distortion, oscillation, or loss of signal.*
+
+### Three decisions deferred, each with the question it must answer
+
+- **Phase 7 — Return Source Detection Architecture.** Automatic presence detection vs explicit operator selection. **Preference recorded, not binding: explicit**, because this is test equipment, not a consumer pedal — an explicit `Return: TS / XLR` choice keeps the measurement configuration unambiguous rather than letting a hardware signal silently determine a scientifically meaningful routing choice. `signalRouter_setReturnPreference()` already exists, which suggests the software anticipated it. **TODO-7's proof line presumes auto-detect and must be revisited with this decision.**
+- **Injection — what is Rig Send detection actually preventing?** Define the requirement before choosing a mechanism. **A plug being present does not prove the downstream rig is connected correctly**, so plug presence may be the wrong signal entirely rather than merely inconvenient.
+- **ADR-002 is unweakened and still in force.** It governs *how* detection may be built; ADR-003 governs *whether* it is needed. If Phase 7 chooses automatic detection, ADR-002 applies in full.
+
+### What this cost, and what it bought
+
+Cost: a branch that ran from firmware through a register-level investigation, a physical dissection of the shield input, an arithmetic proof, a manufacturer search, and two ADRs. Bought: **the #11s stay, Phase 5 unblocks today, and $0 is spent** — plus three real architecture questions now stated explicitly rather than answered by accident.
+
+**The entry point of the whole branch was accepting a runbook drawing as as-built fact.** The exit was reading the code instead of the documentation. That is the lesson worth carrying: *when a document and the tree disagree about what the system needs, the tree is the authority* — which is precisely what this journal's own source-of-truth precedence rule already said.
+
+### ⚠️ One consequence not to misread later
+
+The Pi UI's jack indicators will show a permanently-absent instrument jack until pin 16 is wired to something real or the indicator is removed. **That is expected, not a fault.**
+
+---
+
 ## 2026-09-13 (12) — 🔎 Manufacturer search: Switchcraft's own catalogue independently confirms the bench finding, and **12B** is the candidate — but the datasheet CANNOT answer the question we actually need answered
 
 ### The bench finding is now independently corroborated by the manufacturer

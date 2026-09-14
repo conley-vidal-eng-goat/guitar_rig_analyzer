@@ -160,8 +160,14 @@ of pull-up value.
 
 - The Phase 5 detect topology as written in the runbook is **not buildable as
   specified** and must not be followed on this point.
-- TODO-5's sign-off (*"detect events fire"*) cannot be met by wiring alone; it
-  requires a topology decision first.
+- ~~TODO-5's sign-off (*"detect events fire"*) cannot be met by wiring alone; it
+  requires a topology decision first.~~ **SUPERSEDED by
+  [ADR-003](ADR-003-jack-presence-is-a-ux-feature.md), 2026-09-13: that criterion
+  was removed from Phase 5 entirely. Jack presence detection is a UX/automation
+  feature, not a hardware requirement, and instrument presence gates nothing in
+  the active tree. This ADR still governs *how* detection may be built IF Phase 7
+  decides it is needed — the constraint is unweakened, it simply is not blocking
+  Phase 5.**
 - Detect for Phase 7 (`JACK_RIG_SEND_PIN` 17, `JACK_RETURN_TS_PIN` 22) and
   Phase 8 (`JACK_RETURN_XLR_PIN` 24) inherits this constraint. Jacks #2 and #3
   are also Switchcraft #11s, so the same analysis applies before they are wired
