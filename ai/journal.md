@@ -11,6 +11,50 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (5) — 🔺 TODO-43: the lineInLevel arithmetic checks out two independent ways. The instrument that produced the input number changed at exactly the point the discrepancy appeared
+
+**The proposal under test was that our expected −10 to −12 dBFS is the wrong number.** It is not. It survives two independent checks, so the suspicion moves off the expectation and onto the measured voltage feeding it.
+
+### The expectation is sound
+
+`control_sgtl5000.cpp` carries the table as a comment headed *"Actual measured full-scale peak-to-peak sine wave input for max signal"*, level 5 = **1.33 V<sub>pp</sub>**. That is PJRC bench data, so it could in principle be wrong on its own. It is not independent of the datasheet, though, and that is what makes it checkable: the datasheet defines ADC_VOL steps as 1.5 dB and full scale at code 0 as 3.12 V<sub>pp</sub>. Code 5 ⇒ 3.12 / 10^(7.5/20) = **1.32 V<sub>pp</sub>**. The measured table and the datasheet's own gain law agree to ~1 %. `ADC_VOL_M6DB = 0`, so no additional −6 dB is in play.
+
+### Nothing else in the path scales the signal
+
+- Firmware: `s_mixer_src.gain(0, 1.0f)`, all other slots 0.0f ([audio_capture.cpp:296](audio_capture.cpp#L296)). Unity. The peak detector hangs directly off that mixer output.
+- Codec digital path: `CHIP_SSS_CTRL = 0x0010` — ADC→I2S direct, the DAP is powered but **not in the routing path**. `CHIP_I2S_CTRL = 0x0030` — 16-bit, 64×Fs, I2S format. `CHIP_DAC_VOL` is DAC-side only and cannot touch the ADC.
+- Every register readback matches what the library wrote, so the I²C write path is landing (see 2026-09-13 (4) and commit `d63a753`).
+
+### The observation that reframes this
+
+The two anchor measurements were **taken with different instruments**, and the discrepancy appeared exactly when the instrument changed.
+
+| Date | Node | Reading | Instrument | ADC | Agreement |
+|---|---|---|---|---|---|
+| 2026-09-07 (7) | 48e / LINE-IN-L pad | 0.143 V<sub>rms</sub> | **DMM** — stated verbatim: *"where the DMM read 0.143"* | −9.0 dBFS | **1.3 dB** |
+| 2026-09-12 (1) | 48e | 0.141 V<sub>rms</sub> | **scope** — reported as *"0.140 avg, 0.143 max, 995–997 Hz, clean sine, no visible clipping"*; avg/max/min statistics, a frequency readout and waveform shape are scope outputs, not DMM outputs | −29.88 dBFS | **19.4 dB** |
+
+**A 10× probe-attenuation mismatch predicts the observed number almost exactly.** If the scope is configured for a 10× probe while a 1× probe is attached, it displays ten times the true voltage. Today's codec-side pad reading of ~0.150 V<sub>rms</sub> displayed would then be 0.0150 V<sub>rms</sub> true = 0.0424 V<sub>pp</sub>; against 1.33 V<sub>pp</sub> full scale that is 0.0319 ⇒ **−29.9 dBFS predicted against −30.0 dBFS observed.** The header reading of ~0.123 V<sub>rms</sub> gives −31.6 dBFS predicted against −29.88 observed, a 1.7 dB agreement.
+
+### ⚠️ Real counter-evidence, recorded so it is not lost
+
+2026-09-12 (3) records a **scope** reading of 45.77 mV<sub>pp</sub> at 48e agreeing with the ADC's −31.3 dBFS, which back-converts to 36.2 mV<sub>pp</sub>. Had the scope been reading 10× high *then*, the true value would have been 4.58 mV<sub>pp</sub> and the ADC would have shown roughly −51 dBFS. It showed −31.3. **So the scope was not reading 10× high in that session.** For the hypothesis to hold, the probe or its menu setting must have changed between that session and the shield-probing work today — which is possible, since the probe was physically relocated to the shield in between, but is not established.
+
+### This is not a conclusion
+
+Two readings agreeing to 0.1 dB is suggestive and nothing more; the header figure agrees to only 1.7 dB, and the counter-evidence above is genuine. The instrument change is also **confounded with the hardware change** — new Teensy and new shield landed between 09-07 and 09-12 — exactly the TODO-41A confound in a new place. What is established is narrower: *the expectation is sound, the codec is configured correctly, the firmware is unity-gain, and the one input to the arithmetic that has never been cross-checked between two instruments is the analog voltage.*
+
+### The discriminator, and why it is the cheapest one available
+
+**Read the scope's probe-attenuation setting and compare it to the switch on the probe body**, then **measure the same codec-side pad with the DMM in AC volts.** No wiring change, no power cycle, no firmware change, and the DMM has no attenuation setting to get wrong. It also happens to be the instrument that historically agreed with the codec to 1.3 dB.
+
+- DMM reads ~15 mV<sub>rms</sub> where the scope reads ~150 → the scope is the fault, the codec is correct, and TODO-43 closes as a measurement error.
+- DMM reads ~150 mV<sub>rms</sub> too → the scope is exonerated, both instruments agree against the codec, and TODO-43 becomes a genuine codec-level anomaly worth escalating.
+
+Either outcome closes a branch. **Do not probe anything new until this is done** — every deeper probe point inherits the same unverified voltage scale.
+
+---
+
 ## 2026-09-13 (4) — ⚠️ Lesson: a clean compile is not verification that a diagnostic decodes correctly
 
 **What happened.** While writing the read-only SGTL5000 register dump (TODO-43, commit `a298f1c`) I got two bit positions wrong in my own decode: `REFTOP_POWERUP` and `HEADPHONE_POWERUP` were both read from `CHIP_ANA_POWER` bit 4, and `CHIP_DIG_POWER`'s ADC/DAC were placed at bits 6/5 instead of 5/4. Then a patch intended to fix them **failed silently** on a string-escaping error inside a heredoc, and the compile I ran afterwards passed — against the *uncorrected* file.
