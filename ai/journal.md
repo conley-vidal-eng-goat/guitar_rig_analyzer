@@ -11,6 +11,45 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (6) — ✅ TODO-43 CLOSED: the 19.4 dB was a 1× probe on a 10×-configured scope channel. No codec anomaly, no shield fault
+
+**Matched-setting measurement.** Physical probe set to 10×, DHO804 CH1 probe ratio 10×, 10 mV/div, probe on the SGTL5000-side pad of the LINE-IN-L coupling capacitor, shield-local GND, tone and wiring otherwise untouched: **16.3 mV<sub>rms</sub> current, 16.3 avg, ~16.5 max, ~15.9 min, 989 Hz current / ~1.00 kHz average, clean sine, no clipping.**
+
+**The arithmetic closes.** 16.3 mV<sub>rms</sub> × 2√2 = **46.1 mV<sub>pp</sub>**. Against `lineInLevel(5)` full scale of 1.33 V<sub>pp</sub>: 20·log₁₀(0.0461 / 1.33) = **−29.2 dBFS predicted**, against **−29.9 … −30.4 dBFS observed**. Agreement **0.7–1.2 dB** depending on window — the same order as the 1.3 dB that closed the 2026-09-07 (7) measurement on the old board.
+
+### The complete chain
+
+1. **Apparent anomaly:** scope reported 0.12–0.16 V<sub>rms</sub> at the codec input node while the ADC reported ~−30 dBFS, a ~19 dB gap.
+2. **Cause:** the physical probe was **1×** while the scope channel was configured for a **10×** probe, so displayed voltage was ~10× the true voltage.
+3. **Controlled correction:** switching the physical probe to 10× with the channel still at 10× yields 16.3 mV<sub>rms</sub> at the same node, same tone, same everything else.
+4. **Independent consistency check:** 16.3 mV<sub>rms</sub> predicts −29.2 dBFS, consistent with the measured ~−30 dBFS.
+
+**What this rules out, positively:** no ~19 dB codec conversion-gain anomaly, no 10:1 loss through the shield input network, no failed SGTL5000 configuration. The register dump (2026-09-13 (4), commit `d63a753`) and the datasheet verification (2026-09-13 (5)) were both correct and both necessary — they eliminated the codec so completely that the instrument became the only remaining suspect.
+
+### ⚠️ I withdraw the counter-evidence I raised in 2026-09-13 (5)
+
+That entry offered the 2026-09-12 (3) scope reading of **45.77 mV<sub>pp</sub> at `48e` agreeing with the ADC's −31.3 dBFS** as evidence that the scope was *not* reading 10× high in that session. **That was weak evidence and I should not have weighted it as I did.** The same session records a **grounded-probe floor of ≈32 mV<sub>pp</sub>**, so a 45.77 mV<sub>pp</sub> reading is roughly 1.4× the floor — mostly instrument noise — and entry 2026-09-12 (3) already withdraws floor-contaminated readings from that session as uninterpretable. A measurement that is largely floor cannot discriminate a 10× scale error. The hypothesis was better supported than I credited.
+
+**What that does not license:** it still does not *prove* the mismatch was in place on 09-12. No matched-setting measurement was taken that day. Any 09-12 absolute voltage remains reconstructed, not measured.
+
+### 🔻 Historical correction — the 41B stimulus figure is invalid as an absolute voltage
+
+TODO-41B and journal 2026-09-13 (1)/(3) record the stimulus as **0.141 V<sub>rms</sub> at `48e`** (0.140 avg / 0.143 max). That was a scope reading taken under the mismatched configuration. **Its absolute value is ~10× high and should be marked invalid.** Reconstructed true value: **≈0.014–0.016 V<sub>rms</sub>**, explicitly reconstructed — there is no matched-setting measurement at `48e`.
+
+**41B's PASS is unaffected.** 41B's claim is about I²S corruption, and it was established from the ADC data itself: 324/324 clean windows, zero detector-v1 outliers, with SOURCE at −29.88 dBFS mean against a post-stack idle floor of −55 dBFS. The stimulus was genuinely present and genuinely strong relative to the floor. Absolute volts never entered that claim.
+
+**But there is a consequence that is not obvious and should not be lost.** The stated *intent* of 41B was to reproduce the 2026-09-07 (7) condition of 0.143 V<sub>rms</sub> — a valid **DMM** measurement that produced −9.0 dBFS. The operator set the phone so the *scope* read ~0.141, which under the mismatch set the true level to ~0.014 V<sub>rms</sub>. **41B therefore ran roughly 20 dB below the level it was designed to test.** The planned margin was stated as ≈51 dB above the idle floor; the margin actually achieved was ~25 dB. Ample, and the PASS holds — but if I²S corruption were ever level-dependent, **41B did not probe the level it intended to probe**, and a future level-dependence question cannot cite 41B as having covered it.
+
+### The one absolute voltage anchor that survives
+
+**2026-09-07 (7)'s 0.143 V<sub>rms</sub> was a DMM reading** and is unaffected by probe ratio. It gave −9.0 dBFS against −10.3 predicted. Today's 16.3 mV<sub>rms</sub> gives ~−30 dBFS against −29.2 predicted. Both are consistent with a correctly-operating codec at two levels ~19 dB apart — which is simply the phone level having been set ~19 dB lower, by the operator, while trusting a 10×-inflated display.
+
+### Standing lesson
+
+**Record the probe attenuation setting — both the scope channel ratio and the physical probe switch — with every scope measurement, the same way stimulus conditions are recorded with every result.** This investigation spent a firmware diagnostic, two datasheet audits, a full register readback and a physical dissection of the shield input network chasing a number whose scale was never written down. The 2026-09-13 (2) lesson about unrecorded stimulus conditions and this one are the same lesson.
+
+---
+
 ## 2026-09-13 (5) — 🔺 TODO-43: the lineInLevel arithmetic checks out two independent ways. The instrument that produced the input number changed at exactly the point the discrepancy appeared
 
 **The proposal under test was that our expected −10 to −12 dBFS is the wrong number.** It is not. It survives two independent checks, so the suspicion moves off the expectation and onto the measured voltage feeding it.
