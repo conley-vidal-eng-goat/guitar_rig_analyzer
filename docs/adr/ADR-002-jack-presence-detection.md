@@ -30,10 +30,9 @@ remains open. See *Candidates — selection unresolved* below.
 
 ### The governing invariant
 
-> A jack-detect input and the audio input it reports on must not share a node
-> whose impedance both of them constrain, because their impedance requirements
-> are opposed by construction: digital detection needs a low resistance to a
-> rail, and a high-impedance instrument input needs the opposite.
+> A detect function and an audio function must not share a node when satisfying
+> the detect threshold or bias requirement would force that node outside the
+> audio path's permitted impedance, bias, or signal-integrity range.
 
 ---
 
