@@ -11,6 +11,48 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (8) — 🔺 A DC reference on TIP cannot serve both jack detect and guitar input impedance. Quantified, and the option is dead
+
+Addendum to 2026-09-13 (7). That entry listed "a DC reference on TIP chosen jointly with TODO-23's move toward 1 MΩ" as one of three possible production fixes. **That option is now ruled out, not merely doubted.**
+
+### The pull-up value is a fact from the toolchain, not an estimate
+
+`cores/teensy4/digital.c:180` configures `INPUT_PULLUP` as `IOMUXC_PAD_PUS(3)`. On i.MX RT1062 the PUS field is `0 = 100 kΩ pull-down, 1 = 47 kΩ pull-up, 2 = 100 kΩ pull-up, 3 = 22 kΩ pull-up`. So pin 16 is held up by **22 kΩ**, read out of the actual core source rather than assumed.
+
+### The two requirements are mutually exclusive on the same node
+
+A resistor from TIP to ground would have to pull pin 16 below V<sub>IL</sub> (0.3 × V<sub>DD</sub> ≈ 0.99 V) through the closed SHUNT contact, forming a divider against the internal pull-up:
+
+| Internal pull-up | R<sub>TIP→GND</sub> needed for a guaranteed LOW |
+|---|---|
+| **22 kΩ** — what `INPUT_PULLUP` actually sets | **< 9.4 kΩ** |
+| 47 kΩ | < 20.1 kΩ |
+| 100 kΩ — the most favourable option the chip offers | < 42.9 kΩ |
+
+But that resistor sits **on the TIP node**, so it *is* the input impedance the pickup sees. TODO-23 wants ~**1 MΩ**, and already judges the present ~100 kΩ too low.
+
+**Even in the best case the two requirements are ~23× apart and pull in opposite directions.** In the configuration the firmware actually uses, ~106× apart. No single resistor value satisfies both, so this is not a tuning problem — it is a contradiction, and the option is closed.
+
+### Terminology — pinned before it can go wrong
+
+The installed jack is **TS, not TRS**. Its three terminals are **TIP — SLEEVE — SHUNT/SWITCH**. SHUNT is a normally-closed contact tied to TIP that a TS plug mechanically opens on insertion. **There is no ring conductor anywhere in the detect scheme.**
+
+**Audit result: no existing error.** Every `ring` in `ai/` and `docs/asbuilt/netlist.md` is either a serial RX ring buffer or a genuine 3.5 mm TRS cable — `netlist.md:313` (`J1 tip/ring/sleeve`) and `:523` (taped-off right channel) are correct, because J1 *is* TRS. **This is preemption, not a correction.** The risk is real though: a legitimate `tip/ring/sleeve` for J1 sits close enough to the 1/4" jack discussion that a later reader could see "three terminals" and infer TRS. Use TIP/SLEEVE/SHUNT for J4 without exception.
+
+### Surviving production options — all three keep detection off the audio node
+
+1. **An isolated make-on-insertion detect contact** (e.g. the Cliff CL1384 the runbook dismissed at line 1221).
+2. **A separate detection switch or contact independent of the audio tip.**
+3. **A high-impedance buffered or comparator sensing scheme**, designed so the detection network does not load the guitar input.
+
+The common property is what makes them viable: **the detection network is not galvanically on the signal node.** The #11's SHUNT contact is unusable for digital detect here precisely because it is tied to TIP, and TIP has a hard impedance requirement pointing the other way. **No decision is made here** — this entry closes one option and records why.
+
+### The experiment in 2026-09-13 (7) is unchanged and still worth running
+
+Leave the `col 30` → GND jumper fitted, wire SHUNT → pin 16, confirm empty = LOW / TS plug inserted = HIGH, then remove **only** that jumper and confirm detection disappears with pin 16 stuck HIGH. That demonstrates the mechanism experimentally. Note the jumper is ~0 Ω, far below the 9.4 kΩ bound, which is exactly why it works — and why nothing compatible with a guitar input ever could.
+
+---
+
 ## 2026-09-13 (7) — 🔴 Phase 5 detect: the conductor was never run, AND the runbook's prescribed fix cannot work on this circuit
 
 **Live null result.** `b32d04a` uploaded and running. Across **uptime 18 → 218 s, 45 diagnostic windows, continuous capture with no gaps**, covering a deliberate **empty → insert → remove → insert** sequence on the Switchcraft #11 instrument jack:
