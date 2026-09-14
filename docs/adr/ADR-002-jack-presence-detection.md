@@ -16,9 +16,13 @@ pin 16, corrected by a firmware invert)
 **Jack presence sensing must be electrically independent of the high-impedance
 audio signal node.**
 
-A detect network may not be galvanically attached to the node whose DC loading
-the audio design constrains. Concretely, for the instrument input: the GPIO
-detect path must not be the same node as the guitar signal TIP.
+Digital presence detection must not impose a DC loading requirement on an audio
+node that conflicts with that node's analog requirements.
+
+A detect circuit **may** observe the audio node directly, including through a
+high-impedance buffer or comparator, provided its effective loading does not
+violate the audio design's impedance, bias, or signal-integrity requirements.
+What is forbidden is the loading, not the connection.
 
 **This ADR does not choose the replacement topology.** It establishes a
 constraint that any candidate must satisfy, and records that the selection
