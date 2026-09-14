@@ -1,6 +1,7 @@
 # ADR-002 — Jack presence sensing must be electrically independent of the audio signal node
 
-**Status:** ACCEPTED · 2026-09-13
+**Status:** ACCEPTED · 2026-09-13 · **worked example CORRECTED 2026-09-13** —
+see *Correction* below. The Decision and invariant are unchanged.
 **Decided by:** Conley Vidal
 **Supersedes:** the Phase 5 jack-detect topology prescribed by
 `docs/breadboard_bringup_v3.md` lines 1118–1221 (Switchcraft #11 SHUNT → Teensy
@@ -36,6 +37,45 @@ remains open. See *Candidates — selection unresolved* below.
 
 ---
 
+## ⚠️ Correction — 2026-09-13, after this ADR was accepted
+
+**The installed J4 has no switched contact.** Bench continuity identification
+(power off, DMM) found lug #1 = SLEEVE/GND, and **lug #2 continuous with the long
+spring both empty and with a TS plug inserted** — a pair that does not open is
+not a switch. Lug #2 and the spring are two parts of the TIP conductor. Relayed
+but not verified here: Switchcraft lists the **#11** as *2 Conductor, Open
+Circuit*; the shunted variant is a different part (e.g. **12AW11**). Evidence:
+`ai/evidence/2026-09-13-J4-continuity-identification.md`, journal **2026-09-13 (9)**.
+
+**What this changes and what it does not:**
+
+- **The Decision and the governing invariant are UNCHANGED and were never
+  dependent on J4.** They constrain any detect topology on any audio node.
+- **The arithmetic below is UNCHANGED and still correct.** 22 kΩ pull-up,
+  < 9.4 kΩ required for a guaranteed LOW, ~1 MΩ wanted — that conflict is
+  general to GPIO pull-up detection on a high-impedance audio node.
+- **The J4 worked example is WRONG in its premise.** Section 1 below reasons
+  about a SHUNT→TIP path that **does not exist on this jack**. It is retained,
+  not deleted, because the reasoning is valid for a jack that *does* have a shunt
+  contact — read it as *"why a shunted jack would also fail here"*, not as a
+  description of the installed part.
+- **The retained experiment is WITHDRAWN — it cannot be performed.** There is no
+  SHUNT contact to wire to pin 16. See the experiment section below.
+- **Root cause of the error:** a component description in a build document
+  (`breadboard_bringup_v3.md` lines 1105–1113, which draw a SWITCH terminal) was
+  accepted as as-built fact. A document describing what a part does is not
+  evidence that the part on the bench is that part.
+
+**Consequence now in scope:** the parts list (runbook line 181) specifies
+Switchcraft #11 ×10 for **Phase 5 and Phase 7**. If the installed part is
+representative, **no 1/4" jack in the design can report presence**, which makes
+this a parts/design blocker rather than a wiring problem. **Phase 8 is
+unaffected and is already ADR-002-compliant** — its XLR detect uses a separate
+COM-NC lever microswitch wired pin 24 → GND, an independent contact that never
+touches an audio node.
+
+---
+
 ## Context — the proof
 
 The installed instrument jack is **J4, a Switchcraft #11, which is TS, not
@@ -48,7 +88,9 @@ The runbook wires SHUNT → Teensy pin 16 with `INPUT_PULLUP` and corrects the
 resulting sense with a firmware invert. That cannot work on this circuit, for
 two independent reasons.
 
-### 1. On the as-built circuit the pin never changes state
+### 1. Even a shunted jack would not change state on this circuit
+
+*(Retained for a jack that HAS a shunt contact. The installed J4 does not — see Correction above.)*
 
 TIP is `col 30`. The as-built `SOURCE_IN` net is `col 30 · J4 tip · C1`, where
 **C1 is a 10 nF ceramic** (`docs/asbuilt/netlist.md` line 95, tagged `PHYS`),
@@ -161,13 +203,20 @@ assessment that has not been made. **Do not treat this list as a recommendation.
 
 ---
 
-## The bench experiment is retained, deliberately
+## ~~The bench experiment is retained, deliberately~~ — WITHDRAWN 2026-09-13
 
 The arithmetic proves the incompatibility. It does **not** prove that the
 assembled hardware behaves by the stated mechanism. Those are different evidence
 claims and this project keeps both.
 
-Retained experiment (see TODO-5 for the full power-off sequence):
+**🔻 WITHDRAWN — this experiment cannot be performed.** It required wiring J4's
+SHUNT contact to pin 16, and J4 has no SHUNT contact. Executing it as written
+would have connected a 22 kΩ pull-up to 3.3 V **directly onto the guitar TIP**.
+The cost is real and is recorded rather than dropped: **the impedance conflict
+below remains proven by arithmetic and unproven by experiment on this bench.**
+The text is preserved for the record:
+
+~~Retained experiment (see TODO-5 for the full power-off sequence):~~
 
 1. Leave the `col 30` → GND jumper fitted; wire SHUNT → pin 16.
    **Predict:** detect works — empty = LOW, TS plug inserted = HIGH.

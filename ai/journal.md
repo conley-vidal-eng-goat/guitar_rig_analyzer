@@ -11,6 +11,53 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (9) — 🔻 CORRECTION: the installed J4 has NO switched contact at all. Entries (7) and (8) reasoned about a topology this jack does not have
+
+**Supersedes the J4 worked example in 2026-09-13 (7) and (8), and withdraws the planned SHUNT → pin 16 experiment.** Those entries' *general* reasoning survives; their premise about this specific part does not.
+
+### The measurement
+
+Power OFF, DMM continuity, nothing else changed. Evidence: `ai/evidence/2026-09-13-J4-continuity-identification.md`.
+
+| Probe A | Probe B | Plug | Result |
+|---|---|---|---|
+| jack barrel/body | **lug #1** | none | **BEEP** |
+| jack barrel/body | lug #2 | none | no beep |
+| **lug #2** | **long spring** | none | **BEEP** |
+| **lug #2** | **long spring** | **TS inserted** | **STILL BEEPS** |
+
+**The last two rows are the decisive pair.** A shunt contact is *defined* by opening on insertion. This pair does not open. So, from the measurement alone and independent of any datasheet: **there is no switched contact among the probed terminals.** Lug #2 and the long spring are two parts of one conductor.
+
+- **lug #1** = SLEEVE / GND
+- **lug #2 + long spring** = TIP, one net
+- **no shunt terminal**
+
+**Relayed corroboration, not verified by me:** Switchcraft lists the **#11** as *"1/4" Mono 2 Conductor … Open Circuit"*, schematic *"Single Open"*; the shunted variant is a **different part number** (e.g. **12AW11**, *"Tip is Shunt"*). Recorded as a citation. The measurement does not depend on it.
+
+### What I got wrong, and at what level
+
+Entries (7) and (8) took the runbook's SVG at line 1105–1113 — *"SWITCH terminal — internally shorted to TIP ONLY when plug is OUT"* — as a description of the installed hardware, and reasoned forward from it. **The error was accepting a component description from a build document as as-built fact.** That is the same failure mode as the `MEAS` provenance lesson and the `RPT` tier discipline this project already committed to: *a document describing what a part does is not evidence that the part on the bench is that part.*
+
+The arithmetic in (8) — 22 kΩ pull-up, < 9.4 kΩ required, ~1 MΩ wanted — **is still correct and still proves what it proved.** It was never about this jack specifically; it is about any GPIO pull-up detect sharing a high-impedance audio node. What is withdrawn is the claim that J4's SHUNT contact is the thing that would have violated it. **J4 has no SHUNT contact to violate it with.**
+
+### The planned experiment is withdrawn — it cannot be performed
+
+(7) and (8) proposed: wire SHUNT → pin 16 with the `col 30` → GND jumper fitted, confirm detect works, then remove the jumper and confirm it breaks. **There is no SHUNT to wire.** Lug #2 and the long spring are both TIP, so executing it as written would have put a 22 kΩ pull-up to 3.3 V **directly on the guitar signal node** — biasing it and loading it ~100× below TODO-23's target. The stop was correct.
+
+Note what this costs: the mechanism demonstration in (8) is now **unavailable on this hardware**. The impedance conflict remains proven by arithmetic and unproven by experiment on this bench, and that gap should be stated honestly rather than quietly dropped.
+
+### 🔴 The real blocker is parts, not wiring or firmware
+
+The runbook's parts list (line 181) specifies **Switchcraft #11 ×10 for Phase 5 AND Phase 7** — instrument in, rig send, rig return TS. If the installed part is representative of all ten, then **none of the three 1/4" jacks in the design can report presence at all.** Phase 5's sign-off (*"detect events fire"*) and Phase 7's route matrix both depend on detect. **This is a procurement/design blocker, not a bench-technique problem**, and it was invisible while the runbook's switched-jack drawing was taken at face value.
+
+**Phase 8 is unaffected, and is the pattern that works.** Its XLR detect uses a **separate COM-NC lever microswitch** wired pin 24 → GND (runbook line ~1638) — an independent contact, not a jack-integrated one. That trivially satisfies ADR-002: the detect path never touches an audio node, and its resistance to ground is ~0 Ω, far inside the < 9.4 kΩ bound. **An ADR-002-compliant solution was already in this project's own runbook.** Recorded as an observation; no selection is made here.
+
+### Next action is documentation and a parts decision — nothing electrical
+
+Do not modify J4. Do not connect pin 16. The open question is whether Phase 5 gets a switched jack (a different part number), an independent presence sensor on the Phase 8 model, or another topology — and that requires a parts decision that has not been made.
+
+---
+
 ## 2026-09-13 (8) — 🔺 A DC reference on TIP cannot serve both jack detect and guitar input impedance. Quantified, and the option is dead
 
 Addendum to 2026-09-13 (7). That entry listed "a DC reference on TIP chosen jointly with TODO-23's move toward 1 MΩ" as one of three possible production fixes. **That option is now ruled out, not merely doubted.**
