@@ -11,6 +11,47 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (12) — 🔎 Manufacturer search: Switchcraft's own catalogue independently confirms the bench finding, and **12B** is the candidate — but the datasheet CANNOT answer the question we actually need answered
+
+### The bench finding is now independently corroborated by the manufacturer
+
+Switchcraft's jack schematic table lists:
+
+| Type | Circuit |
+|---|---|
+| **11** | **Open circuit** |
+| 12A | **Tip shunt** |
+| **12B** | **Double open circuit** |
+
+**The `11` is a plain 2-conductor jack with no switching contact — exactly what the continuity test measured.** Two independent sources now agree: the DMM at the bench, and the manufacturer's own circuit designation. The runbook's drawing at lines 1105–1113, which shows a SWITCH terminal on the #11, is **wrong about the part**, and that is now settled rather than inferred.
+
+The `12A` is confirmed as **tip shunt** — the topology already ruled out by ADR-002 and 2026-09-13 (8). **Do not buy it.**
+
+### Candidate: Switchcraft 12B
+
+`1/4" Stereo 3 Conductor Jack w/Nut & Washer, **Double Open Circuit**` — three independent contacts (T, R, S), **no shunt and no switch on either tip or ring**, solder lugs, panel mount in a 0.375" hole, same open-frame family as the installed `11`. Orderable: DigiKey **109541**, also RS, Mouser, CE Distribution, Amplified Parts.
+
+*"Double open circuit"* is the operative phrase: it means the third conductor is a **plain ring contact**, not a switch — which is precisely what the TRS-ring detect scheme needs, and precisely what distinguishes it from the 12A.
+
+### 🔺 The limit of what any datasheet can settle here
+
+**No Switchcraft document states that a TS plug's sleeve bridges RING to SLEEVE.** That is **mechanical contact geometry**, not an electrical specification, and it is not published. It is universally true of A-gauge 1/4" jacks in practice — it is how effects pedals switch their battery — but *"universally true in practice"* is **exactly the evidence tier that started this entire branch.** A drawing asserted a switch contact; the physical part did not have one.
+
+**So the datasheet gets us to:** *12B is a plain TRS jack, three independent contacts, no shunt, same form factor as the installed 11.*
+**It does not get us to:** *ring shorts to sleeve when a TS plug is inserted.*
+
+**That second claim must be measured on a physical sample with the actual TS cable in use, before any decision to standardise.** Conley's proposed sequence already does this and is correct as written. Buy **one** (consider two — they are inexpensive), continuity-map it, then bench-prove it.
+
+### Also checked and set aside
+
+**Neutrik NMJ6HF-S** — 1/4" stereo, solder lugs, ≥1 GΩ insulation, >10,000 mating cycles, contact resistance <15 mΩ. Good part, but it is a **switched** jack listing **two switching contacts**, and what those contacts do is not determinable without the mechanical drawing. For a hand-wired prototype that is added complexity in exchange for a capability the TRS-ring scheme does not need. **Not rejected — deferred**, as the fallback if the 12B's ring does not bridge reliably.
+
+### Unchanged and still required regardless of part choice
+
+The **TODO-40 ground measurement**. Whichever part is chosen, the TRS-ring scheme routes ~150 µA of detect current through the audio ground at the jack, and this project has an unexplained 33.1 dB ground-return sensitivity on record. **Noise-floor before/after, detect disconnected vs connected, is not optional.**
+
+---
+
 ## 2026-09-13 (11) — 🔻 MY ERROR: I concluded a part was in hand from a figure that only shows it was designed in. And a correction to the purchasing plan
 
 ### The error
