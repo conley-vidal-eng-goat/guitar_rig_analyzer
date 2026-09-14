@@ -11,6 +11,49 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (11) — 🔻 MY ERROR: I concluded a part was in hand from a figure that only shows it was designed in. And a correction to the purchasing plan
+
+### The error
+
+Entry (10) says, in consecutive sentences: *"It appears in **no** parts table and **not** in Cup E"* and then *"The bench proof below needs one, **and one exists.** No purchasing blocks it."*
+
+**The second sentence contradicts the first and has no support.** The D2F-01L appears exactly once in the whole repository — `docs/breadboard_bringup_v3.md` line 1583, inside the Phase 8 *design figure*. That is evidence the part was **planned**, not that it was **bought**. The parts list Conley actually purchased from contains *"3× Switchcraft #11, 1× Neutrik XLR"* and no microswitch of any kind.
+
+**Assume D2F-01L on hand = 0.** Standardising three 1/4" detects plus the XLR needs **four**, and the count of additional units required is **four, not three** — my earlier figure subtracted a unit that does not exist.
+
+**This is the exact evidence-tier failure this project already has a rule for.** I had the disconfirming evidence *in the same paragraph*, wrote it down, and drew the opposite conclusion anyway. "Appears in a design figure" is the weakest possible tier for a stock claim, and I promoted it to "in hand" without noticing. It would have sent Conley searching bins for a part that was never ordered. Caught by ChatGPT at the bench, not by me.
+
+### Second opinion on the purchasing plan — one point I disagree with
+
+**Agreed:** do not buy the Switchcraft **12A**. Its third terminal is a **tip shunt**, which is the topology already ruled out — it hands the detect job back to the TIP node and re-creates the conflict proven in (8).
+
+**Agreed:** "three terminals" ≠ "plug detect." That conflation is what started this whole branch.
+
+**Disagreed — a TRS jack's RING *is* a standard insertion detector, and dismissing it may discard the best option.** The claim that a stereo jack's third conductor *"is not an independent insertion detector"* is not correct as stated. Using the ring of a TRS jack to detect a **TS** plug is the classic method (it is how effects pedals switch their battery). The mechanism: a TS plug's sleeve barrel is long enough to bridge the RING and SLEEVE contacts, so:
+
+| State | RING | pin 16 (INPUT_PULLUP) |
+|---|---|---|
+| empty | open | **HIGH** |
+| TS plug inserted | shorted to SLEEVE = GND | **LOW** |
+
+**Checked against ADR-002:** the detect path is `pin 16 → RING → (plug sleeve) → SLEEVE → GND`. **It never touches TIP**, so it imposes no loading on the guitar signal node and the ~1 MΩ requirement is untouched. Closed resistance is metal-to-metal, ~0 Ω, far inside the < 9.4 kΩ bound. **Compliant.**
+
+**Polarity:** this is the *opposite* sense from the microswitch — empty HIGH, inserted LOW — so `JACK_INSTRUMENT_DETECT_INVERTED` would be **0**, not 1. The per-connector polarity defines added in `b32d04a` already accommodate this without a code change, which is an unplanned vindication of choosing four defines over one global flag.
+
+**The caveat that is genuinely this project's problem, and it is not generic.** The detect return path runs through the **audio ground at the jack**, and pin 16's 22 kΩ pull-up sources ~150 µA into it when a plug is inserted. That is DC and tiny. But **TODO-40 recorded a 33.1 dB change in the SOURCE noise floor from moving one ground return**, and the mechanism is still unidentified. A project with demonstrated extreme sensitivity to audio-ground return topology should not add a new DC path into that node without measuring. **Not disqualifying — it needs a before/after noise-floor measurement, which this project already knows how to take.**
+
+### Where that leaves the purchase
+
+Three options, none selected here:
+
+1. **Isolated-switch 1/4" jack** — cleanest electrically, no bracket, no alignment, detect never touches any audio node. Requires finding a real part number that actually has an isolated switch rather than a tip shunt.
+2. **TRS jack, ring as detect** — cheap, universally available, no mechanical work, ADR-002-compliant on TIP. Costs a DC path into audio ground that must be measured against TODO-40.
+3. **External microswitch** — proven topology, zero audio-node contact of any kind, but four units to buy plus an unsolved mechanical mounting/alignment problem per jack.
+
+**No part number is recommended until one is verified against a manufacturer datasheet.** Given how this branch started — a runbook drawing asserting a switch contact that the physical part did not have — **a datasheet claim about switching topology must be read from the manufacturer, not inferred from a catalogue category, a terminal count, or a product name.**
+
+---
+
 ## 2026-09-13 (10) — ✅ DECISION: J4 presence detection uses an independent COM–NC lever microswitch, not the jack. Firmware needs no change
 
 **Decision (breadboard prototype scope):** keep the Switchcraft #11 as the audio jack and detect plug presence with a **separate Omron D2F-01L COM–NC lever microswitch** — the same element already designed into Phase 8 for the XLR. Likely to standardise across all three 1/4" positions. **Do not replace the #11s to get detection, and do not sense their TIP nodes.**
@@ -36,7 +79,7 @@ The detect path is `pin 16 → COM → NC → GND`. **It never touches an audio 
 
 **Exactly 1× Omron D2F-01L is specified** (runbook line 1583, in the Phase 8 figure). It appears in **no** parts table and **not** in Cup E, which lists only *"3× Switchcraft #11, 1× Neutrik XLR."*
 
-- **The bench proof below needs one, and one exists.** No purchasing blocks it.
+- **The bench proof below needs one.** ~~and one exists. No purchasing blocks it.~~ **🔻 WITHDRAWN 2026-09-13 — see entry (11). "One exists" was unsupported and contradicted the sentence immediately above it. A part drawn in a design figure is not a part that was purchased. Assume D2F-01L on hand = 0.**
 - **Standardising across three 1/4" jacks plus the XLR needs four.** Three more to buy. That is a procurement item, not a blocker on the next step.
 - Using the Phase 8 unit for the Phase 5 proof consumes the XLR's switch. Acceptable while proving architecture; note it so Phase 8 is not later found short.
 
