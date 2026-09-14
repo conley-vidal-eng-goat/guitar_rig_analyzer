@@ -11,6 +11,57 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (7) — 🔴 Phase 5 detect: the conductor was never run, AND the runbook's prescribed fix cannot work on this circuit
+
+**Live null result.** `b32d04a` uploaded and running. Across **uptime 18 → 218 s, 45 diagnostic windows, continuous capture with no gaps**, covering a deliberate **empty → insert → remove → insert** sequence on the Switchcraft #11 instrument jack:
+
+- **Zero `JACK_CHANGED` events.**
+- **Zero `detail(change)` lines.** Only `detail(init)` exists.
+- Pin 16 read `HIGH` at init and was never observed otherwise.
+
+Evidence: `ai/evidence/2026-09-13-phase5-detect-null-result.log`.
+
+**Two independent sources agree the detect conductor was never run.** The live GPIO behaves exactly like an open INPUT_PULLUP input. And `docs/asbuilt/netlist.md` documents the jack as tip-only — `1/4" JACK tip ─ col30 ─ C1 ─ col33 ─ jmp ─ col37` — with **no sleeve entry, no switch-lug entry, and Teensy pin 16 appearing nowhere in the document at all.**
+
+This vindicates TODO-5's 🟡 wording exactly. *"Jack INSTALLED and signal path verified"* was precise and complete: the **signal** path was built, the **detect** path was not, and nobody ever claimed otherwise. The runbook requires three pigtail conductors — line 1129 *"red = tip, black = sleeve, green = switch"* — with line 1145 TIP → col 30, line 1149 **SLEEVE → GND rail**, line 1149 **SWITCH → Teensy pin 16**. One of three was built.
+
+**The firmware is untestable, not failed.** `signalRouter_init()`/`update()` are live, all four pins were read, per-connector polarity applied, and the evidence format printed. Three of four inputs behave exactly as unwired pullup inputs should. There is no evidence against the code, and none for it either.
+
+### 🔺 The prescribed fix does not work on this circuit — and the runbook's own table says why
+
+The runbook's Phase 5 truth table (line 1118) states the problem itself:
+
+| State | Switchcraft #11 SWITCH terminal | Firmware wants |
+|---|---|---|
+| No plug | shorted to TIP terminal | HIGH ✓ *"matches if we wire TIP to GND but TIP carries signal... so it doesn't ✗"* |
+| Plug inserted | open (floats) | LOW — *"needs INPUT_PULLUP to pull down but it pulls up ✗"* |
+
+It then concludes *"the cleanest fix is a one-line firmware invert"* and dismisses the Cliff CL1384 make-on-insertion alternative at line 1221 as unnecessary. **That conclusion does not follow from its own table.**
+
+**Trace the actual circuit.** The #11's SWITCH lug shorts to **TIP** when empty and floats when inserted. TIP is `col 30`, and the as-built `SOURCE_IN` net is `col 30 · J4 tip · C1` — **C1 is a 10 nF ceramic** (`docs/asbuilt/netlist.md` line 95, tagged `PHYS`), which blocks DC, and `col 30` has **no other connection**. So with SWITCH wired to pin 16 and SLEEVE grounded:
+
+- **Empty:** pin 16 → SWITCH → TIP → col 30 → C1 → *DC blocked, nowhere*. Pull-up wins ⇒ **HIGH**.
+- **Inserted:** SWITCH open. Pull-up wins ⇒ **HIGH**.
+
+**Pin 16 reads HIGH in both states. The pin never changes, so no value of `JACK_DETECT_INVERTED` can recover a transition from it.** An invert maps HIGH→0 or HIGH→1; it cannot manufacture a state change that the hardware does not produce. The grounding that the runbook's table assumes ("closed-to-tip-to-sleeve-to-GND", line 854) requires TIP to have a DC path to ground, and this circuit deliberately does not give it one — C1 is there precisely to block DC out of the guitar signal.
+
+**Falsifiable prediction, and it is cheap to test.** The `col 30` → GND diagnostic jumper is **currently fitted** as one of the four outstanding deviations. That jumper gives TIP the missing DC path. So:
+
+1. Wire SWITCH → pin 16 **now, with the jumper still fitted** ⇒ detect **should** work, empty = LOW, inserted = HIGH, and `JACK_INSTRUMENT_DETECT_INVERTED = 1` as currently shipped is **correct**.
+2. Remove the `col 30` → GND jumper ⇒ detect **should break**, pin 16 stuck HIGH.
+
+If both hold, the coupling is demonstrated rather than argued, and the design question is forced into the open instead of being discovered later as a regression.
+
+**This is why the deviations must not be restored independently.** A diagnostic jumper that was scheduled for removal turns out to be load-bearing for a feature that has not been built yet. Removing it "to restore the baseline" would have broken detect before detect ever worked, and the failure would have looked like a firmware bug.
+
+**What I am NOT claiming:** that grounding `col 30` is an acceptable production answer. It shorts the guitar signal to ground, which defeats the input entirely. The jumper is a diagnostic, it works for detect by accident, and the real fix is a design decision — a make-on-insertion jack (the CL1384 the runbook dismissed), a different detect topology, or a DC reference on TIP chosen jointly with TODO-23's move toward 1 MΩ. **That decision is not mine to make and is not made here.**
+
+### Standing correction to the runbook
+
+`docs/breadboard_bringup_v3.md` Phase 5 prescribes a fix its own truth table shows to be insufficient, and rejects the alternative that would have worked. The build guide should not be followed on this point without the circuit analysis above. Recorded here rather than edited into the runbook, which is a separate artifact with its own change discipline.
+
+---
+
 ## 2026-09-13 (6) — ✅ TODO-43 CLOSED: the 19.4 dB was a 1× probe on a 10×-configured scope channel. No codec anomaly, no shield fault
 
 **Matched-setting measurement.** Physical probe set to 10×, DHO804 CH1 probe ratio 10×, 10 mV/div, probe on the SGTL5000-side pad of the LINE-IN-L coupling capacitor, shield-local GND, tone and wiring otherwise untouched: **16.3 mV<sub>rms</sub> current, 16.3 avg, ~16.5 max, ~15.9 min, 989 Hz current / ~1.00 kHz average, clean sine, no clipping.**
