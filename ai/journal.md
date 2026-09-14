@@ -11,6 +11,55 @@ How to use this file:
 
 ---
 
+## 2026-09-13 (10) — ✅ DECISION: J4 presence detection uses an independent COM–NC lever microswitch, not the jack. Firmware needs no change
+
+**Decision (breadboard prototype scope):** keep the Switchcraft #11 as the audio jack and detect plug presence with a **separate Omron D2F-01L COM–NC lever microswitch** — the same element already designed into Phase 8 for the XLR. Likely to standardise across all three 1/4" positions. **Do not replace the #11s to get detection, and do not sense their TIP nodes.**
+
+**The project already solved this exact problem once.** Runbook line 1565: *"Standard XLRs don't have a switch contact, so we use a small mechanical microswitch actuated by the inserted XLR shell."* The #11 turns out to be in the same category — an audio jack with no detect contact. The answer that was written for the XLR generalises, and it was in the runbook the whole time.
+
+### The shipped firmware is already correct — verified, not assumed
+
+With `COM → pin 16` (INPUT_PULLUP, 22 kΩ) and `NC → GND`:
+
+| Lever | COM–NC | pin 16 raw | `raw_present` | `^ INVERTED(1)` | `present` | Meaning |
+|---|---|---|---|---|---|---|
+| released | closed | **LOW** | 1 | 1^1 | **0** | plug absent ✓ |
+| pressed | open | **HIGH** | 0 | 0^1 | **1** | plug inserted ✓ |
+
+`readJackInserted()` computes `raw_present = (digitalRead(pin) == LOW)` then `raw_present ^ inverted`, and `JACK_INSTRUMENT_DETECT_INVERTED` is already **1**. **No firmware change is required** — the polarity mechanism written for the assumed shunt topology happens to be exactly right for this one. Firmware `b32d04a` as running on the board is correct for this design.
+
+### ADR-002 compliance, and it is not marginal
+
+The detect path is `pin 16 → COM → NC → GND`. **It never touches an audio node**, so it imposes no DC loading requirement on the guitar input at all — the strongest possible form of compliance rather than a tolerable one. Closed-contact resistance is ~0 Ω (D2F initial contact resistance is order 100 mΩ), against the < 9.4 kΩ bound derived in 2026-09-13 (8). Margin of roughly five orders of magnitude.
+
+### 🔴 Parts gate — enough to prove it, not enough to build it
+
+**Exactly 1× Omron D2F-01L is specified** (runbook line 1583, in the Phase 8 figure). It appears in **no** parts table and **not** in Cup E, which lists only *"3× Switchcraft #11, 1× Neutrik XLR."*
+
+- **The bench proof below needs one, and one exists.** No purchasing blocks it.
+- **Standardising across three 1/4" jacks plus the XLR needs four.** Three more to buy. That is a procurement item, not a blocker on the next step.
+- Using the Phase 8 unit for the Phase 5 proof consumes the XLR's switch. Acceptable while proving architecture; note it so Phase 8 is not later found short.
+
+### Sequencing — electrical proof BEFORE mechanical integration
+
+**Do not mount the switch yet.** The next step proves firmware + GPIO + detection topology with nothing mounted and nothing connected to J4:
+
+1. Power OFF. Continuity-identify **COM** and **NC** on the D2F-01L: lever untouched ⇒ COM↔NC beeps; lever depressed ⇒ beep stops. Ignore NO. **The runbook cannot help here — line 2002 admits it lacks macro photos of the D2F-01L COM/NC/NO terminals**, so electrical identification is the correct method, not excess caution.
+2. Two temporary connections only: `pin 16 → COM`, `GND → NC`. **Nothing connects to J4.** The audio path is untouched.
+3. Power up, lever released ⇒ expect `raw=LOW inv=1 present=0`. Press ⇒ expect `JACK_CHANGED` and `raw=HIGH inv=1 present=1`. Release ⇒ back to LOW / present=0.
+
+**This is a stronger checkpoint than mounting first**, because it isolates the electrical question from the mechanical one. If it fails, the fault is firmware/GPIO/topology with no mechanical variable in play.
+
+### ⚠️ Hand-actuation does NOT close Phase 5
+
+The sign-off is *"guitar plays through, detect events fire"*, and mechanical actuation by an inserted TS plug is part of the real feature. **A passing hand-press proves the architecture, not the phase.** Phase 5 closes only when inserting a plug actuates the lever and produces the transition. The mechanical problem — mounting the lever so a TS plug reliably presses it — is deferred, not solved, and is the harder half.
+
+### On the withdrawn arithmetic
+
+Retained, as recorded in 2026-09-13 (9). It remains a valid proof that a hypothetical TIP-shunted implementation would conflict with the high-impedance input requirement under this GPIO pull-up. What was lost is only the opportunity to demonstrate that mechanism on J4 — because J4 never contained the contact.
+
+---
+
 ## 2026-09-13 (9) — 🔻 CORRECTION: the installed J4 has NO switched contact at all. Entries (7) and (8) reasoned about a topology this jack does not have
 
 **Supersedes the J4 worked example in 2026-09-13 (7) and (8), and withdraws the planned SHUNT → pin 16 experiment.** Those entries' *general* reasoning survives; their premise about this specific part does not.
