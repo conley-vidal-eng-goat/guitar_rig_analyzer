@@ -250,6 +250,36 @@ set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 
 #define JACK_DEBOUNCE_MS    50
 
+// -----------------------------------------------------------------------------
+// Jack-detect polarity — PER CONNECTOR, not global.
+//
+// The router's un-inverted convention is "LOW = inserted": a switch that closes
+// to ground when a plug goes in. The installed Switchcraft #11 does the
+// OPPOSITE. Its switch lug is shorted to the tip contact when the jack is
+// EMPTY and opens when a plug is inserted, so with INPUT_PULLUP it reads:
+//
+//     empty    -> switch closed to the (grounded) tip -> pin LOW
+//     inserted -> switch open -> pull-up wins         -> pin HIGH
+//
+// which is backwards from the router's convention. Hence the invert on pin 16.
+//
+// These are DELIBERATELY four separate defines rather than one global flag.
+// Only the instrument jack is physically installed (Phase 5, 2026-09-08). Rig
+// Send, Return TS and Return XLR are Phase 7/8 hardware that does not exist on
+// the bench yet, so this file must not assert a sense convention for them. The
+// runbook PLANS for all four to end up speaking the same convention -- Jacks #2
+// and #3 are also Switchcraft #11s, and the XLR microswitch is to be wired
+// COM-NC so it matches -- but a plan is not a built connector. Set each one to
+// 1 when that connector is actually wired and its sense is verified at the
+// bench, not before.
+//
+// Applied in signal_router.cpp as: present = raw_present ^ inverted
+// -----------------------------------------------------------------------------
+#define JACK_INSTRUMENT_DETECT_INVERTED 1   // Switchcraft #11, INSTALLED 2026-09-08
+#define JACK_RIG_SEND_DETECT_INVERTED   0   // Phase 7 — not built, sense unverified
+#define JACK_RETURN_TS_DETECT_INVERTED  0   // Phase 7 — not built, sense unverified
+#define JACK_RETURN_XLR_DETECT_INVERTED 0   // Phase 8 — not built, sense unverified
+
 // =============================================================================
 // FEATURE PROMOTION STATE
 // =============================================================================

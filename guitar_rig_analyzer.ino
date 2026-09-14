@@ -110,6 +110,7 @@
 #include "export_engine.h"           // JSON and CSV export to SD
 #include "insights_engine.h"         // v0.5 advisory interpretation layer
 #include "signal_generator.h"       // v0.4 block-aligned stimulus generator
+#include "signal_router.h"          // Phase 5: jack detect only — NO injection
 #include <stdlib.h>
 
 
@@ -300,6 +301,25 @@ EXPECTED_BLOCK_MS);
     Serial.println("[Main]      r = reset EMA smoothing");
 
 
+    // -------------------------------------------------------------------------
+    // Signal router — JACK DETECT ONLY (Phase 5, TODO-5 detect half).
+    //
+    // This puts signalRouter_init()/update() into the live path for the first
+    // time. Scope is deliberately the detect half and nothing else: injection
+    // stays off (ENABLE_DUT_INJECTION is 0), s_mixer_send is not added, and
+    // measurement_engine still does not consult signalRouter_canInject().
+    // Those are Phase 6/7 work, gated by TODO-11 on hardware that is not on the
+    // bench. Do not merge them here just because the router is now running.
+    //
+    // NOTE: signalRouter_init() also configures RELAY_SEND_PIN/RELAY_RETURN_PIN
+    // as outputs and drives them LOW. Nothing is connected to those pins yet
+    // (Phase 6 is not built), so this is electrically inert -- but it IS relay
+    // GPIO activity and is called out here rather than left to be discovered.
+    // -------------------------------------------------------------------------
+    Serial.println("[Main] Initialising signal router (jack detect only)...");
+    signalRouter_init();
+
+
     s_last_diag_ms = millis();
     Serial.println("[Main] Setup complete. Entering main loop.");
     Serial.println("--------------------------------------------------");
@@ -315,6 +335,20 @@ void loop() {
 
 
     s_loop_iterations++;
+
+    // -------------------------------------------------------------------------
+    // Jack detect — every iteration, unconditionally.
+    //
+    // Debounce is time-based (JACK_DEBOUNCE_MS), so this must be polled
+    // continuously rather than gated on audio-block availability. It is cheap:
+    // four digitalRead() calls and a comparison when nothing changes.
+    //
+    // The return value is intentionally not consumed yet. Phase 5's sign-off
+    // only requires that detect events FIRE and are observable on serial, which
+    // signalRouter_update() prints itself. Wiring RouterEvent into
+    // measurement_engine invalidation is Phase 7 work -- see TODO-11.
+    // -------------------------------------------------------------------------
+    (void)signalRouter_update();
 
     // T1 harness: time the WHOLE loop body. Catches anything that blocks,
     // wherever it lives — not just presentation calls. A transport layer that is

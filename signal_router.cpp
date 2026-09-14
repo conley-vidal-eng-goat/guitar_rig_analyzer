@@ -65,14 +65,52 @@ static bool s_initialised = false;
 // PRIVATE HELPERS
 // =============================================================================
 
-// Read a jack-detect GPIO. Active LOW: LOW = inserted, HIGH = not inserted.
-static inline bool readJackInserted(uint8_t pin) {
-    return (digitalRead(pin) == LOW);
+// Read a jack-detect GPIO.
+//
+// The un-inverted convention is active LOW: LOW = inserted, HIGH = not inserted
+// (a switch closing to ground when a plug goes in). Connectors whose switch does
+// the opposite pass inverted = true; see the JACK_*_DETECT_INVERTED block in
+// config.h for which connectors those are and why they are per-connector.
+//
+// Polarity lives HERE and nowhere else. It is deliberately not folded into
+// pinMode, not applied at the call sites, and not baked into the debounce state,
+// so there is exactly one place to look when a sense convention is wrong.
+static inline bool readJackInserted(uint8_t pin, bool inverted) {
+    const bool raw_present = (digitalRead(pin) == LOW);
+    return raw_present ^ inverted;
+}
+
+// Raw pin level, for diagnostics only. Never used for routing decisions --
+// this exists so a bench test can record the raw GPIO state alongside the
+// interpreted state and prove the inversion is doing what it claims.
+static inline int readJackRawLevel(uint8_t pin) {
+    return digitalRead(pin);
+}
+
+// Print raw GPIO level beside the interpreted "present" state for all four
+// detect inputs. This is the evidence format the Phase 5 bench test needs:
+// raw pin state AND interpreted state, for both empty and inserted conditions,
+// so the inversion can be shown to be correct rather than assumed.
+static void logJackDetail(const char* tag) {
+    Serial.printf("[SignalRouter] detail(%s)  "
+                  "instrument pin%-2d raw=%s inv=%d present=%d | "
+                  "send pin%-2d raw=%s inv=%d present=%d | "
+                  "ts pin%-2d raw=%s inv=%d present=%d | "
+                  "xlr pin%-2d raw=%s inv=%d present=%d\n",
+        tag,
+        JACK_INSTRUMENT_PIN, readJackRawLevel(JACK_INSTRUMENT_PIN) ? "HIGH" : "LOW ",
+        (int)JACK_INSTRUMENT_DETECT_INVERTED, s_jack_instrument.debounced,
+        JACK_RIG_SEND_PIN,   readJackRawLevel(JACK_RIG_SEND_PIN)   ? "HIGH" : "LOW ",
+        (int)JACK_RIG_SEND_DETECT_INVERTED,   s_jack_rig_send.debounced,
+        JACK_RETURN_TS_PIN,  readJackRawLevel(JACK_RETURN_TS_PIN)  ? "HIGH" : "LOW ",
+        (int)JACK_RETURN_TS_DETECT_INVERTED,  s_jack_return_ts.debounced,
+        JACK_RETURN_XLR_PIN, readJackRawLevel(JACK_RETURN_XLR_PIN) ? "HIGH" : "LOW ",
+        (int)JACK_RETURN_XLR_DETECT_INVERTED, s_jack_return_xlr.debounced);
 }
 
 // Update debounce state for one jack. Returns true if debounced state changed.
-static bool updateDebounce(JackDebounce* j, uint8_t pin) {
-    bool current_raw = readJackInserted(pin);
+static bool updateDebounce(JackDebounce* j, uint8_t pin, bool inverted) {
+    bool current_raw = readJackInserted(pin, inverted);
     uint32_t now = millis();
 
     if (current_raw != j->raw) {
@@ -176,14 +214,14 @@ void signalRouter_init() {
     // Read initial jack state — treat as already debounced (device just powered up)
     uint32_t now = millis();
 
-    s_jack_instrument = { readJackInserted(JACK_INSTRUMENT_PIN),
-                          readJackInserted(JACK_INSTRUMENT_PIN), now };
-    s_jack_rig_send   = { readJackInserted(JACK_RIG_SEND_PIN),
-                          readJackInserted(JACK_RIG_SEND_PIN),   now };
-    s_jack_return_ts  = { readJackInserted(JACK_RETURN_TS_PIN),
-                          readJackInserted(JACK_RETURN_TS_PIN),  now };
-    s_jack_return_xlr = { readJackInserted(JACK_RETURN_XLR_PIN),
-                          readJackInserted(JACK_RETURN_XLR_PIN), now };
+    s_jack_instrument = { readJackInserted(JACK_INSTRUMENT_PIN, JACK_INSTRUMENT_DETECT_INVERTED),
+                          readJackInserted(JACK_INSTRUMENT_PIN, JACK_INSTRUMENT_DETECT_INVERTED), now };
+    s_jack_rig_send   = { readJackInserted(JACK_RIG_SEND_PIN,   JACK_RIG_SEND_DETECT_INVERTED),
+                          readJackInserted(JACK_RIG_SEND_PIN,   JACK_RIG_SEND_DETECT_INVERTED),   now };
+    s_jack_return_ts  = { readJackInserted(JACK_RETURN_TS_PIN,  JACK_RETURN_TS_DETECT_INVERTED),
+                          readJackInserted(JACK_RETURN_TS_PIN,  JACK_RETURN_TS_DETECT_INVERTED),  now };
+    s_jack_return_xlr = { readJackInserted(JACK_RETURN_XLR_PIN, JACK_RETURN_XLR_DETECT_INVERTED),
+                          readJackInserted(JACK_RETURN_XLR_PIN, JACK_RETURN_XLR_DETECT_INVERTED), now };
 
     // Initialise routing state from current jack state
     s_return_source    = computeReturnSource();
@@ -203,6 +241,7 @@ void signalRouter_init() {
     Serial.printf("[SignalRouter] Jacks: instrument=%d send=%d return_ts=%d return_xlr=%d\n",
                   s_jack_instrument.debounced, s_jack_rig_send.debounced,
                   s_jack_return_ts.debounced, s_jack_return_xlr.debounced);
+    logJackDetail("init");
     Serial.printf("[SignalRouter] Return source: %s\n",
                   s_return_source == ReturnSource::TS  ? "TS" :
                   s_return_source == ReturnSource::XLR ? "XLR" : "NONE");
@@ -217,10 +256,10 @@ RouterEvent signalRouter_update() {
 
     // Debounce all four jack detect inputs
     bool any_changed = false;
-    any_changed |= updateDebounce(&s_jack_instrument, JACK_INSTRUMENT_PIN);
-    any_changed |= updateDebounce(&s_jack_rig_send,   JACK_RIG_SEND_PIN);
-    any_changed |= updateDebounce(&s_jack_return_ts,  JACK_RETURN_TS_PIN);
-    any_changed |= updateDebounce(&s_jack_return_xlr, JACK_RETURN_XLR_PIN);
+    any_changed |= updateDebounce(&s_jack_instrument, JACK_INSTRUMENT_PIN, JACK_INSTRUMENT_DETECT_INVERTED);
+    any_changed |= updateDebounce(&s_jack_rig_send,   JACK_RIG_SEND_PIN,   JACK_RIG_SEND_DETECT_INVERTED);
+    any_changed |= updateDebounce(&s_jack_return_ts,  JACK_RETURN_TS_PIN,  JACK_RETURN_TS_DETECT_INVERTED);
+    any_changed |= updateDebounce(&s_jack_return_xlr, JACK_RETURN_XLR_PIN, JACK_RETURN_XLR_DETECT_INVERTED);
 
     if (!any_changed) {
         return RouterEvent::NONE;
@@ -280,6 +319,7 @@ audioCap_setInjectionMode(false);
                   s_jack_instrument.debounced, s_jack_rig_send.debounced,
                   s_jack_return_ts.debounced, s_jack_return_xlr.debounced,
                   s_description);
+    logJackDetail("change");
 
     // Determine the most important event to return
     if (was_valid && !now_valid) {
