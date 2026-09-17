@@ -1699,7 +1699,7 @@ Each check is one line you read out loud. Tick each as you confirm.
 - [ ] Phase 4: Phone test signal visible on SOURCE spectrum.
 - [ ] Phase 5: Switchcraft #11 + invert define both work — guitar plays through, detect events fire.
 - [ ] Phase 6: TQ2-5V #1 clicks on `p`/`P`; continuity matches expected state.
-- [ ] Phase 7: Full route matrix (4 jack combinations) produces correct route description on Serial.
+- [ ] Phase 7: Operator selection of TS de-energises RELAY_RETURN and routes the TS return to Line-In R; operator selection of XLR energises RELAY_RETURN and generates ROUTE_CHANGED. Route state follows operator selection independent of jack-presence inputs. XLR signal-path verification occurs in Phase 8. *(ADR-004)*
 - [ ] Phase 8: XLR + microswitch detect both work end-to-end.
 - [ ] Phase 9: `1`, `2`, `3`, `4` all PASS.
 - [ ] Phase 10: Pi link — common ground verified, HELLO reports protocol v2, known data renders, **clamped bins marked rather than drawn**, CRC rejection and unknown-packet tolerance demonstrated, reboot recovery demonstrated, and the **T1 acceptance matrix** passed: all four runs recorded, runs 2-4 indistinguishable from the `_NONE` control on `block_ms_*`, and `blocks_skipped = 0` in every run.

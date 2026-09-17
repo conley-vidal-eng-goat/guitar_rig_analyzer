@@ -37,7 +37,9 @@ Two relays, each SPDT, controlled by one GPIO each.
 
 **Default power-on state:** Both relays de-energised.
 - Rig Send carries the buffered instrument signal (safe — no generator surprises)
-- Return path is TS (most common connection for guitar rigs)
+- Return path is TS. The software return selection also starts at TS on **every** boot
+  and is never saved ([ADR-004](docs/adr/ADR-004-return-source-is-operator-selected.md)),
+  so relay, software state and display start in agreement.
 
 ## Jack Detection
 
@@ -51,23 +53,35 @@ Each GPIO has an internal pull-up enabled.
 | RETURN_TS | Jack inserted | No jack |
 | RETURN_XLR | Jack inserted | No jack |
 
+> **ADR-003 / ADR-004:** jack presence is informational only. It must not choose the
+> return source or decide whether a measurement is valid. Detect inputs may feed status and warnings.
+> Rig Send gating for injection is still an open question (ADR-003).
+
 **Debounce:** 50 ms minimum on all detect inputs. Jack insertion is a mechanical event
 with contact bounce; reading immediately after a transition produces false states.
 
 ## Routing Policy — Return Source Selection
 
-| return_ts detected | return_xlr detected | user override | RELAY_RETURN state | RETURN_NODE source |
-|----|----|----|----|----|
-| 0 | 0 | any | A (TS, default) | NONE — no return signal |
-| 1 | 0 | any | A (TS) | TS jack |
-| 0 | 1 | any | B (XLR) | XLR jack |
-| 1 | 1 | NONE | B (XLR) | XLR jack (default priority) |
-| 1 | 1 | TS | A (TS) | TS jack (user override) |
-| 1 | 1 | XLR | B (XLR) | XLR jack (user override) |
+> **Decided by [ADR-004](docs/adr/ADR-004-return-source-is-operator-selected.md), 2026-09-16.
+> ⚠️ NOT YET IMPLEMENTED:** the active `signal_router.cpp` still runs the superseded
+> auto-detect policy described at the end of this section. Do not read this table as current behaviour.
 
-**XLR default priority rationale:** When both are inserted, XLR is preferred because
-balanced connections are less susceptible to noise — the user likely connected XLR for a
-reason. User override (via Serial command or future touch UI) reverses this.
+The **operator's selection is the only authority.** Jack presence is not consulted.
+
+| Operator selection | RELAY_RETURN state | RETURN_NODE source |
+|----|----|----|
+| TS (**power-on default, every boot, not saved**) | A (de-energised) | TS jack |
+| XLR | B (energised) | XLR jack |
+
+- There is no `AUTO` and no "no return" state. A return source is always selected, so the return routing configuration is always defined. This says nothing about whether a return signal is physically connected.
+- Under this policy `route_valid` means **"return routing configuration is defined"**. It does not establish physical return connectivity, and its historical name is not a reason to reintroduce presence detection.
+- A selection change takes effect **immediately**: set the relay → `audioEngine_setRoute()` → ROUTE_CHANGED. It never waits for a jack event.
+- If presence detection is available, a selection whose jack reads absent may raise a **warning** (e.g. "XLR selected, no XLR plug detected"). It must not change the source or block a measurement.
+
+*Superseded (v0.6 auto-detect policy, kept for the record):* presence chose the source.
+TS-only → TS, XLR-only → XLR, none → NONE (no return). A user preference applied only
+when both were inserted, with XLR as default priority. `signalRouter_setReturnPreference()`
+implements this tie-breaker and is **not** sufficient for ADR-004 (ADR-004 § Context).
 
 ## Routing Policy — Generator Injection
 
@@ -85,8 +99,12 @@ signal_router exposes `signalRouter_canInject()` for this check.
 
 | Stimulus type | Minimum jack requirements | Rejection reason if unmet |
 |---|---|---|
-| EXTERNAL | At least one return (TS or XLR) | "No return path — connect rig return" |
-| INTERNAL_* | At least one return AND rig_send | "No send path — connect rig send jack" or "No return path" |
+| EXTERNAL | None from return jacks: a return source is always selected, so routing is defined; physical connection is not established (ADR-004) | — |
+| INTERNAL_* | rig_send (**requirement under review**, ADR-003 injection question) | "No send path — connect rig send jack" |
+
+*Superseded:* both rows previously also required "at least one return (TS or XLR)"
+detected, with rejection "No return path — connect rig return". ADR-004 removes return-jack
+presence from validity.
 
 These checks are advisory — signal_router reports the status, measurement_engine
 decides whether to arm based on it.
@@ -130,17 +148,21 @@ signal_router has no complex state machine. It is a reactive policy module:
 ```
 signalRouter_update() called once per main loop iteration:
   1. Read jack detect GPIOs (with debounce)
-  2. If any detect state changed:
-     a. Recompute return source (apply policy table)
-     b. If return source changed → set RELAY_RETURN → call audioEngine_setRoute()
-     c. If a jack required for the current route is removed → invalidate route
+  2. If any detect state changed: update status / warnings only (ADR-004).
+     Presence never changes the return source.
   3. Injection is controlled explicitly by signalRouter_setInjectionEnabled()
      (called by measurement_engine at ARMED/CAPTURE entry/exit)
+
+Operator return selection (outside update(), applied immediately):
+  set RELAY_RETURN → call audioEngine_setRoute()
 ```
+
+*ADR-004 target, ⚠️ not yet implemented in the active tree.* *Superseded:* step 2 previously recomputed the return source from jack state,
+set the relay on change, and invalidated the route when a return jack was removed.
 
 **Route changes from signal_router always go through the existing chain:**
 ```
-signalRouter detects change
+operator changes return selection
   → sets relays
   → calls audioEngine_setRoute(new_route)
     → calls audioCap_notifyRouteChanged()
@@ -181,7 +203,9 @@ This preserves the existing invalidation contract exactly.
 - signalRouter_setMonitorMode(SOURCE / RETURN / BLEND)
 - Headphone output mix control via s_mixer_send and s_mixer_ret gains
 
-**Phase C — Auto-routing and user override (v0.6.2):**
-- signalRouter_setReturnSource(TS / XLR / AUTO)
-- Reject illegal combinations
-- Serial commands for route override
+**Phase C — Explicit return selection (ADR-004; replaces "Auto-routing and user override"):**
+- Operator return selection TS / XLR, **no AUTO**, TS at every boot, not saved
+- Applied immediately via relay → audioEngine_setRoute()
+- Serial command to select the return
+- Retire or redefine `ReturnPreference::AUTO` / `signalRouter_setReturnPreference()`.
+  Do not keep the old name with new semantics

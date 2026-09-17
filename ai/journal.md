@@ -12,6 +12,39 @@ How to use this file:
 
 ---
 
+## 2026-09-16 (4) — ✅ DECISION: return source is selected by the operator, TS on every boot and not saved. ADR-004 makes ADR-003's Phase 7 preference binding. **Docs only; the firmware does not implement it yet**
+
+**[ADR-004](../docs/adr/ADR-004-return-source-is-operator-selected.md) accepted.** This closes TODO-7's decision gate.
+
+### Decision
+
+- The operator's selection is the only thing that sets the return source: `TS` / `XLR`, **no `AUTO`**.
+- **TS on every boot, not saved.** RELAY_RETURN de-energised is physically TS, so relay, software, display and operator expectation start in agreement. A saved XLR choice would mean booting on TS, reading the saved value, then energising the relay: an extra startup transition, and a window where the displayed configuration and the hardware disagree. Known startup state beats convenience.
+- Jack presence must not choose the return or decide measurement validity. It may only show status or warnings.
+- Selection changes apply immediately via `audioEngine_setRoute()` → ROUTE_CHANGED.
+- **A return source is always *selected*. That is not a claim that a return signal is *connected*.** When the firmware lands, `route_valid` will mean "return routing configuration is defined", not "physical return established". Do not reintroduce presence detection because of the variable's historical name.
+
+### The audit correction worth carrying forward
+
+ADR-003 (and entry 2026-09-13 (13)) said `signalRouter_setReturnPreference()` *"suggests the software anticipated"* explicit selection. **That overstated it.** Read in the active tree, it is a **tie-breaker inside auto-detect**. Presence decides first, the preference is read only when *both* returns are detected, and a preferred jack that is absent silently falls back to the other one. It also has a real defect: `update()` returns before recomputing when no jack changed (cpp:264), so **a preference change never takes effect unless a jack also changes.** ADR-003 now carries a correction note. The original text stays for the record.
+
+Nothing depends on the old behaviour. `setReturnPreference`, `canMeasure()` and `canInject()` have no callers, there is no serial command, and the main loop discards the `RouterEvent`.
+
+### Evidence tier: decided ≠ implemented
+
+The contract's return-source table now describes the ADR-004 policy, **marked NOT YET IMPLEMENTED**. The active `signal_router.cpp` is still auto-detect. Per the source-of-truth rule, do not record explicit selection as implemented until the firmware commit lands and has been read back.
+
+**Order, deliberately split:** (a) decision + contract (this entry) → (b) separate firmware commit → (c) bench proof per TODO-7's new acceptance line.
+
+### Consequences
+
+- **Pin 22 is not required for Phase 7.** Keep the TS return #11. Do not build TS-return detection. Phase 7 hardware = pin-15 driver + signal wiring.
+- TODO-7 proof rewritten: boot state, XLR/TS selection moves the relay and raises ROUTE_CHANGED, the reported source ignores jack state (including no jacks), TS signal reaches line-in R, and a power cycle returns to TS.
+- **Runbook sign-off line 1702 corrected directly.** It read *"Full route matrix (4 jack combinations) produces correct route description on Serial"*, which is the superseded auto-detect criterion, and now carries the ADR-004 operator-selection criterion. **This deliberately departs from ADR-003's precedent** of superseding runbook lines by reference only. Once a decision is binding, a live checkbox that contradicts it is a stale-document trap: someone running the checklist months later should not need to know an ADR invalidated it. TODO-8's "microswitch detect" criterion is flagged for revisit before Phase 8, not rewritten.
+- `signal_router_contract.md` is mode 0400. It was made writable for this edit and restored to 0400, per the 2026-09-11 (2) precedent.
+
+---
+
 ## 2026-09-16 (3) — ✅ PHASE 6 SIGNED OFF. Gaps V6c–V6f closed at the bench; cleaned firmware flashed. Three small residuals, none blocking
 
 ### Closures (bench chat readings, `MEAS` via builder unless tagged)

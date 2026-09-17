@@ -1,6 +1,8 @@
 # ADR-003 — Jack presence detection is a UX/automation feature, not a hardware requirement
 
-**Status:** ACCEPTED · 2026-09-13
+**Status:** ACCEPTED · 2026-09-13 · **§ Phase 7 SUPERSEDED 2026-09-16 by
+[ADR-004](ADR-004-return-source-is-operator-selected.md)** (explicit selection
+made binding). The rest of this ADR is unchanged and in force.
 **Decided by:** Conley Vidal
 **Supersedes:** the Phase 5 sign-off criterion *"detect events fire"*
 (`docs/breadboard_bringup_v3.md` line 1700), and the implicit assumption across
@@ -82,6 +84,14 @@ Requiring the original criterion would mean redesigning functioning hardware to
 satisfy an obsolete test.
 
 ### Phase 7 — resolve Return Source Detection Architecture BEFORE changing hardware
+
+> **SUPERSEDED 2026-09-16 by [ADR-004](ADR-004-return-source-is-operator-selected.md).**
+> Explicit operator selection is now binding: TS on every boot, not saved, and
+> presence detection is informational only. Pin 22 is not required for Phase 7.
+> **Correction to the text below:** `signalRouter_setReturnPreference()` is *not*
+> evidence that explicit routing was anticipated. It is a tie-breaker inside
+> auto-detect, consulted only when both returns are detected (see ADR-004 § Context).
+> The original text is kept below for the record.
 
 Two legitimate architectures, and the choice is a **product decision, not an
 electrical one**:
