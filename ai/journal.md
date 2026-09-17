@@ -44,7 +44,7 @@ The bench chat's closing advice (use the corrected Phase 6 driver as the templat
 - **As-built capture:** `docs/asbuilt/netlist.md` is a 2026-09-07 baseline with no Phase 6. The wiring table above is the source until it's added. TODO-46's owner note says that file belongs to the capture session, so coordinate the edit rather than making it here.
 - **Only pole 1 contacts are bench-proven.** Pole 2 (`56f`–`58f`) is still datasheet-level. Phase 7 uses COM_1/NC_1/NO_1, so this doesn't block, but don't extend "bench-proven" to pole 2.
 
-**Loose end still open from TODO-47:** read the original relay's marking before it's put away.
+**🟢 Closed same day:** the removed original relay reads **TQ2-5V** (`RPT`, builder). Both relays were valid non-latching parts. The only root cause was the reversed coil polarity, and **the TQ2-L2 hypothesis of 2026-09-15 (5) is fully retired**: it was wrong about the part, although its warning about checking the marking before trusting an A/B stands. Diode photo archived as [`evidence/2026-09-16-phase6-flyback-diode-seated.jpg`](evidence/2026-09-16-phase6-flyback-diode-seated.jpg).
 
 ---
 
