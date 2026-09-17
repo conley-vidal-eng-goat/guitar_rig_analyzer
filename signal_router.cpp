@@ -22,6 +22,18 @@
 //   RELAY_SEND:   buffer output → Rig Send (normal instrument signal)
 //   RELAY_RETURN: TS return → codec line-in R
 //
+// Return source (ADR-004): selected by the operator, never by jack presence.
+// s_selected_return is the single authoritative return-routing state. It is
+// set to TS in signalRouter_init() and changed only by
+// signalRouter_setReturnSource(). Jack-detect inputs are informational.
+//
+// TS-at-boot has two layers. Firmware establishes TS when signalRouter_init()
+// runs, which is late in setup(). Before that, pin 15 is in the MCU reset
+// state, so the PHYSICAL power-on state depends on the RELAY_RETURN driver's
+// base pulldown holding the relay de-energised. As of ADR-004 the pin-15
+// driver is not built: that is a Phase 7 bench requirement, not something
+// this code proves.
+//
 // Route description strings are built from a static buffer to avoid heap
 // allocation. The buffer is stable between signalRouter_update() calls.
 // =============================================================================
@@ -47,8 +59,8 @@ static JackDebounce s_jack_return_ts;
 static JackDebounce s_jack_return_xlr;
 
 // --- Routing state ---
-static ReturnSource     s_return_source  = ReturnSource::NONE;
-static ReturnPreference s_return_pref    = ReturnPreference::AUTO;
+// Operator-selected return (ADR-004). Authoritative. Jack state never writes it.
+static ReturnSource     s_selected_return = ReturnSource::TS;
 static MonitorMode      s_monitor_mode   = MonitorMode::SOURCE_RETURN;
 static bool             s_injection_active = false;
 
@@ -129,25 +141,6 @@ static bool updateDebounce(JackDebounce* j, uint8_t pin, bool inverted) {
     return false;   // No change
 }
 
-// Apply the return source policy based on current debounced jack state
-// and user preference. Returns the selected ReturnSource.
-static ReturnSource computeReturnSource() {
-    bool ts  = s_jack_return_ts.debounced;
-    bool xlr = s_jack_return_xlr.debounced;
-
-    if (!ts && !xlr) return ReturnSource::NONE;
-    if (ts && !xlr)  return ReturnSource::TS;
-    if (!ts && xlr)  return ReturnSource::XLR;
-
-    // Both inserted — apply preference
-    switch (s_return_pref) {
-        case ReturnPreference::TS:   return ReturnSource::TS;
-        case ReturnPreference::XLR:  return ReturnSource::XLR;
-        case ReturnPreference::AUTO:
-        default:                     return ReturnSource::XLR;  // XLR preferred
-    }
-}
-
 // Set the RELAY_RETURN GPIO based on the selected return source.
 static void applyReturnRelay(ReturnSource source) {
     switch (source) {
@@ -165,8 +158,8 @@ static void applyReturnRelay(ReturnSource source) {
 // Build a human-readable route description string.
 static void buildDescription() {
     const char* ret_str =
-        (s_return_source == ReturnSource::TS)  ? "TS return" :
-        (s_return_source == ReturnSource::XLR) ? "XLR return" :
+        (s_selected_return == ReturnSource::TS)  ? "TS return" :
+        (s_selected_return == ReturnSource::XLR) ? "XLR return" :
                                                   "no return";
 
     const char* inj_str = s_injection_active ? ", injection active" : ", no injection";
@@ -181,9 +174,14 @@ static void updateStatus() {
     s_status.jacks.return_ts     = s_jack_return_ts.debounced;
     s_status.jacks.return_xlr    = s_jack_return_xlr.debounced;
 
-    s_status.return_source    = s_return_source;
+    s_status.return_source    = s_selected_return;
     s_status.injection_active = s_injection_active;
-    s_status.route_valid      = (s_return_source != ReturnSource::NONE);
+    // route_valid = "return routing configuration is defined" (ADR-004). A
+    // return is always selected, so this is always true in normal operation.
+    // It does NOT establish that a return signal is physically connected.
+    s_status.route_valid      = (s_selected_return != ReturnSource::NONE);
+    // Formula unchanged. With route_valid always true this reduces to Rig Send
+    // presence, which is still an open requirement (ADR-003 injection question).
     s_status.can_inject       = s_status.route_valid && s_jack_rig_send.debounced;
 
     buildDescription();
@@ -223,14 +221,15 @@ void signalRouter_init() {
     s_jack_return_xlr = { readJackInserted(JACK_RETURN_XLR_PIN, JACK_RETURN_XLR_DETECT_INVERTED),
                           readJackInserted(JACK_RETURN_XLR_PIN, JACK_RETURN_XLR_DETECT_INVERTED), now };
 
-    // Initialise routing state from current jack state
-    s_return_source    = computeReturnSource();
-    s_return_pref      = ReturnPreference::AUTO;
+    // Return source is TS on every boot and never restored from storage
+    // (ADR-004). Jack state is not consulted. No audioEngine_setRoute() here:
+    // boot is not a route-change transition.
+    s_selected_return  = ReturnSource::TS;
     s_injection_active = false;
     s_monitor_mode     = MonitorMode::SOURCE_RETURN;
 
-    // Apply initial relay positions
-    applyReturnRelay(s_return_source);
+    // Apply initial relay positions (TS = de-energised, same as the GPIO init above)
+    applyReturnRelay(s_selected_return);
     // RELAY_SEND is already LOW (buffer, non-injection) from the GPIO init above
 
     // Build initial status
@@ -242,9 +241,9 @@ void signalRouter_init() {
                   s_jack_instrument.debounced, s_jack_rig_send.debounced,
                   s_jack_return_ts.debounced, s_jack_return_xlr.debounced);
     logJackDetail("init");
-    Serial.printf("[SignalRouter] Return source: %s\n",
-                  s_return_source == ReturnSource::TS  ? "TS" :
-                  s_return_source == ReturnSource::XLR ? "XLR" : "NONE");
+    Serial.printf("[SignalRouter] Return source: %s (operator-selected; boot default)\n",
+                  s_selected_return == ReturnSource::TS  ? "TS" :
+                  s_selected_return == ReturnSource::XLR ? "XLR" : "NONE");
     Serial.printf("[SignalRouter] Route: %s\n", s_description);
 }
 
@@ -265,20 +264,15 @@ RouterEvent signalRouter_update() {
         return RouterEvent::NONE;
     }
 
-    // A jack state changed — recompute return source
-    ReturnSource new_source = computeReturnSource();
-    bool source_changed = (new_source != s_return_source);
-
-    // Check if a required jack was removed
-    bool was_valid = (s_return_source != ReturnSource::NONE);
-    bool now_valid = (new_source != ReturnSource::NONE);
+    // A jack state changed. Under ADR-004 this is informational only: jack
+    // presence never modifies s_selected_return or drives RELAY_RETURN.
 
     // Check if injection path was broken (rig_send removed while injecting)
     if (s_injection_active && !s_jack_rig_send.debounced) {
         // Rig Send jack removed during injection — disable injection immediately.
         // The relay goes to safe default, mixer goes to SOURCE monitoring.
-        // This is a safety measure; measurement_engine will also abort via
-        // ROUTE_CHANGED from the return-source change if applicable.
+        // This is a safety measure. Under ADR-004 a jack change never changes
+        // the return source, so no ROUTE_CHANGED is raised from here.
         digitalWrite(RELAY_SEND_PIN, LOW);
         #if ENABLE_DUT_INJECTION
 audioCap_setInjectionMode(false);
@@ -286,30 +280,6 @@ audioCap_setInjectionMode(false);
         s_injection_active = false;
         Serial.println("[SignalRouter] WARNING: Rig Send removed during injection — "
                        "injection disabled.");
-    }
-
-    s_return_source = new_source;
-
-    if (source_changed) {
-        // Apply relay change
-        applyReturnRelay(new_source);
-
-        // Propagate input route change through the standard invalidation chain.
-        // This is the ONLY place signal_router calls audioEngine_setRoute().
-        // It triggers: audioCap_notifyRouteChanged() → ROUTE_CHANGED event →
-        //              main loop → measurementEngine_notifyRouteChanged()
-        SignalRoute new_route = {
-            SOURCE_NODE_PHYSICAL_CH,
-            RETURN_NODE_PHYSICAL_CH,
-            s_description   // will be rebuilt below, but description is stable
-        };
-        buildDescription();
-        new_route.description = s_description;
-        audioEngine_setRoute(new_route);
-
-        Serial.printf("[SignalRouter] Return source changed: %s\n",
-                      new_source == ReturnSource::TS  ? "TS" :
-                      new_source == ReturnSource::XLR ? "XLR" : "NONE");
     }
 
     // Update status snapshot
@@ -321,13 +291,9 @@ audioCap_setInjectionMode(false);
                   s_description);
     logJackDetail("change");
 
-    // Determine the most important event to return
-    if (was_valid && !now_valid) {
-        return RouterEvent::ROUTE_INVALID;
-    }
-    if (source_changed) {
-        return RouterEvent::ROUTE_CHANGED;
-    }
+    // Under ADR-004 a jack change can never change the route, so update()
+    // returns only NONE or JACK_CHANGED. ROUTE_CHANGED / ROUTE_INVALID are
+    // unreachable from here.
     return RouterEvent::JACK_CHANGED;
 }
 
@@ -395,17 +361,44 @@ audioCap_setInjectionMode(false);
 }
 
 // -----------------------------------------------------------------------------
-// signalRouter_setReturnPreference(pref)
+// signalRouter_setReturnSource(source)
 // -----------------------------------------------------------------------------
-void signalRouter_setReturnPreference(ReturnPreference pref) {
-    if (s_return_pref == pref) return;
-    s_return_pref = pref;
-    Serial.printf("[SignalRouter] Return preference set to %s\n",
-                  pref == ReturnPreference::TS   ? "TS" :
-                  pref == ReturnPreference::XLR  ? "XLR" : "AUTO");
-    // The preference takes effect on the next signalRouter_update() if both
-    // jacks are inserted. We do not immediately change the relay here because
-    // the debounce state may be mid-transition.
+bool signalRouter_setReturnSource(ReturnSource source) {
+    if (!s_initialised) return false;   // relay GPIO not configured yet
+
+    if (source != ReturnSource::TS && source != ReturnSource::XLR) {
+        Serial.println("[SignalRouter] setReturnSource rejected: must be TS or XLR.");
+        return false;
+    }
+
+    // Unchanged selection: no relay write, no route change, no ROUTE_CHANGED.
+    if (source == s_selected_return) {
+        Serial.printf("[SignalRouter] Return source unchanged: %s (no route change).\n",
+                      source == ReturnSource::TS ? "TS" : "XLR");
+        return true;
+    }
+
+    // Real change. Order: authoritative state → relay → route-change chain →
+    // status. audioEngine_setRoute() latches ROUTE_CHANGED, which the main loop
+    // turns into measurementEngine_notifyRouteChanged(), aborting any
+    // measurement in progress (ADR-004 Decision 4). Changes are deliberately
+    // not refused during a measurement.
+    s_selected_return = source;
+    applyReturnRelay(source);
+
+    buildDescription();
+    SignalRoute new_route = {
+        SOURCE_NODE_PHYSICAL_CH,
+        RETURN_NODE_PHYSICAL_CH,
+        s_description
+    };
+    audioEngine_setRoute(new_route);
+
+    updateStatus();
+
+    Serial.printf("[SignalRouter] Return source changed: %s\n",
+                  source == ReturnSource::TS ? "TS" : "XLR");
+    return true;
 }
 
 // -----------------------------------------------------------------------------

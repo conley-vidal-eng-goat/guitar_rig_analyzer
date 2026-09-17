@@ -8,7 +8,7 @@
 // signal_router owns:
 //   • Relay GPIO control (RELAY_SEND, RELAY_RETURN)
 //   • Jack detection GPIO reads (4 jacks with debounce)
-//   • Routing policy decisions (return source selection, injection gating)
+//   • Routing policy decisions (operator return selection, injection gating)
 //   • Monitor mode state (future: SOURCE / RETURN / BLEND)
 //   • Human-readable route description strings
 //
@@ -21,7 +21,8 @@
 //
 // HOW ROUTING CHANGES PROPAGATE
 // -----------------------------
-// When signal_router detects a jack change or receives a mode command:
+// When the operator selects a different return source
+// (signalRouter_setReturnSource()):
 //   1. signal_router sets the relay GPIO(s)
 //   2. signal_router calls audioEngine_setRoute(new_route)
 //      → audioCap_notifyRouteChanged() programs mixers + latches ROUTE_CHANGED
@@ -45,10 +46,16 @@
 // entry for internal-stimulus measurements, and false at CAPTURE exit.
 // signal_router sets the relay and calls audioCap_setInjectionMode().
 //
+// RETURN SOURCE (ADR-004)
+// ---------------
+// The operator selects the return: TS or XLR. TS on every boot, never saved.
+// Jack presence never chooses the return, drives RELAY_RETURN, or decides
+// route validity.
+//
 // JACK DETECTION
 // ---------------
-// All detect inputs use active-LOW switches with internal pull-ups.
-// GPIO LOW = jack inserted, GPIO HIGH = no jack.
+// Informational only (ADR-003 / ADR-004). Polarity is per connector; see the
+// JACK_*_DETECT_INVERTED block in config.h.
 // Debounce: 50 ms minimum on all inputs.
 //
 // RELAY CONTROL
@@ -60,6 +67,10 @@
 //                 HIGH = XLR return → codec line-in R
 //
 // Default power-on: both de-energised (normal signal path, TS return).
+// Firmware establishes this in signalRouter_init(). Before that, pin 15 is in
+// the MCU reset state, so the PHYSICAL power-on state depends on the relay
+// driver's base pulldown. The RELAY_RETURN driver is not built yet: that is a
+// Phase 7 bench requirement, not something this code proves.
 // =============================================================================
 
 #ifndef SIGNAL_ROUTER_H
@@ -81,22 +92,11 @@ struct JackState {
 // =============================================================================
 // RETURN SOURCE SELECTION
 // =============================================================================
+// Values are carried in protocol v2 ROUTER_STATUS (byte 1): do not renumber.
 enum class ReturnSource : uint8_t {
-    NONE = 0,   // No return jack detected — route invalid for measurement
-    TS   = 1,   // 1/4" TS return jack selected
-    XLR  = 2,   // XLR return jack selected
-};
-
-// =============================================================================
-// RETURN SOURCE PREFERENCE (user override)
-// =============================================================================
-// AUTO: signal_router decides based on jack detection (XLR preferred when both)
-// TS / XLR: force a specific source regardless of what else is plugged in
-//           (still requires the selected jack to actually be inserted)
-enum class ReturnPreference : uint8_t {
-    AUTO = 0,   // XLR preferred when both inserted; single jack always used
-    TS   = 1,   // Force TS (ignored if TS jack not inserted)
-    XLR  = 2,   // Force XLR (ignored if XLR jack not inserted)
+    NONE = 0,   // Never produced under ADR-004. Kept for protocol compatibility.
+    TS   = 1,   // 1/4" TS return selected (boot default)
+    XLR  = 2,   // XLR return selected
 };
 
 // =============================================================================
@@ -119,18 +119,19 @@ struct RouterStatus {
     // Jack detection (debounced)
     JackState     jacks;
 
-    // Active return source (result of policy + detect + preference)
+    // Operator-selected return source (ADR-004). Always TS or XLR.
     ReturnSource  return_source;
 
     // Whether generator injection is currently active
     bool          injection_active;
 
-    // Whether the current route is valid for measurement
-    // (requires at least one return source)
+    // Return routing configuration is defined (ADR-004). Always true in normal
+    // operation. Does NOT establish that a return signal is physically
+    // connected. The name is historical: not a reason to reintroduce presence.
     bool          route_valid;
 
-    // Whether the current route supports internal stimulus
-    // (requires rig_send jack + return source)
+    // route_valid && rig_send detected. With route_valid always true this
+    // reduces to Rig Send presence, which is still under review (ADR-003).
     bool          can_inject;
 
     // Human-readable description of current route
@@ -145,9 +146,9 @@ struct RouterStatus {
 enum class RouterEvent : uint8_t {
     NONE            = 0,   // No change this iteration
     JACK_CHANGED    = 1,   // A jack was inserted or removed (debounced)
-    ROUTE_CHANGED   = 2,   // Active return source or injection state changed
-                           // (audioEngine_setRoute already called by signal_router)
-    ROUTE_INVALID   = 3,   // A required jack was removed; route is now invalid
+    ROUTE_CHANGED   = 2,   // Not returned by update() under ADR-004: return
+                           // changes come from signalRouter_setReturnSource()
+    ROUTE_INVALID   = 3,   // Unreachable under ADR-004. Kept for compatibility
 };
 
 // =============================================================================
@@ -165,15 +166,11 @@ void signalRouter_init();
 // -----------------------------------------------------------------------------
 // signalRouter_update()
 // Call once per main loop iteration.
-// Reads jack detect GPIOs (with debounce). If any detect state changed,
-// recomputes routing policy and updates relays if needed. If the active
-// return source changes, calls audioEngine_setRoute() to propagate the
-// change through the existing invalidation chain.
+// Reads jack detect GPIOs (with debounce) and refreshes status. Jack state is
+// informational: it never changes the return source or RELAY_RETURN (ADR-004).
+// Still disables injection if Rig Send is removed while injecting.
 //
-// Returns a RouterEvent describing what changed (if anything).
-// The main loop should log JACK_CHANGED and ROUTE_INVALID events.
-// ROUTE_CHANGED events are already handled by the audioEngine_setRoute →
-// audioCap_notifyRouteChanged → ROUTE_CHANGED event chain.
+// Returns NONE or JACK_CHANGED.
 // -----------------------------------------------------------------------------
 RouterEvent signalRouter_update();
 
@@ -194,8 +191,8 @@ JackState signalRouter_getJacks();
 
 // -----------------------------------------------------------------------------
 // signalRouter_canInject()
-// Returns true if the current jack state supports generator injection:
-//   rig_send jack must be inserted AND at least one return jack inserted.
+// Returns can_inject (route_valid && rig_send detected). Under ADR-004 this is
+// effectively Rig Send presence, a requirement still under review (ADR-003).
 // measurement_engine should check this before arming internal-stimulus
 // measurements. If false, arm() should be rejected with a clear message.
 // -----------------------------------------------------------------------------
@@ -203,9 +200,8 @@ bool signalRouter_canInject();
 
 // -----------------------------------------------------------------------------
 // signalRouter_canMeasure()
-// Returns true if the current jack state supports any measurement:
-//   at least one return jack (TS or XLR) must be inserted.
-// For EXTERNAL stimulus, this is the only requirement.
+// Returns route_valid: the return routing configuration is defined (ADR-004).
+// Does not establish physical return connectivity. Currently has no callers.
 // For INTERNAL stimulus, also check signalRouter_canInject().
 // -----------------------------------------------------------------------------
 bool signalRouter_canMeasure();
@@ -239,18 +235,17 @@ bool signalRouter_canMeasure();
 bool signalRouter_setInjectionEnabled(bool enabled);
 
 // -----------------------------------------------------------------------------
-// signalRouter_setReturnPreference(pref)
-// Set the user's return source preference. Takes effect on the next
-// signalRouter_update() call if both TS and XLR are inserted.
+// signalRouter_setReturnSource(source)
+// Operator return selection (ADR-004). The only way to change the return.
 //
-// AUTO: XLR preferred when both inserted (default).
-// TS:   Force TS return (if TS jack is inserted).
-// XLR:  Force XLR return (if XLR jack is inserted).
-//
-// If the preferred jack is not inserted, the other is used automatically.
-// If neither is inserted, return_source = NONE regardless of preference.
+// TS / XLR accepted; NONE (or anything else) rejected → false.
+// Unchanged selection: no-op, no relay write, no ROUTE_CHANGED → true.
+// Changed selection: updates the selection, sets RELAY_RETURN, calls
+//   audioEngine_setRoute() (→ ROUTE_CHANGED → any in-progress measurement
+//   aborts), refreshes status → true. Not refused during a measurement.
+// Returns false before signalRouter_init().
 // -----------------------------------------------------------------------------
-void signalRouter_setReturnPreference(ReturnPreference pref);
+bool signalRouter_setReturnSource(ReturnSource source);
 
 // -----------------------------------------------------------------------------
 // signalRouter_setMonitorMode(mode)

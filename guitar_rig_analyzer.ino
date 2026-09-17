@@ -299,6 +299,7 @@ EXPECTED_BLOCK_MS);
     Serial.println("[Main]      c = save current RESULT as system calibration");
     Serial.println("[Main]      x = cancel active measurement");
     Serial.println("[Main]      r = reset EMA smoothing");
+    Serial.println("[Main]      j = select TS return    k = select XLR return");
 
 
     // -------------------------------------------------------------------------
@@ -316,6 +317,11 @@ EXPECTED_BLOCK_MS);
     // driver (bench-verified 2026-09-16), so LOW here holds that relay
     // de-energised at boot; its contacts are not yet in the signal path
     // (Phase 7). Pin 15 is still unconnected.
+    //
+    // ADR-004: return source is operator-selected ('j' TS / 'k' XLR) and starts
+    // at TS here on every boot. Before this call pin 15 is in reset state, so
+    // physical TS-at-power-on depends on the RELAY_RETURN driver's pulldown
+    // (Phase 7 hardware, not yet built).
     // -------------------------------------------------------------------------
     Serial.println("[Main] Initialising signal router (jack detect only)...");
     signalRouter_init();
@@ -387,6 +393,9 @@ void loop() {
     //    'u' — print presentation/link transport diagnostics
     //    't' — start a fresh T1 measurement window
     //    'T' — print the T1 acceptance report (Phase 10)
+    //    'j' — select TS return   (ADR-004; direct selection, not a toggle)
+    //    'k' — select XLR return  (ADR-004). A real change aborts any
+    //          in-progress measurement via ROUTE_CHANGED; it is not refused.
     // -------------------------------------------------------------------------
     if (Serial.available()) {
          char cmd = Serial.read();
@@ -437,6 +446,20 @@ void loop() {
                        Serial.println("[Main] Rig analysis measurement armed.");
                    } else {
                        Serial.println("[Main] Could not arm measurement.");
+                   }
+                   break;
+               }
+               case 'j': case 'J':
+               case 'k': case 'K': {
+                   // Direct return selection (ADR-004), not a toggle.
+                   const ReturnSource want = (cmd == 'j' || cmd == 'J')
+                                                 ? ReturnSource::TS
+                                                 : ReturnSource::XLR;
+                   if (signalRouter_setReturnSource(want)) {
+                       Serial.printf("[Main] Return source selected: %s\n",
+                                     want == ReturnSource::TS ? "TS" : "XLR");
+                   } else {
+                       Serial.println("[Main] Return source selection rejected.");
                    }
                    break;
                }
@@ -530,6 +553,7 @@ MeasurementState::RESULT) {
                   Serial.println("[Main]              m=measure   s=save JSON" " " "b=baseline CSV");
                   Serial.println("[Main]              c=calibrate i=insights" " " "x=cancel/ack");
                   Serial.println("[Main]              r=reset EMA");
+                  Serial.println("[Main]              j=return TS  k=return XLR");
                   break;
         }
     }
