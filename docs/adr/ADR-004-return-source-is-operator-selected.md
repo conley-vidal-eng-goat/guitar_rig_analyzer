@@ -1,7 +1,7 @@
 # ADR-004 — Return source is selected by the operator; TS on every boot
 
-**Status:** ACCEPTED · 2026-09-16 · **documentation and contract only — the
-active firmware does NOT yet implement this** (see *Implementation status*)
+**Status:** ACCEPTED · 2026-09-16 · **implemented in firmware at `3460080`;
+compile-verified, NOT bench-verified** (see *Implementation status*)
 **Decided by:** Conley Vidal
 **Supersedes:**
 - [ADR-003](ADR-003-jack-presence-is-a-ux-feature.md) § *Phase 7 — resolve Return
@@ -95,13 +95,15 @@ therefore breaks no consumer.
 
 ## Implementation status
 
-**Only the decision and contract changed. Firmware is deliberately untouched.**
-Per the project's source-of-truth rule, the active tree is still auto-detect
-until a separate firmware commit lands. Do not record this architecture as
-implemented based on this ADR or the revised contract.
+| Step | Status |
+|---|---|
+| Decision + contract | ✅ `e9ebd75` |
+| Firmware | ✅ **`3460080`**: compiles (teensy41), and the new symbol is present in the ELF. Pre-commit ordering audit: post-switch audio cannot enter an in-progress measurement before ROUTE_CHANGED aborts it, for all currently reachable arm paths (journal 2026-09-16 (5)) |
+| **Bench verification** | ❌ **None.** The pin-15 RELAY_RETURN driver is not built. Relay switching, TS/XLR routing and physical TS-at-power-on (which depends on the driver's base pulldown) are all unobserved. TODO-7's proof is the acceptance test |
 
-The order is **decision/contract → firmware → bench verification**, each
-reviewed separately.
+*Historical:* this section originally recorded "documentation and contract only;
+firmware deliberately untouched". The firmware requirements it listed are kept
+below as the specification `3460080` was checked against.
 
 The firmware change must at least:
 

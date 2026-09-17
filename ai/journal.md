@@ -12,6 +12,44 @@ How to use this file:
 
 ---
 
+## 2026-09-16 (5) — ✅ ADR-004 IMPLEMENTED IN FIRMWARE (`3460080`). **Compile-verified only: there is zero hardware evidence.** The ordering audit found two things worth more than the implementation: a latent injection hazard and a RAWDUMP conflict with measurement
+
+### ⚠️ Evidence boundary. Read this first.
+
+**ADR-004 is compile-verified, not hardware-verified.** What exists: the tree compiles for teensy41, `signalRouter_setReturnSource(ReturnSource)` is in the ELF (and absent from the baseline build), and a code-derived audit of route-change ordering. **What does NOT exist:** any evidence that pin 15 switches the Panasonic relay, that TS/XLR routing works electrically, or that the physical pulldown sets the intended power-on state. **Pin 15 has no driver.** The firmware has not been flashed. Those are Phase 7 bench evidence (TODO-7 proof), and **Phase 7 is not complete.**
+
+### What landed
+
+`e9ebd75` (docs/contract) → **`3460080`** (firmware), reviewed separately.
+- `s_selected_return` is the only return-routing state: TS at boot; changed only by `signalRouter_setReturnSource()`. That rejects NONE, treats an unchanged selection as a no-op with no ROUTE_CHANGED, and otherwise does state → relay → `audioEngine_setRoute()` → status. It is not refused mid-measurement.
+- Jack inputs stay informational. `update()` returns only NONE or JACK_CHANGED.
+- `ReturnPreference`, `setReturnPreference()` and `computeReturnSource()` are removed. Keeping a function called *compute* when there is nothing to compute would have been a fossil of the auto-detect design.
+- `NONE = 0` and `ROUTE_INVALID` are kept for protocol v2 compatibility; neither is produced.
+- Serial: `j` = TS, `k` = XLR, direct selection and not a toggle, because the operator must be able to predict the result without knowing the prior state.
+
+### The ordering audit: PROVEN SAFE for reachable paths, and why "same loop iteration" was the wrong argument
+
+The question was: **can post-switch audio be accepted into an in-progress measurement before ROUTE_CHANGED aborts it?** The answer is no, for two reasons that have nothing to do with loop iterations:
+1. `audioCap_notifyRouteChanged()` resets the level accumulator, and `audioCap_update()` adds **at most one FFT frame per call** against `FFT_AVERAGE_COUNT = 4`. **No MEASURE block can post for ≥ 4 calls after a switch.**
+2. The complex-FFT raw-sample drain (the actual transfer-function data, filled asynchronously by the ISR) is **gated on a fresh MEASURE block** (`measurement_engine.cpp:831–835` → `:895`).
+
+**The wrinkle "same iteration" would have hidden:** `audioCap_update()` returns clip events *before* ROUTE_CHANGED. A leftover `CLIP_RETURN` (from a block that clipped on both channels) **delays the route event by one iteration.** It is still safe, because no fresh MEASURE block can exist in that window, but only because the one live arm path (`m`: EXTERNAL, `abort_on_clip = true`) always consumes its block.
+
+**The level-accumulator reset alone is NOT sufficient.** It does not touch the raw queues or the measurement's accumulator. Safety comes from the fresh-block gate plus `abortTo()` clearing both.
+
+Reordering the setter (invalidate before the GPIO write) was considered and **rejected**: nothing consumes audio synchronously inside the setter, so the order there cannot affect the invariant.
+
+### Two findings recorded separately, not folded into ADR-004
+
+- **Injection prerequisite (TODO-11):** ARMED with *internal* stimulus does not consume its block. A stale block plus clip-deferred ROUTE_CHANGED plus `abort_on_clip = false` could let post-switch raw samples in, even completing a mixed-topology RESULT. Unreachable today. **Must be closed before any internal arm path is reachable.** The fix is deliberately not chosen yet.
+- **RAWDUMP (TODO-30), upgraded from noise cleanup to a measurement-integrity concern, code-derived and NOT bench-observed:** the unconditional diagnostic clears, re-arms and then *disarms* the same `AudioRecordQueue`s the measurement drains, every 5 s. That would likely stall or corrupt an `m` capture. **Fix it before relying on `m` for measurement validation.**
+
+### Next
+
+Software work stops here. **Next evidence milestone: build and verify the pin-15 RELAY_RETURN driver** (copy of the Phase 6 driver *with* its base pulldown), then TODO-7's proof. The TODO-7 pre-wiring checklist still applies (TODO-45 column count, TODO-46 forward-trace, corrected coil polarity, pole 1 only).
+
+---
+
 ## 2026-09-16 (4) — ✅ DECISION: return source is selected by the operator, TS on every boot and not saved. ADR-004 makes ADR-003's Phase 7 preference binding. **Docs only; the firmware does not implement it yet**
 
 **[ADR-004](../docs/adr/ADR-004-return-source-is-operator-selected.md) accepted.** This closes TODO-7's decision gate.
