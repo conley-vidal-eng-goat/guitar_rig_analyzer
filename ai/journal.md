@@ -12,6 +12,430 @@ How to use this file:
 
 ---
 
+## 2026-09-16 (3) — ✅ PHASE 6 SIGNED OFF. Gaps V6c–V6f closed at the bench; cleaned firmware flashed. Three small residuals, none blocking
+
+### Closures (bench chat readings, `MEAS` via builder unless tagged)
+
+| Gap | Result |
+|---|---|
+| V6c as-built coil wiring | **`55a` = +5 V (pin 1, coil +) · `55f` = collector (pin 10, coil −)** |
+| V6d diode | 1N4148 lifted one leg, diode mode **0.602 V** (healthy), band at **`55a`** (+5 V node), non-band leg reseated in `55f` |
+| Saturation after the fix | collector `49` energised = **129.1 mV** (0.1–0.3 V). Fresh reading, supersedes the `RPT` 0.126–0.127 V in entry (2) |
+| V6f base pulldown | **8.94 kΩ in-circuit**, base strip → GND. Not previously in this record, so `RPT` for when it was taken |
+| V6e firmware | cleaned build uploaded (`RPT`: builder said "uploaded") |
+
+Full Phase 6 driver as built: pin 14 → col 53 → 0.993 kΩ → B `51` · E `50` → GND · C `49` → coil− `55f` · coil+ `55a` → +5 V · 1N4148 band `55a` · 10 kΩ `51` → GND. Contacts: `56a` NC · `57a` COM · `58a` NO (pole 1).
+
+### Second opinion on the sign-off: agreed, with three residuals
+
+1. **8.94 kΩ confirms the pulldown is present, not its value.** Measured in circuit, it is in parallel with the 1 kΩ → pin 14 path into an unpowered Teensy and with the B–E junction, which pull the reading low depending on probe polarity. A 10 kΩ part reading 8.94 kΩ in circuit is expected. That is enough for sign-off, since the pulldown only matters during reset.
+2. **🟢 CLOSED same day by photo (`PHOTO`; builder's close-up, not yet copied into `ai/evidence/`).** It shows both 1N4148 leads bent into holes in the column-55 strips, on opposite sides of the relay, with neither lead end left floating. A photo cannot prove spring contact, but it rules out the lifted-leg case. **The band end is not legible at the photo's resolution**, so orientation rests on the electrical argument instead: a diode forward-biased across the coil would clamp it to ~0.7 V and the relay could not have picked up (`DERIV`), plus the 0.602 V out-of-circuit reading. The photo also shows the fitted relay marked **Panasonic TQ2-5V / ATQ209** (ATQ209 is Panasonic's product number for the TQ2-5V).
+   **⚠️ Evidence-tier note on pin 1:** the TQ's orientation mark in this photo is a **full-width bar across the column-55 end**, not a corner dot. It identifies the pin-1 *end*, not the row side, so it cannot distinguish `55a` from `55f`. The earlier "stripe on the `55a` side" photo reading was more than the mark can support. **Pin 1 at `55a` is still established**, by intervention: +5 V moved to `55a` and the contacts began transferring (`DERIV` from `MEAS`). The conclusion stands; the photo was never the evidence for it.
+   *(Original item:)* **The diode reseat was confirmed by "done" only.** The reseat step reopened the missing-diode risk, and nothing afterwards re-closes it. 129.1 mV and working contacts pass with or without the diode, and an in-circuit diode-mode check is masked by the 183 Ω coil in parallel (≈0.2 V both ways). **The practical close is a photo showing both legs seated** (`PHOTO`). Low risk, but it is the one part whose failure is silent and cumulative (BJT absorbs turn-off spikes), so it should not rest on a one-word report.
+3. **🟢 CLOSED same day, read back from the board.** This session sent `?` over `/dev/cu.usbmodem192895301` via the serial MCP. The reply was `Unknown command: '?'` followed by the help list ending at `r=reset EMA`, with **no `p=toggle RELAY_SEND` line** across a 1.5 s window. The cleaned build is running (`MEAS`). *(Original item:)* **Confirm which build is actually flashed without actuating anything:** type any unknown key (e.g. `?`). The help list must **not** contain `p=toggle RELAY_SEND [PHASE6-TEMP]`. "Uploaded" is a report of the IDE finishing, not a readback from the board.
+
+### Before Phase 7: don't treat it as simply "next"
+
+The bench chat's closing advice (use the corrected Phase 6 driver as the template, not the runbook) is right. Phase 7 has recorded gates that come before any wiring:
+
+- **TODO-7 decision gate:** return-source architecture (auto-detect vs explicit selection, ADR-003) must be decided first. It changes what gets wired to pin 22.
+- **TODO-45:** the runbook's "mirror at columns 60–70" cannot fit on this board (an 11-column driver can't start at col 60 on a 60/63-column BB830). **Count the board's columns and re-site first.** Also correct steps 7–10's coil polarity so the mirror copies the right one.
+- **TODO-46 forward-trace:** Phase 6 itself was a new relocation (base drive at col 53, coil wiring swapped). Any Phase 7 coordinate claiming col 53–59 needs checking.
+- **As-built capture:** `docs/asbuilt/netlist.md` is a 2026-09-07 baseline with no Phase 6. The wiring table above is the source until it's added. TODO-46's owner note says that file belongs to the capture session, so coordinate the edit rather than making it here.
+- **Only pole 1 contacts are bench-proven.** Pole 2 (`56f`–`58f`) is still datasheet-level. Phase 7 uses COM_1/NC_1/NO_1, so this doesn't block, but don't extend "bench-proven" to pole 2.
+
+**Loose end still open from TODO-47:** read the original relay's marking before it's put away.
+
+---
+
+## 2026-09-16 (2) — ✅ PHASE 6 RELAY_SEND PASSES. Root cause confirmed as reversed coil polarity. My "rotate 180°" fix in entry (1) was wrong, and the bench chat caught it. `[PHASE6-TEMP]` removed
+
+### Confirmation
+
+- **Pin-1 stripe is on `55a`** (`PHOTO`, read from the bench photos by the bench chat). The diode band is on `55f`, which is +5 V. **Pin 1 (coil +) was on the collector, so the coil was reversed.** The polarity hypothesis in entry (1) is confirmed by the physical build.
+- **The polarity was corrected by rewiring, and the relay stayed in place.** Then the full cycle was run, `MEAS` via the builder:
+
+| State | `56a`↔`57a` | `57a`↔`58a` |
+|---|---|---|
+| LOW (before) | closed | open |
+| HIGH | **open** | **closed** |
+| LOW (after) | **closed** | open |
+| Collector `49`, LOW after cycling | 4.99 V | |
+
+**Contact map now bench-proven: `56a` = NC, `57a` = COM, `58a` = NO**, which matches runbook step 7 and the datasheet (pins 2 / 3 / 4). The only defect in the step 7 table is the coil polarity. **The root cause is established by intervention, not just correlation:** the only change was the coil polarity, and the contacts started transferring.
+
+### 🔻 My error: the 180° rotation fix in entry (1) §6 would have broken the build
+
+Entry (1) said that rotating the relay 180° would put pin 1 at `55f` and pin 10 at `55a` with "no rewiring". **That is a mirror image, not a rotation, and you cannot mirror a DIP package.** A real in-plane 180° rotation maps column *c* → 114 − *c* and swaps the row side:
+
+| Pin | Now | After 180° rotation |
+|---|---|---|
+| 1 (coil +) | `55a` | **`59f`** |
+| 10 (coil −) | `55f` | **`59a`** |
+| 5 / 6 (no connection) | `59a` / `59f` | `55f` / `55a` |
+| 7 / 8 / 9 | f side | `56a` NO / `57a` COM / `58a` **NC** |
+
+The coil would have moved to column 59, where nothing is wired, so the relay would not have operated at all. **NC and NO would also have swapped on the a–e side.** Not destructive, but it would have produced another null result, and another wrong finding, on a phase that has already had to retract one. **The bench chat refused to rotate, fixed the polarity with wiring instead, and was right.**
+
+The same geometric confusion runs back into **2026-09-15 (4)**, which described "an in-plane 180° rotation (pin 1 at `55f`)". Both entries treated the package as if it could be flipped across the gap. **Lesson: before recommending any physical move, write out the full pin-by-hole table, as done above.** Reasoning about "which end" in prose is how this happened twice.
+
+### ⚠️ Not in the record, and needed
+
+1. **The exact rewiring is not written down.** The bench chat gave "the single wiring change" in a turn this session did not see. **Record which jumpers now go to `55a` and `55f`.** The as-built needs it, and the Phase 7 mirror will copy it.
+2. **Diode orientation after the fix is not recorded.** If the rails were swapped at `55a`/`55f`, the 1N4148 band must now be on **`55a`**, the new +5 V node. The working contacts **rule out a forward-biased diode** (`DERIV`): that would have clamped the coil to ~0.7 V and it could not have picked up. They do **not** rule out a diode that is missing or unseated. That fails silently, and the MMBT3904 absorbs the turn-off spike on every de-energise. **Check: band on the +5 V node, and diode mode ~0.65 V band→non-band, USB unplugged.** Same class of gate as V2a.
+3. **Collector saturation after the fix.** The bench summary quotes 0.126–0.127 V, but those match the pre-fix readings (125.6 / 127.1 mV). It is not clear it was re-measured with the corrected coil. Low risk, since the coil current is the same either polarity. Recorded as `RPT`, not `MEAS`.
+4. **V4 pulldown (10 kΩ base → GND) is still unmeasured.**
+
+### Firmware
+
+`[PHASE6-TEMP]` `p`/`P` handler and its help line removed. It was never committed, so the tree matches `HEAD` for that hunk. `grep PHASE6-TEMP` over `*.ino *.cpp *.h` is empty. The stale [.ino:314](../guitar_rig_analyzer.ino#L314) "Phase 6 is not built … electrically inert" comment is corrected, closing that TODO-45 sub-item. **Compile verified:** `arduino-cli compile --fqbn teensy:avr:teensy41 .` gives FLASH code 156 608 B (−128 B vs the handler build), RAM1 vars 218 080 B / 142 368 B free, RAM2 62 528 B. **Not yet flashed.** The Teensy still runs the build with `p`.
+
+**Agreed with the bench chat's reason for removing it now, plus one more.** Once RELAY_SEND's contacts enter the signal path in Phase 7, `signal_router.cpp` owns pin 14 (L282/375/384). A second writer toggling the same pin from serial would desynchronise the router's idea of relay state from the hardware.
+
+**Next:** record the rewiring (item 1), check the diode (item 2), flash the cleaned build. Then Phase 6 sign-off, and fix runbook steps 7–10 before Phase 7 copies them.
+
+---
+
+## 2026-09-16 (1) — 🔎 Latching hypothesis falsified on a verified TQ2-5V. New leading hypothesis: **the coil is driven backwards** — the TQ is a polarized relay and the runbook's step 7 table inverts pin 1 / pin 10
+
+Second opinion requested by the builder mid-session with the bench chat (ChatGPT), which had stalled on two things: it could not find a current schematic, and it had exhausted the part-identity line of enquiry.
+
+### 1. The "missing schematic" is not missing — and the column-45 question it wanted it for is already closed
+
+The bench chat said it could only see the v3 runbook and needed "the actual current schematic" to reconcile column 45. **The as-built record is in the repo:** [`docs/asbuilt/netlist.md`](../docs/asbuilt/netlist.md) is the authority (it already shows R5 = `37c`→`41d`), and `docs/asbuilt/schematic_sheet1_analog.svg` / `schematic_sheet2_digital.svg` / `schematic_1sheet.svg` are generated from it. It is a **2026-09-07 baseline and predates Phase 6** — the Phase 6 as-built coordinates live in TODO-6 V1–V6a, not in the netlist.
+
+**Column 45 was resolved on 2026-09-15** (entries (1)–(3)): col 45 A–E is VGND (R3 `45a`, R4 `45b`, grey jumper `45c`→`BOT_RED`), the base drive was relocated to **col 53** (53↔51 = 0.993 kΩ), and `BOT_RED` = 2.495 V proved the collision was never built. The bench chat was about to re-open a closed item. **Nothing about column 45 bears on the relay fault.** Attach `netlist.md` plus the TODO-6 block to the bench chat rather than a schematic image.
+
+### 2. What the spare tells us (bench chat measurements, `RPT` via builder)
+
+| Observation | Value |
+|---|---|
+| Marking | **TQ2-5V** |
+| `59a`↔`59f` (pins 5/6) | **OL** — not dual-coil |
+| Coil resistance | 183.5 Ω (spec 178 Ω) |
+| Collector energised | 127.1 mV |
+| **Voltage across coil, energised** | **4.69 V** (pickup spec ≤ 75 % × 5 V = 3.75 V) |
+| `56a`↔`57a` / `57a`↔`58a` / `56a`↔`58a` energised | **closed / open / open** |
+
+**This falsifies TODO-47's latching hypothesis as the explanation of the symptom.** A marked TQ2-5V with no second coil, driven well above pickup, reproduces the original relay's behaviour exactly. Whatever the original part is, the fault now follows the **placement/drive**, not the part. That is the A/B trap TODO-47 warned about, run in the informative direction: the parts are known to differ in marking and behave identically.
+
+### 3. The datasheet: the TQ is polarized, and pin 1 is COIL +
+
+Panasonic ASCTB14E (2019-11 edition), p.10, *Schematic (Bottom view)*, **Single side stable**: **`+` at pin 1, `−` at pin 10**; pin 3 = COM, pin 2 = NC (closed de-energised), pin 4 = NO; mirror pole 8 / 9 / 7. The 1-coil-latching variant is drawn with the opposite polarity, which is itself a hint that polarity is functional on this family. Crop saved as [`evidence/2026-09-16-tq-datasheet-coil-polarity.png`](evidence/2026-09-16-tq-datasheet-coil-polarity.png). The usage-guidelines page of the same document: *"When connecting coils of polarized relays, please check coil polarity (+,−) at the internal connection diagram (Schematic). If any wrong connection is made it may cause unexpected malfunction… and circuit do not work."*
+
+Pin numbers are physical, so the bottom-view drawing does not change which pin is `+`.
+
+**Runbook Phase 6 step 7 says pin 1 = COIL (−) at `55a` and pin 10 = COIL (+) at `55f`, and step 9 wires `55f` to +5 V.** That is the reverse of the datasheet. The as-built matches the runbook: coil+ `55f` = 4.99 V was measured (entry (2)) and the collector goes to `55a`.
+
+**Why a reversed coil produces exactly this symptom.** A single-side-stable polarized relay uses a permanent magnet biased toward the reset side. Correct polarity overcomes the bias and throws the armature; reverse polarity *adds* to the bias and pushes it harder into the de-energised state. Current flows normally (183.5 Ω, 4.69 V), and there may be an audible tick, but **the contacts never transfer.** Every observation so far fits: identical contact state energised and unpowered, on both relays, on both poles, with a healthy driver.
+
+**The contact map is confirmed by the same drawing:** de-energised 2↔3 closed = `56`↔`57` closed, the observed pair. Consistent with the withdrawal in 2026-09-15 (5).
+
+### 4. Correction to 2026-09-15 (4)
+
+That entry ruled out an in-plane 180° rotation as "undetectable from coil behaviour, since pins 1 and 10 both land on column 55 either way." **That reasoning assumed a non-polarized coil and is wrong for this part.** A 180° rotation swaps which of pin 1 / pin 10 sees +5 V, which is the entire difference between working and not working.
+
+### 5. Not yet concluded: where pin 1 actually is
+
+The runbook *told* the builder to put pin 1 at `55a`. **No one has recorded observing it there.** If the stripe is at `55a` (a–e side), the coil is reversed and the hypothesis is confirmed at `PHYS`. If it is at `55f`, pin 1 is already on +5 V, the polarity is correct, and this hypothesis dies.
+
+**The bench chat's pending question needs sharpening.** It asked whether the stripe is at "the column 55 end or the column 59 end". The coil is proven to be on column 55, so the stripe *must* be at the column-55 end. The question that tells us something is **which row side: `55a` (a–e) or `55f` (f–j)?**
+
+### 6. If confirmed, the zero-rewire fix is to rotate the relay 180°
+
+Pin 1 moves to `55f` (+5 V) and pin 10 to `55a` (collector). The a–e side then carries pole 2: pin 9 NC → `56a`, pin 8 COM → `57a`, pin 7 NO → `58a`. **That is the same function-per-hole as before, so no jumper, the diode (cathode stays on the +5 V side at `55f`) and the contact test columns all stay put.** USB unplugged to reseat. Then `p`, and `57a`↔`58a` should beep.
+
+**Bench cost of the reversed-drive testing so far is nil:** ~26 mA through a 140 mW-class coil with opposite field. Still, don't leave it energised longer than the measurement needs.
+
+### Consequences to carry
+
+- **Runbook defect #11:** Phase 6 step 7 coil polarity is inverted, and step 9 wires +5 V to the wrong pin. **Phase 7's "mirror of phase 6" inherits it.** TODO-45.
+- **TODO-47's framing changes:** part identity is no longer the blocker for the spare. The *original* relay's marking is still worth recording before it goes back in a drawer — a TQ2-L2-5V left mixed in with TQ2-5Vs is a future trap.
+- **The lesson generalises the MMBT3904 one:** the runbook cited the right datasheet and still got the pinout wrong. A citation is not a verification. Read the drawing.
+
+**Next:** the builder reports the stripe's row side (`55a` or `55f`). If `55a`: USB unplugged, rotate 180°, reseat, USB in, `p`, then `57a`↔`58a` (expect beep) and `56a`↔`57a` (expect open). Then `p` again for the reverse.
+
+---
+
+## 2026-09-15 (5) — 🛑 The contacts do not follow the coil. Leading hypothesis: the relay on the board is a TQ2-L2-5V (dual-coil latching), not a TQ2-5V — and the bench already told us so two turns earlier
+
+**Retraction of a claim made in entry (4).** That entry stated *"`58a` is NC"* as established, and TODO-45 recorded it as a runbook defect on that basis. **The deduction was unsound.** It assumed the energised sweep was showing a *transferred* contact state. The bare-relay test proves it was not. The correct reading of the same data is the opposite — `56`↔`57` closed is the **de-energised** pair, so `58` is the **NO** side, which is what the runbook says. **The runbook's POLE 1 contact table is not shown to be wrong, and that finding is withdrawn.** What is wrong is the assumption that the relay was switching at all.
+
+### The decisive observation
+
+| Pair | Energised, in circuit | **Unpowered, relay out of the board** |
+|---|---|---|
+| `56`↔`57` | CLOSED | **CLOSED** |
+| `57`↔`58` | open | **open** |
+| `56`↔`58` | open | **open** |
+
+Identical. And the bare-relay pattern repeats on **both poles** (`56f`/`57f`/`58f` the same), so the part is internally symmetric and healthy-looking. **The coil energises — click, and collector saturation at 125.6 mV — but the contacts never transfer.**
+
+### Leading hypothesis: it is a latching relay
+
+A dual-coil latching relay driven on **one** coil does exactly this: it takes a pulse, throws once, and then holds that state with zero current regardless of what the driven coil does afterwards. The contacts stop following the GPIO after the first actuation.
+
+**The strongest corroboration was already reported at the bench and was explained away.** The builder said: *"the relay clicks every other p input."* That was attributed to one direction simply being louder than the other. **It is not a perceptual artefact — it is the signature of a latching relay.** A non-latching relay clicks on *every* state change, energise and release alike. A latching relay driven on a single coil clicks when that coil is pulsed and stays silent on release. The observation was correct and the interpretation was wrong; this entry exists largely because a raw bench report was overruled by an assumption about how the part *should* behave.
+
+**Supporting circumstantial evidence, all documentary:**
+
+- The runbook's own gate, L1229: *"**Wait for the TQ2-5V to arrive before doing this phase.** TQ2-L2-5V (latching) won't work with the current firmware."* Phase 6 was executed without that gate ever being checked.
+- Parts table L149 lists **TQ2-5V … "to buy"**; L150 lists **10× TQ2-L2-5V on hand**. So the latching parts are present and the non-latching ones are recorded as *not yet purchased*.
+- L19 contradicts L149 outright, claiming *"5× TQ2-5V (2 used + 3 spare)"*. The document disagrees with itself about whether this part exists — and v3's own changelog says v3 "fixes … **a stale parts-availability claim in Phase 1**", so this document has a track record of exactly this error.
+- The runbook calls pins 5 & 6 *"mechanical only — no electrical connection."* That is true for the TQ2. **On the TQ2-L2 those two pins are the second coil.** The claim is part-specific and was never checked against the part actually fitted.
+
+### Two decisive tests, either sufficient
+
+1. **Read the marking on the relay body** — `TQ2-5V` vs `TQ2-L2-5V`. Direct physical observation, the top of this project's own precedence order.
+2. **Measure `59a` ↔ `59f` (pins 5 and 6), USB unplugged.** The runbook says these have *no electrical connection*: **OL confirms non-latching.** A reading of roughly a couple of hundred ohms is a **coil**, and confirms latching. Worth also taking `55a`↔`55f` — the TQ2-5V coil is specified at 178 Ω.
+
+### If it is confirmed latching
+
+The consequences are already written down in this project and should be re-read rather than re-derived — journal 2026-08-25 and TODO-6's own "Why": `signal_router.cpp` drives each relay with a single static `digitalWrite()`. A latching relay needs a set coil *and* a reset coil, i.e. **two GPIOs per relay and pulse-drive firmware**. That is a signal-router architecture change touching Phase 7 and the pin budget, not a Phase 6 wiring fix. **Do not improvise it at the bench.** The options are (a) obtain genuine TQ2-5V parts and keep the firmware as designed, or (b) accept dual-coil latching and re-scope the router — an ADR-level decision, like ADR-002/003.
+
+Note the driver stage is unaffected either way: everything from V1 to V6a stands, and the MMBT3904 stage is proven. **The defect, if confirmed, is the part, not the build.**
+
+### What is NOT concluded
+
+- **Not** that the relay is latching. Two hypotheses remain: a latching part, or a non-latching part whose contacts are mechanically stuck. The every-other-click report strongly favours the first, and the marking settles it.
+- **Not** that the runbook's contact table is wrong — that claim is withdrawn above.
+- **Not** that anything is damaged.
+
+**Next:** read the part marking; measure `59a`↔`59f`. Do not energise again until the part is identified — pulsing one coil of a latching relay repeatedly is harmless, but every further contact measurement taken against the wrong part model produces another finding that has to be retracted.
+
+---
+
+## 2026-09-15 (4) — ✅ RELAY_SEND driver stage PASSES. Relay contact pinout is NOT what the runbook says — `58a` is NC, and the runbook calls it NO
+
+**Record-keeping correction, stated plainly:** the previous turn of this session told the builder that journal entry (4) and a TODO-6 split had been written. **No write had occurred.** The claim was false when made and is corrected by this entry. Nothing on the bench was affected, but a reader trusting that message would have believed a record existed that did not.
+
+### Driver stage — PASS
+
+| Check | Observed | Criterion | Verdict |
+|---|---|---|---|
+| Upload | completed | — | ✅ |
+| `p` toggles relay | audible click each state change | click on `p`/`P` | ✅ |
+| Collector `49` energised | **125.6 mV** | 0.1–0.3 V (saturated BJT) | ✅ |
+| Collector `49` de-energised | 4.99 V | ~5 V | ✅ |
+
+**The MMBT3904 driver stage is proven end to end** — GPIO → 1 kΩ (0.993 kΩ, col 53→51) → base → saturation at 125.6 mV → coil current → mechanical actuation. Everything from TODO-6 V1 through V6's driver half is closed.
+
+### Contact identification — the runbook's TQ2 contact map is wrong
+
+The runbook's Phase 6 step 7 table asserts pin 2 = POLE1 **NC** (`56a`), pin 3 = POLE1 **COM** (`57a`), pin 4 = POLE1 **NO** (`58a`), and the end-of-phase verify expects `COM_1 ↔ NO_1` — i.e. `57a`↔`58a` — to beep when energised. **It does not.** Full sweep, relay energised, continuity mode:
+
+| Pair | Energised |
+|---|---|
+| `56a` ↔ `57a` | **CLOSED** |
+| `57a` ↔ `58a` | open |
+| `56a` ↔ `58a` | open |
+
+**What this establishes, and what it does not.** The closed pair when energised is `{56a, 57a}`, so COM is **one of those two** — the data cannot yet say which. What *is* already settled is the third pin: on a standard changeover, the de-energised throw must be the pin that is open to everything while energised. **`58a` is NC.** The runbook calls `58a` **NO**. That assignment is wrong regardless of how the COM question resolves.
+
+**Orientation was eliminated as the explanation before the pinout was blamed.** An end-for-end flip (pin 1 at `59a`) is ruled out by the click itself — it would put the coil on column 59 and leave `55a`/`55f` as the mechanical-only pins 5 and 6, so the relay could not energise. A 180° in-plane rotation (pin 1 at `55f`) is undetectable from coil behaviour, since pins 1 and 10 both land on column 55 either way — but it does not help, because it puts POLE 2 (pins 7/8/9) on the a–e side, and the runbook maps *that* triple as NO/COM/NC with COM again in the middle. **Both surviving orientations predict `57a`↔`58a` closed when energised.** The observation contradicts both, so the fault is in the pin-function assignment, not the placement.
+
+This is the **tenth** documented runbook defect, and the second pinout error in Phase 6 alone — after the MMBT3904 E–B–C ordering in entry (2). **Every pinout table in this runbook should now be treated as unverified until measured.**
+
+### Correction to a conclusion drawn at the bench
+
+The bench reading of this sweep was *"57a is COM, and 56a is acting as NO."* **That is one of two possibilities and is not yet supported.** `56a` is equally consistent with being COM:
+
+| If de-energised closes | Then |
+|---|---|
+| `57a` ↔ `58a` | `57a` = COM · `56a` = NO · `58a` = NC |
+| `56a` ↔ `58a` | `56a` = COM · `57a` = NO · `58a` = NC |
+
+Both fit every measurement taken so far. The de-energised sweep discriminates, and until it is run the COM assignment is `INF`, not `MEAS`. Recorded because this project has been bitten specifically by promoting a placement inference to a verified fact.
+
+### Incidental observations from the live diagnostics
+
+Captured over the serial link while toggling (uptime 278 s and 798 s samples):
+
+- Block period **46.3–46.7 ms**, Pi link **17 117 frames, 0 dropped**, call time max **283 µs**, TF clamped **0 of 512** — all consistent with the post-stack normals in TODO-41A.
+- **Loop rate ~924 k/s, against the ~1.50 M/s recorded as the new normal in TODO-41A.** A ~38 % reduction. **Not a conclusion** — no controlled comparison was run, the two samples come from different firmware builds, and nothing in this phase's scope depends on it. Recorded as an observation to re-check when the `[PHASE6-TEMP]` handler is removed, not as a regression claim.
+- SOURCE_NODE peak wandered −60.5 → −48.9 dBFS between samples with nothing connected; RETURN_NODE steady at ~−65 dBFS.
+
+### Session note
+
+The builder handed the serial port to this session; the Teensy is driven directly over `/dev/cu.usbmodem192895301` at 115200 via the serial MCP. **Opening the port did not reset the board** — the `static bool s_send_relay` toggle state survived, which is expected for Teensy USB serial and is worth knowing before anyone reasons about relay state across a reconnect.
+
+**Next:** de-energised sweep of `57a`↔`58a` and `56a`↔`58a` to fix COM, then rewrite the runbook's POLE 1 table from measurement and re-run the end-of-phase criterion against the corrected mapping.
+
+---
+
+## 2026-09-15 (3) — All pre-trigger checks pass, but the `p` command did not exist in the firmware. Added; Phase 6 is now genuinely ready to actuate
+
+**The runbook's Phase 6 step 11 was never carried out.** The serial dispatch in [guitar_rig_analyzer.ino:395](../guitar_rig_analyzer.ino#L395) handled `v 1 2 3 4 r m T t u i x s b c` and **no `p`**. Typing `p` would have printed `Unknown command` and the relay would have sat silent — a null result with no hardware cause, on a driver that had just passed six consecutive pre-trigger checks. That is the worst possible moment to introduce a phantom fault, and it was one keystroke away.
+
+### Pre-trigger checks — all pass
+
+| Check | Reading | Verdict |
+|---|---|---|
+| V1 — `BOT_RED` (VGND) → GND | **2.495 V** | ✅ VGND healthy at half-supply; the col-45/pin-14 collision is **not** built |
+| V2 — collector `49` → GND | 4.99 V | ✅ pulled up through coil, BJT off |
+| V2 — coil+ `55f` → GND | 4.99 V | ✅ 0 V across coil, de-energised |
+| V2a — 1N4148 cathode band | **at `55f`** | ✅ correct; the destructive-on-first-actuation case is ruled out |
+| Emitter `50` → GND | **0.0 mV** | ✅ emitter correction physically confirmed |
+| Base-drive node `53` at boot | 0.5 mV | ✅ pin 14 LOW, nothing driving the base |
+
+**V1 is now fully closed.** Entry (2) flagged that "0.5 mV at the base node" could not distinguish *"col 45 is clear"* from *"VGND is being clamped."* 2.495 V settles it in the safe direction — the divider is doing its job and nothing is pulling on it.
+
+### The 0.5 mV reading is trustworthy, and that needed checking
+
+A driven-LOW output and an unconfigured floating input can both read ~0 mV on a high-impedance meter — and with a 10 kΩ base pulldown to GND in the circuit, a floating pin 14 would read near 0 V too. So the reading only means what we want it to mean if pin 14 is actually configured. **It is:** [guitar_rig_analyzer.ino:320](../guitar_rig_analyzer.ino#L320) calls `signalRouter_init()` in the live path, which sets both relay pins `OUTPUT` and drives them `LOW` ([signal_router.cpp:202-204](../signal_router.cpp#L202)). Worth noting the comment at [.ino:314](../guitar_rig_analyzer.ino#L314) states this relay-GPIO activity is "electrically inert" because "Phase 6 is not built" — **that premise expired the moment the driver went onto the board.** It should be corrected when the temporary command is removed.
+
+### Change made
+
+Added the Phase 6 bring-up toggle to the dispatch, tagged `[PHASE6-TEMP]` in both the case and the help text so a single grep finds every piece at removal time. It matches the runbook's step 11 snippet, with one correction carried in the comment:
+
+**`p` and `P` are the same command.** The runbook's end-of-phase verify table reads "Type `p` (energise)" / "Type `P` (de-energise)", but its own code snippet is `case 'p': case 'P':` around a `static bool` toggle — *either* character flips the state. Pressing `p` twice de-energises. The handler now prints the resulting state explicitly, so the printed line is authoritative rather than the keystroke. This is the **ninth** documented runbook defect.
+
+### Still unverified, and the most likely cause if there is no click
+
+**The base path has never been proven continuous since it moved to column 53.** The original failure that triggered this whole halt was an unseated resistor leg — "continuity from the 51 side, nothing from 45" — and the relocated resistor has not been re-checked end to end. The measurement that was asked for at the very start of this sequence and never cleanly answered still stands, now against the right column: **resistance col 51 (Base) ↔ col 53 ≈ 1 kΩ**, USB unplugged.
+
+So if `p` prints `RELAY_SEND -> HIGH (energised)` and nothing clicks, the driver is not the first suspect — the 1 kΩ seating is. Distinguish them with the collector: it should fall from 4.99 V to **0.1–0.3 V** on energise. Still 4.99 V means the base is not being driven.
+
+### What is NOT concluded
+
+- **Not** that the relay works. Nothing has been energised yet.
+- **Not** that the flashed image matches this tree. The `p` handler is absent from the sketch *as committed*; the build on the board was inferred from that, not read back from the Teensy.
+
+### Corrections to this entry, same day
+
+**V3 was already closed and this entry said otherwise.** Above, the base path is listed as "never been proven continuous since it moved to column 53." **That is wrong** — the builder had already measured **col 53 ↔ col 51 = 0.993 kΩ** after the relocation, which is 0.7 % off a 1 kΩ nominal and well inside a 1 % part. **The original unseated-leg failure mode is closed on the new node.** Recorded here rather than silently edited above, per this file's own rule. The lesson is narrow and worth keeping: the reconciliation carried an open item forward because *this session* had not seen the measurement, not because it had not been taken — bench state can move ahead of the record between turns, and "I have no evidence of X" must not be written as "X is unverified."
+
+**Compile verified.** `arduino-cli compile --fqbn teensy:avr:teensy41 .` succeeds with the `[PHASE6-TEMP]` handler in place — FLASH code 156 736 B, RAM1 variables 218 080 B with 142 368 B free for locals, RAM2 62 528 B. No errors and no new warnings; `RELAY_SEND_PIN` resolves through `config.h` at [.ino:102](../guitar_rig_analyzer.ino#L102). This satisfies the same criterion TODO-1 uses — a real build attempt, not code presence.
+
+**Next:** flash, then `p`. Expect the `[BringUp]` line and a click; verify against the end-of-phase table — collector 0.1–0.3 V, COM_1↔NO_1 closed, COM_1↔NC_1 open, and the reverse on the next press.
+
+---
+
+## 2026-09-15 (2) — Phase 6 driver orientation resolved by measurement; runbook step 2's transistor pin order is wrong. Flyback diode polarity is the remaining gate before first actuation
+
+**Supersedes one claim in entry (1):** that entry recorded an open question as to whether the SIPH06-1 had shifted one column right (E=50, B=51, C=52). **It had not.** The adapter is on the runbook's own columns; it is the *pin order* the runbook states incorrectly.
+
+### Bench evidence, USB plugged in, black probe on `TOP_GND`
+
+| Node | Reading | What it establishes |
+|---|---|---|
+| Teensy pin 14 / base-drive node | **0.5 mV** | Pin 14 boots LOW per [signal_router.cpp:202-204](../signal_router.cpp#L202); nothing drives the base node |
+| Collector, **column 49** | **4.99 V** | 49 is the node tied to relay coil−, pulled to the rail through the coil, BJT off |
+| Coil +, **`55f`** | **4.99 V** | 0 V across the coil — correctly de-energised |
+
+**Orientation, now settled: `49` = Collector, `50` = Emitter, `51` = Base.**
+
+### The runbook's Phase 6 step 2 cannot be followed on this part
+
+Step 2 (L1263) says to orient the adapter so the silkscreen reads **E – B – C** left-to-right. Phase 0.5 (L504) says the adapter is marked **C / B / E**. The two disagree with each other, and **both put the Base in the centre position.**
+
+An MMBT3904 in SOT-23 is **pin 1 = Base, pin 2 = Emitter, pin 3 = Collector** — the collector is the lone pin on its side of the package, and **the emitter is the centre pin**. So "E – B – C" is not a valid ordering for this device in either direction. The bench result (C/E/B) is consistent with the part and with nothing else.
+
+Built as step 2 instructs, emitter and base land swapped: the stage does not switch, and the base-emitter junction sits reverse-biased toward its ~6 V breakdown rating. **This is the eighth documented runbook defect.** Step 2's parenthetical *"sanity-check with the DMM: probe each header pin back to the SOT-23 pad"* is the line that caught it — it should be mandatory, not parenthetical. Consequence for step 6: the emitter-to-GND jumper belongs at column **50**, not `49a` as written.
+
+### Why "both coil ends at 4.99 V" is weaker evidence than it looks
+
+It is a correct and expected de-energised reading, and it does **not** test the flyback diode. With the BJT off there is ~0 V across the coil, so a **reversed 1N4148 passes nothing and reads identically to a correct one.** The diode is only tested at the instant the transistor saturates, and if it is backwards it fails destructively at that instant — the runbook's own step 10 states the failure mode: *"Reversed: the diode shorts +5V to GND through the BJT whenever pin 14 goes HIGH."*
+
+That short is limited only by the diode and the MMBT3904 (200 mA rated). It would take out both parts, and it browns out the **+5 V rail that also feeds the Teensy carrier and the Audio Shield** — so a bad outcome would not stay local to Phase 6. **Cathode band must be at `55f` (COIL +, rail side).** This is recorded as TODO-6 **V2a** and gates the first `p`.
+
+**General lesson, worth carrying past this phase:** a de-energised measurement can only confirm the *static* half of a switching circuit. Every part whose job begins at the switching edge — flyback diodes, snubbers, pulldowns during reset — is untested by any number of quiescent voltages that look right. Enumerate those parts *before* the first actuation, not after.
+
+### Still open from entry (1)
+
+**V1 is only half closed.** "0.5 mV at the base-drive node" confirms pin 14 is LOW, but it does not by itself distinguish *"col 45 is clear"* from *"VGND is being clamped by pin 14."* One probe settles it while the board is already powered: **`BOT_RED` → GND must read ≈ 2.50 V.** Near 0 V would mean the column-45 collision was built after all and C8 has been discharging into the pin. Recorded rather than assumed.
+
+### What is NOT concluded
+
+- **Not** that the driver is correct end to end. The base path itself (V3) is still on the pre-halt wiring; only the transistor's identity and the coil's static state are established.
+- **Not** that the relay will actuate. If the base resistor still lands on col 45 rather than a verified free column, `p` produces no click — a benign outcome, but do not read silence as a driver fault before checking V3.
+
+**Next:** V2a (diode band at `55f`) and the `BOT_RED` = 2.50 V reading, in either order, both before the first `p`. Then V3/V4, then the end-of-phase table — collector 0.1–0.3 V on `p`, COM_1↔NO_1 closed, COM_1↔NC_1 open, and the reverse on `P`.
+
+---
+
+## 2026-09-15 (1) — 🛑 PHASE 6 HALTED: column 45 is VGND, not a free column. Runbook Phase 6 step 4 would tie Teensy pin 14 directly to the analog reference rail
+
+**Do not fit the `45a` → Teensy pin 14 jumper. Do not plug in USB until the reconciliation below is checked at the bench.** Phase 6 construction is halted, not failed — nothing is known to be damaged.
+
+### The bench report that triggered this
+
+Conley, mid-Phase-6 bring-up with the Phase 6 firmware already installed, measured continuity from the Base side of the new 1 kΩ base resistor (column 51) but **not** from its other leg to column 45, and asked whether the earlier circuitry at column 45 — "something else with 2 resistors" — was the cause. It is. The as-built record settles it without needing another photograph.
+
+### Column 45 A–E is VGND — it has been since Phase 1
+
+From [`docs/asbuilt/netlist.md`](../docs/asbuilt/netlist.md), §2 and §3, all at `PHYS` confidence at strip level:
+
+| Ref | Value | Location |
+|---|---|---|
+| R3 | 10 kΩ | `TOP_GND` → **`45a`** |
+| R4 | 10 kΩ | `TOP_RED` → **`45b`** |
+| grey jumper | — | **`45c`** → `BOT_RED` rail |
+
+> **VGND** | `BOT_RED` rail · `45c` via grey jumper · **col 45 A–E** · C7+ · C8+ | `PHYS`
+
+**R3 and R4 are the two resistors Conley remembered.** They are the +5 V / GND divider whose midpoint *is* column 45 A–E, and `45c` is what distributes that midpoint to the `BOT_RED` rail. Note the exact hole matters not at all and the exact hole is occupied anyway: col 45 A–E is one node, and R3 already sits in `45a` — the precise hole Phase 6 step 3 calls free.
+
+### Root cause: a documented deviation whose downstream consequence was never traced
+
+This is not a new discovery so much as an old one that was filed and never followed forward. Netlist §5 deviation **D3** reads:
+
+> D3 | VGND divider is at **col 45**, not col 15. Rail decoupling at **col 39/41/54**, not col 5/7/18/20 | Pure relocation. Runbook Phase 1 coordinates are stale
+
+The runbook's Phase 1 puts the VGND divider at column 15. The board puts it at column 45. D3 assessed that as "pure relocation" — benign — and on its own terms it was. **But `docs/breadboard_bringup_v3.md` then hard-codes `45a` as "a free column" in two later phases, and D3's assessment never checked that.** A relocation is only benign if nothing downstream claims the destination.
+
+Two collisions follow from it:
+
+| Runbook | Step | What it does | Status |
+|---|---|---|---|
+| Phase 4 step 6 (L968–969) | 100 kΩ from `37a` → **`45a`**, plus jumper `45a` → `BOT_RED` | Would have landed the bias resistor on VGND | **Dodged by accident.** As-built R5 is `37c` → `41d`, biased from OPA_BIAS instead — the TODO-21 common-mode redesign moved it before it could collide |
+| Phase 6 steps 3–4 (L1269–1271) | 1 kΩ from Base strip → **`45a`**; then **jumper `45a` → Teensy pin 14** | Ties a 3.3 V push-pull GPIO to the analog reference rail | **Live right now** |
+
+Step 3 alone is merely wrong — it puts the BJT base resistor on the wrong node. **Step 4 is the dangerous one**, because it is a direct, unresistored connection from a Teensy output pin to a rail carrying C8 (10 µF) and C7 (0.1 µF) plus the R3/R4 divider.
+
+### What the installed firmware would have done on the next boot
+
+This is why the halt is worth the interruption rather than being left for the next session:
+
+- [`config.h:243`](../config.h#L243) — `RELAY_SEND_PIN 14`
+- [`signal_router.cpp:202-204`](../signal_router.cpp#L202) — `signalRouter_init()` sets pin 14 `OUTPUT` and immediately `digitalWrite(..., LOW)`
+- [`signal_router.cpp:375`](../signal_router.cpp#L375) — drives it `HIGH` on the `p` relay command
+
+So with that jumper fitted, the *first power-up* clamps VGND to 0 V and dumps C8's stored charge (2.5 V across 10 µF) into pin 14, current-limited by nothing but the pin's own impedance. Steady state is survivable — R4 sources only 5 V / 10 kΩ = 0.5 mA — but the capacitor inrush is not something to hand a GPIO deliberately.
+
+**Two things that limit the blast radius, both recorded rather than assumed:**
+
+1. **Netlist D4: "VGND is alive but unloaded. Nothing on the board uses it."** The analog front end biases from OPA_BIAS (col 41/43, fed by R1/R2), which is independent of VGND. So clamping VGND would *not* have corrupted the Phase 4/5 signal path. The exposure is to pin 14, C7/C8 and R3/R4 only.
+2. **No 5 V-tolerance violation is possible in the as-built.** Before `pinMode()` runs, pin 14 is high-Z and column 45 sits at 2.5 V — under 3.3 V. The Teensy 4.1 is **not** 5 V tolerant, so this matters: netlist §1 records `TOP_RED ↔ BOT_RED bridged? **No.**` at `PHYS`. **If anyone ever fits the Phase 0 step 5 bridges that netlist deviation D5 warns about, `BOT_RED` becomes +5 V and this same jumper instantly destroys the pin.** D5 and D3 are individually survivable and jointly destructive.
+
+### Reading Conley's measurement
+
+"Continuity from the column-51 side of the resistor, nothing to column 45" is exactly the signature of that resistor leg **not seated in a column-45 hole**. That is *consistent with* the hazardous connection never having been completed, and nothing analog has misbehaved. **It is not proof** — the same reading comes from a leg seated in the wrong strip entirely. It is checkable at the bench in one measurement, recorded in the todo.
+
+Separately: a 1 kΩ resistor will not beep on most meters in continuity mode, so "no beep" across the resistor is not evidence of a fault. Resistance mode is the right instrument here, and the meaningful reading is strip-to-strip, not leg-to-leg.
+
+### A second, unresolved discrepancy in the same bench report
+
+Conley reports **Base verified at column 51**. Runbook Phase 6 step 2 places the SIPH06-1 adapter at E=`49e`, B=`50e`, C=`51e`. If Base is genuinely at 51, the adapter sits one column right of the runbook — E=50, B=51, C=52 — which is *self-consistent* with the corrected Collector reaching the relay coil− node, and with continuity appearing on the 51 side of the base resistor.
+
+**That shifts every coordinate in Phase 6 steps 3, 5 and 6, and it is not yet confirmed.** It is recorded as an open bench question, not folded into the fix.
+
+### What is NOT concluded here
+
+- **Not** that the board is damaged. No evidence of that, and D4 bounds what could have been affected.
+- **Not** that the transistor is at 50/51/52. One builder-reported probe on one pin.
+- **Not** that column 45 F–J is usable. The netlist does not record it as occupied, but R3 and R4 physically span it on their way from the top rails.
+
+### Decision
+
+Phase 6's Teensy-side drive node **moves off column 45.** The 1 kΩ base resistor runs from the Base strip to a genuinely free column, and *that* column jumpers to pin 14. Preferred target is **column 53 A–E** — unclaimed in the netlist, and on the relay side of the transistor, which keeps a switching drive line out of the columns 30–48 analog territory entirely. Column 46 A–E is the alternative if 53 is physically awkward. Either way the column gets verified dead before use, rather than trusted because a document called it free.
+
+The runbook is corrected rather than worked around (TODO-45), and the remaining as-built deviations get the forward-trace that D3 never got (TODO-46).
+
+**Next:** bench verification sequence in TODO-6 — confirm col 45 is untouched by the new work, confirm the transistor's actual columns, then rebuild steps 3–4 on the relocated column. USB stays unplugged until the first two are done.
+
+---
+
 ## 2026-09-13 (13) — ✅ REQUIREMENTS CORRECTION: jack presence detection is a UX feature, not a hardware requirement. Phase 5 unblocks for $0
 
 **[ADR-003](../docs/adr/ADR-003-jack-presence-is-a-ux-feature.md) accepted.** Keep the Switchcraft #11s. Buy nothing. Phase 5's *"detect events fire"* criterion is removed.

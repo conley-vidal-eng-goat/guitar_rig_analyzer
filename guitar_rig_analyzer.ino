@@ -312,9 +312,10 @@ EXPECTED_BLOCK_MS);
     // bench. Do not merge them here just because the router is now running.
     //
     // NOTE: signalRouter_init() also configures RELAY_SEND_PIN/RELAY_RETURN_PIN
-    // as outputs and drives them LOW. Nothing is connected to those pins yet
-    // (Phase 6 is not built), so this is electrically inert -- but it IS relay
-    // GPIO activity and is called out here rather than left to be discovered.
+    // as outputs and drives them LOW. Pin 14 now drives the Phase 6 RELAY_SEND
+    // driver (bench-verified 2026-09-16), so LOW here holds that relay
+    // de-energised at boot; its contacts are not yet in the signal path
+    // (Phase 7). Pin 15 is still unconnected.
     // -------------------------------------------------------------------------
     Serial.println("[Main] Initialising signal router (jack detect only)...");
     signalRouter_init();
