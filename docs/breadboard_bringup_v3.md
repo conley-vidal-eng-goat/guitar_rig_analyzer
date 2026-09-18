@@ -1289,9 +1289,22 @@ There's an alternative — buy **Cliff CL1384** (make-on-insertion) instead — 
   └─────────┘
 ```
 
+> **⚠️ CORRECTED 2026-09-17 — coil polarity was inverted in this table.** It read
+> pin 1 = COIL (−) and pin 10 = COIL (+). The TQ2-5V is a **polarised** relay, and
+> built that way it clicks but **the contacts do not transfer**. Proven by
+> intervention at the bench on 2026-09-16: with pin 1 at `55a` (`PHOTO`), the only
+> change made was moving +5 V to `55a` and the collector to `55f`, and the contacts
+> began transferring (`MEAS`). Steps 8–10 below are corrected to match. See journal
+> 2026-09-16 (1), (2) and (3). **The contact rows (pins 2/3/4) are correct and
+> bench-proven; only the coil rows were wrong.**
+>
+> **Columns: this phase is built, and its as-built columns differ from the text
+> below** (base drive from col 53, collector at `49`). **TODO-6's as-built line is
+> the authoritative template for copying this driver — not this runbook.**
+
 | Pin | Function | Breadboard hole |
 |---|---|---|
-| 1 | **COIL (−)** | `55a` |
+| 1 | **COIL (+)** | `55a` |
 | 2 | **POLE 1 NC** | `56a` |
 | 3 | **POLE 1 COM** | `57a` |
 | 4 | **POLE 1 NO** | `58a` |
@@ -1300,15 +1313,15 @@ There's an alternative — buy **Cliff CL1384** (make-on-insertion) instead — 
 | 7 | POLE 2 NO (not used in Phase 6) | `58f` |
 | 8 | POLE 2 COM (not used in Phase 6) | `57f` |
 | 9 | POLE 2 NC (not used in Phase 6) | `56f` |
-| 10 | **COIL (+)** | `55f` |
+| 10 | **COIL (−)** | `55f` |
 
 We use POLE 1 only in this phase. POLE 2 is left unconnected.
 
-**8. Wire COIL (−) → collector of the MMBT3904.** Jumper from `55a` (pin 1) to `51b` (Collector strip — same node as `51a`).
+**8. Wire COIL (−) → collector of the MMBT3904.** Jumper from `55f` (pin 10) to `51b` (Collector strip — same node as `51a`).
 
-**9. Wire COIL (+) → +5V rail.** Jumper from `55f` (pin 10) to the top-red +5V rail.
+**9. Wire COIL (+) → +5V rail.** Jumper from `55a` (pin 1) to the top-red +5V rail.
 
-**10. Place the 1N4148 flyback diode across the coil**, with the **cathode band (the black/silver stripe) toward COIL (+) — pin 10, the +5V side.** One leg in `55a` (pin 1, COIL −), the other (banded) leg in `55f` (pin 10, COIL +). In normal operation the diode is reverse-biased and does nothing; when the GPIO drops low and the coil's magnetic field collapses, the diode forward-biases and dumps the kickback voltage harmlessly into the +5V rail. *Reversed: the diode shorts +5V to GND through the BJT whenever pin 14 goes HIGH. Get this right — a multimeter in diode mode reads ~0.65 V from band-side to non-band-side and OL the other way.*
+**10. Place the 1N4148 flyback diode across the coil**, with the **cathode band (the black/silver stripe) toward COIL (+) — pin 1, the +5V side.** One leg in `55f` (pin 10, COIL −), the other (banded) leg in `55a` (pin 1, COIL +). In normal operation the diode is reverse-biased and does nothing; when the GPIO drops low and the coil's magnetic field collapses, the diode forward-biases and dumps the kickback voltage harmlessly into the +5V rail. *Reversed: the diode shorts +5V to GND through the BJT whenever pin 14 goes HIGH. Get this right — a multimeter in diode mode reads ~0.65 V from band-side to non-band-side and OL the other way.*
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 260" width="100%" style="max-width:700px;background:#ffffff;border:1px solid #ccc;">
   <style>
