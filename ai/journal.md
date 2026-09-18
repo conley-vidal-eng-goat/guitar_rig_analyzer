@@ -12,6 +12,44 @@ How to use this file:
 
 ---
 
+## 2026-09-17 (1) — 🔨 RELAY_RETURN driver #2 BUILT at cols 8–18 and measured de-energised at rest. 🛑 Then `j` came back **"Unknown command"**: the Teensy is running a build older than `3460080`. Compile ≠ flashed, caught at the bench
+
+### What was built, and where
+
+The runbook's "mirror at columns 60–70" is impossible: the BB830's main field is physically **columns 1–64** (`PHYS`, builder), hardware occupies ~30–60, and **1–29 is empty**. The driver was sited at **columns 8–18** by shifting the **Phase 6 as-built line left by 41 columns** — TODO-6's as-built record as the template, never the runbook:
+
+`pin 15 → 12` · `1 kΩ 12→10` · **`C 8 · E 9 · B 10`** · `10 kΩ 10→GND` · `coil+ 14a → +5 V` · `coil− 14f → collector 8` · `1N4148 band 14a` · relay `14`–`18` · pole 1 `15a` NC / `16a` COM / `17a` NO.
+
+**The transistor order is `C E B` left to right**, as measured on 2026-09-15 (2) — *not* the runbook's `E B C` silkscreen order. Build reported continuity-clean (`RPT`).
+
+**Rails were proven before anything was placed** (`MEAS`, power off, continuity): both rails continuous `8`↔`18`, blue ↔ circuit GND, red ↔ **the +5 V node feeding the Phase 6 driver**. Forward-trace (TODO-46): nothing lands in 30–64, and col 45 (VGND, deviation D3) is untouched.
+
+### The resting state is now evidence, not assumption
+
+Powered, before any Serial command (`MEAS`): base `10a` → GND **1.7 mV** · Teensy pin 15 → GND **2.6 mV** · **`14f` → GND 4.98 V**, with `14a` on +5 V. Both coil ends sit at +5 V, so **≈0 V across the coil and the relay is de-energised** — the intended ADR-004 TS/default state.
+
+**⚠️ What it does not prove: *why* pin 15 is LOW.** The 10 kΩ pulldown and `signalRouter_init()` both drive it there, **and the old build does the same**. ADR-004's claim that the *pulldown* guarantees TS at power-on is still unproven; it needs a reading taken during reset, before `setup()` reaches the router. Do not let "it was LOW at rest" stand in for that.
+
+### 🛑 The flash mismatch
+
+`j` returned `[Main] Unknown command: 'j'.`, and the help list ended at `r=reset EMA` with **no `j`/`k` line** (`MEAS`, serial readback). The local tree and `HEAD` **do** contain it (`guitar_rig_analyzer.ino:452`, committed in `3460080`). So **source ✅ / flashed ❌**: the board is running a build older than ADR-004.
+
+**`k` was correctly not sent.** On the old build it is equally unknown, and no other command drives pin 15 — so nothing could have been learned, and the next thing typed should be a reflash.
+
+**This is the third time this project has been saved by reading state back from the board instead of trusting a report** (see 2026-09-16 (3) item 3, which used the same unknown-command trick to prove which build was flashed). `3460080`'s own commit message says "compile-verified, NOT bench-verified" — this is what that boundary looks like when it bites. **Keep the help-list readback as the standard first check after any upload.**
+
+### No new Phase 7 firmware
+
+`j`/`k` **are** the Phase 7 relay control; nothing needs writing. **Do not add a `[PHASE7-TEMP]` pin-15 toggle.** `signal_router.cpp` owns pin 15, and a second writer would desynchronise the router's state from the hardware — exactly why `[PHASE6-TEMP]` was removed (2026-09-16 (2)).
+
+### Next, one step at a time
+
+1. Flash the current tree. 2. Confirm the help list shows `j=return TS  k=return XLR`. 3. Re-measure the resting state. 4. `j` → expect no change, `14f` stays ≈4.98 V. 5. `k` → expect pick-up, `14f` ≈0.13 V (Phase 6 read 129.1 mV), and `15a`/`16a`/`17a` continuity to transfer. 6. `j` again → releases. 7. Power-cycle → comes up TS, de-energised.
+
+**Still open:** which rail pair was probed, top or bottom (it decides whether netlist **GAP-5** is closed); which row the MMBT3904 adapters sit in; relay #2's marking not yet read back (TODO-47's lesson: the part was assumed once already); pole 2 still datasheet-level. **Phase 7 is not signed off, and the signal path is not wired.**
+
+---
+
 ## 2026-09-16 (5) — ✅ ADR-004 IMPLEMENTED IN FIRMWARE (`3460080`). **Compile-verified only: there is zero hardware evidence.** The ordering audit found two things worth more than the implementation: a latent injection hazard and a RAWDUMP conflict with measurement
 
 ### ⚠️ Evidence boundary. Read this first.
