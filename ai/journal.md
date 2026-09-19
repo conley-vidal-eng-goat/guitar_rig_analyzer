@@ -12,6 +12,46 @@ How to use this file:
 
 ---
 
+## 2026-09-19 (1) — ✅ PHASE 7 RELAY DRIVER + CONTACT TRANSFER BENCH-PROVEN, and ADR-004's `j`/`k` exercised on real hardware. **It did NOT work first try: the driver stalled in the active region, and the fix is not identified**
+
+### The pass, after a cold restart with nothing touched
+
+| Check | Observed | Tier |
+|---|---|---|
+| `k` → XLR | audible click; **coil 4.78 V** (≈26 mA, saturating) | `MEAS` via builder |
+| XLR contacts | `16a` COM ↔ `17a` NO **closed**; `15a` NC ↔ `16a` COM **open** | `MEAS` via builder |
+| TS resting contacts | COM ↔ NC **closed**; COM ↔ NO **open** | `MEAS` via builder |
+| `j` → TS | clean audible release | `RPT` (audible) |
+| Survives power-off → cold boot → XLR → TS | yes, hardware untouched | `MEAS`+`RPT` |
+
+**Pole 1 of relay #2 (`15a` NC · `16a` COM · `17a` NO) is now bench-proven on this relay in both directions** — not inherited from relay #1. **Pole 2 remains datasheet-level.**
+
+**Firmware, on hardware for the first time:** `j` took the no-op path (`Return source unchanged: TS (no route change)`, no relay write, no ROUTE_CHANGED). `k` ran the full chain — `Route change notified at block 90305` → `Route updated: XLR return, no injection` → `Return source changed: XLR` → `[Main] audioCap: ROUTE_CHANGED`. **The ADR-004 invalidation chain is now observed, not just traced.** Flash identity was proved by serial readback (`?` → help list carrying `j=return TS  k=return XLR`), never from the uploader's exit code.
+
+### 🔻 The failure that came first, kept on the record
+
+Before any probing or reseating, the driver **stalled in the active region under the relay load**: `8a` (collector) sat at **3.556 V** (and 3.733 V on an earlier attempt) instead of Phase 6's 129 mV, with the emitter at **291 mV** instead of ~0. The coil was passing roughly a third of its ~27 mA (`DERIV`, using relay #1's 183 Ω coil — **this coil's resistance was never measured**).
+
+**Load-dependence was the tell:** the same transistor pulled the node near 0 V at ~5 mA and could not at ~27 mA. That is the signature of series resistance in the emitter path, not a logic or firmware fault.
+
+**During probing and reseating something physically changed, and normal operation became repeatable. The specific bad connection was never identified.** So:
+
+- **This is not a fixed defect. It is an unexplained recovery.** If it returns, suspect the same emitter path first: the adapter's emitter solder joint, the `9a` contact, the GND jumper.
+- **"Continuity is clean" did not catch it.** A beeper tests at ~1 mA; a joint can pass that and still drop volts at 27 mA. Continuity proves a path exists, not that it is low-resistance **under load** — the same placement-vs-value split as the capacitor-value lesson.
+- **The base-resistor drop (`12a`→`10a`) was queued but never recorded.** It would have separated "base drive collapsed" from "full drive, forced β ≈ 3". If the fault returns, take that reading **before** touching anything.
+
+### Where TODO-7's ADR-004 acceptance now stands
+
+Proven: boot comes up TS de-energised; `k` energises, raises ROUTE_CHANGED and changes the description; `j` reverses it; a power cycle returns to TS. **Not proven: a TS signal reaching line-in R** — the signal path is not wired. **Phase 7 is not signed off.**
+
+### Still open
+
+Which rail pair was probed (netlist **GAP-5**); the adapter row; **relay #2's marking still unread** (TODO-47's lesson); pole 2; whether the pulldown or firmware establishes pin 15 LOW during reset; and the unexplained recovery above.
+
+**Next:** signal wiring, one connection at a time, traced from the as-built record and the contract rather than from memory (TODO-46 flagged this trace as still outstanding).
+
+---
+
 ## 2026-09-17 (1) — 🔨 RELAY_RETURN driver #2 BUILT at cols 8–18 and measured de-energised at rest. 🛑 Then `j` came back **"Unknown command"**: the Teensy is running a build older than `3460080`. Compile ≠ flashed, caught at the bench
 
 ### What was built, and where
