@@ -12,6 +12,58 @@ How to use this file:
 
 ---
 
+## 2026-09-19 (3) — ✅ PHASE 8 XLR RETURN PATH BUILT AND CONTACT-PROVEN (A→B→A from the connector to LINE IN R). Detect switch intentionally omitted under ADR-004. **Contact-path proof only — no analog signal has been through it**
+
+### As-built
+
+| Item | As built | Tier |
+|---|---|---|
+| XLR **pin 2** (hot) | → pigtail → **`17a`** = relay #2 pole-1 **NO** | `PHYS` (builder read the hole) |
+| XLR **pin 1** (shield) | → **top breadboard GND rail** | `PHYS` |
+| XLR **pin 3** (cold) | → **top breadboard GND rail** | `PHYS` |
+| Other connector contacts | **none wired** — no undocumented second path into `17a` | `PHYS` |
+| D2F-01L detect microswitch | **intentionally NOT built** (ADR-004: detection is not load-bearing for routing) | decision |
+| Connector part identity | intended Neutrik **NC3FAH2-0** per runbook; **marking not read back** | `NYV` |
+
+### Passive checks, POWER OFF
+
+| Measurement | Result |
+|---|---|
+| pin 2 → pin 1 | **OL** |
+| pin 2 → pin 3 | **OL** |
+| pin 1 → pin 3 | **0.2 Ω** (both on the top GND rail, as intended) |
+| pin 2 → top GND rail, **after** mechanically securing the connector | **OL** |
+
+The last one is a **post-handling bridge check only.** Pin 1 is already on that rail at 0.2 Ω, so it repeats pin 2 → pin 1 plus one segment. It is not independent confirmation of isolation, and should not be counted as a second proof.
+
+### Relay-controlled routing: A→B→A from the connector to the codec
+
+Continuity, **XLR pin 2 → Audio Shield LINE IN R pad**, nothing rewired between states (`MEAS`):
+
+| Relay state | Result |
+|---|---|
+| TS (resting) | **OPEN** |
+| XLR (commanded) | **BEEP** |
+| TS (restored) | **OPEN** |
+
+**XLR pin 2 reaches LINE IN R only when XLR is selected.** This also re-proves relay transfer under command, witnessed this time from the far end of a different signal path than the 2026-09-19 (1) test used.
+
+**It is contact-path proof, not signal-quality proof. No analog signal has travelled this path. Phase 8 is not signed off, and Phase 7 remains open** (no Rig Send jack, no real-stimulus end-to-end run).
+
+### ⚠️ Known risk, recorded deliberately: the XLR signal reference is the breadboard rail
+
+Pins 1 and 3 land on the **top breadboard GND rail** — option B of the three considered, not the shield ground. The precedent is journal **2026-09-12 (3)**: moving *only* the return reference from breadboard GND to shield GND improved SOURCE by **33.1 dB**. The XLR's reference is now the breadboard rail while the codec's is the shield.
+
+**This is a signal-quality risk, not a wiring defect, and nothing should be rewired on the strength of it.** The test is specific: **when a real signal first goes down the XLR path, compare its noise floor against the TS path.** If the XLR floor is meaningfully worse, the ground reference is the first suspect and the fix is already documented.
+
+Also noted: grounding pin 3 is standard for single-ended adaptation, but transformer-coupled or cross-coupled balanced outputs dislike a shorted cold. Low risk for guitar rigs; recorded rather than designed around.
+
+### What Phase 8 still owes
+
+A real signal through the XLR path with its noise floor compared against TS; the connector's marking read back (`NYV` above — TODO-47's lesson); and a decision on whether the informational detect is ever wanted (ADR-002 governs how, if so).
+
+---
+
 ## 2026-09-19 (2) — 🔻 TOPOLOGY CORRECTION: there is no Rig Send jack. The loopback cable was tied to the **raw instrument input node**, not a buffered send. The relay A→B→A test still stands, and now has a mechanism
 
 ### The correction
