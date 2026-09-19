@@ -12,6 +12,62 @@ How to use this file:
 
 ---
 
+## 2026-09-19 (2) — 🔻 TOPOLOGY CORRECTION: there is no Rig Send jack. The loopback cable was tied to the **raw instrument input node**, not a buffered send. The relay A→B→A test still stands, and now has a mechanism
+
+### The correction
+
+**Only two Switchcraft #11s exist on the analyzer** (`PHYS`, builder): the Phase 5 jack and today's Phase 7 return jack. Sessions (this one included) had been reasoning with three conceptual jacks — Instrument In, Rig Send, Rig Return — as though each had hardware. **Runbook Phase 7 steps 9–10 build the Rig Send jack and they have not been done.**
+
+What the temporary cable actually connected (`netlist.md:104,133`): J4's tip is **column 30 = `SOURCE_IN`**, the raw guitar input node *ahead* of the buffer, with C1 and the bias resistor on it. So the loop was:
+
+`Instrument In tip (col 30, SOURCE_IN) → cable → Rig Return TS tip → RELAY_RETURN NC → COM → LINE IN R`
+
+**Not** "Rig Send → Rig Return". Every statement from tonight that used that phrase should be read with this correction.
+
+### The A→B→A relay test — evidence kept, claim bounded
+
+Gap between SOURCE and RETURN peaks, nothing changed but the relay (`MEAS`, serial diagnostics):
+
+| State | SOURCE − RETURN |
+|---|---|
+| TS | 0.0 · 0.0 · 0.3 dB |
+| XLR | 4.7 · 4.2 · 4.6 dB |
+| TS (restored) | 0.3 · **2.5** dB |
+
+**The correction strengthens this rather than weakening it.** The correlation under TS now has an identified mechanism: LINE IN R was tied through the relay and cable to the same node feeding the buffer, so SOURCE (buffered) and RETURN (direct) watched one node by two routes. Selecting XLR breaks that tie and the correlation collapses.
+
+**Bounds, stated plainly:** this is a drifting **noise floor**, not a stimulus. The 2.5 dB reading in the restored-TS cycle is a third of the way to the XLR value, and SOURCE itself moved 1.7 dB between cycles. **Directional evidence that the TS path conducts. Not a calibrated measurement, and not Phase 7 sign-off.**
+
+**Residual correlation under XLR** (COM on an unterminated NO) is consistent with the crosstalk floor from LINE IN L that netlist finding **A2** measured at ≈ −56 dBFS. Both effects were present at once.
+
+### Test 1 was run by accident — record as INVALID, not FAIL
+
+An `x` intended as *cancel* was consumed as *consent* (see TODO-48) and Test 1 ran on a nonconforming fixture with no excitation. Result: TF NaN, flatness NaN, confidence 0.00, harness exited cleanly.
+
+**Classification: INVALID TEST / WRONG FIXTURE / NO EXCITATION. It is not evidence against RETURN_NODE or the Phase 7 wiring.** With no drive on SOURCE, `S_xx ≈ 0`, so the transfer function is 0/0 — NaN is the arithmetically correct outcome, not a fault.
+
+### LINE IN R coupling — resolved to `DERIV`
+
+**`DERIV` — LINE IN R is AC-coupled.** Supported by PJRC documentation for the Rev C/D design (`DOC`) combined with identification of this shield as Rev D (`PHOTO`, with supporting Rev-D pin-set evidence). **The coupling capacitor on this individual shield has not been electrically measured.** A `PHYS` claim was proposed and withdrawn.
+
+This closed the DC-into-the-codec worry. It did **not** close the other one: even through a coupling cap, hanging LINE IN R off `SOURCE_IN` puts an AC load on the raw guitar-input node and could alter the very signal being characterised. **That is why the cable was removed before any guitar went in**, rather than because anything failed.
+
+### ⚠️ Unexplained bench readings — do not reuse as evidence
+
+**`NYV` / anomalous bench measurement:** POWER-OFF resistance measurements reported ~14–23 Ω from `SOURCE_IN` to ground, while `SOURCE_IN` across C1 repeatedly measured ~77.4 kΩ. The observations were internally difficult to reconcile with the known topology. **No wiring defect was identified or corrected. Investigation intentionally deferred; do not use these resistance readings as evidence of a hardware fault or of a hardware pass.** (TODO-49.)
+
+**Nothing tonight produced an observed functional failure of the Phase 7 return hardware.**
+
+### Method note
+
+This session drove the board directly over the serial MCP link: `j`/`k` commands and passive diagnostic capture. **Flash identity was established by help-list readback, never from the uploader's exit code** — the check that caught the pre-ADR-004 image two days ago. Power state, clicks, and meter readings stayed with the builder; a vanished USB device was explicitly **refused** as proof of power-off.
+
+### Next
+
+Phase 8 (XLR return). **Note before scoping it:** under ADR-004 the XLR *detect* is no longer load-bearing for routing — only the XLR **signal path to RELAY_RETURN NO (`17a`)** is required. TODO-8's "microswitch detect works end-to-end" criterion predates that decision and is flagged for revisit.
+
+---
+
 ## 2026-09-19 (1) — ✅ PHASE 7 RELAY DRIVER + CONTACT TRANSFER BENCH-PROVEN, and ADR-004's `j`/`k` exercised on real hardware. **It did NOT work first try: the driver stalled in the active region, and the fix is not identified**
 
 ### The pass, after a cold restart with nothing touched
