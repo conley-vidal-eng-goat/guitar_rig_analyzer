@@ -364,17 +364,16 @@ and the one actually measured read 10 nF.
     .lbl { font: 11px monospace; fill: #222; }
     .lblbig { font: 13px monospace; fill: #111; font-weight: 700; }
   </style>
-  <text x="350" y="18" text-anchor="middle" class="lblbig">Step 5 — bridge the rails</text>
+  <text x="350" y="18" text-anchor="middle" class="lblbig">Step 5 — bridge the GROUND rails only</text>
   <rect x="40" y="40" width="620" height="100" rx="3" class="body"/>
   <line x1="50" y1="55" x2="650" y2="55" class="railred"/>
   <line x1="50" y1="68" x2="650" y2="68" class="railblue"/>
   <line x1="50" y1="115" x2="650" y2="115" class="railblue"/>
   <line x1="50" y1="128" x2="650" y2="128" class="railred"/>
-  <path d="M70,55 L70,128" class="br"/>
   <path d="M90,68 L90,115" class="bb"/>
-  <path d="M610,55 L610,128" class="br"/>
   <path d="M630,68 L630,115" class="bb"/>
-  <text x="350" y="92" text-anchor="middle" class="lbl">two bridges at left, two at right</text>
+  <text x="350" y="92" text-anchor="middle" class="lbl">ONE blue bridge at each end — no red bridges</text>
+  <text x="350" y="150" text-anchor="middle" class="lbl" fill="#d33">bottom-red becomes VGND in Phase 1 — do NOT tie it to top-red</text>
 </svg>
 
 ## End-of-phase verify
@@ -388,7 +387,25 @@ and the one actually measured read 10 nF.
 
 ## Background
 
-The BB830 has *four* independent power rails (two top, two bottom). Each runs the full length of the board. They are **not** connected to each other from the factory — the manufacturer leaves that to you so you can use them as four independent rails if you want. We only need two rails (one +5V and one GND, plus a third VGND coming in Phase 1), so we bridge the top rails to the bottom rails for redundancy. Two bridges per side keeps the rails at the same potential even with the inductance and resistance of long jumper-wire runs.
+The BB830 has *four* independent power rails (two top, two bottom). Each runs the full length of the board. They are **not** connected to each other from the factory — the manufacturer leaves that to you so you can use them as four independent rails if you want.
+
+**This design uses three of them, and that is exactly why only the blue pair gets bridged:**
+
+| Rail | Becomes | Bridged to its opposite? |
+|---|---|---|
+| top-red | **+5 V** | **No** |
+| top-blue + bottom-blue | **GND** | **Yes** — one bridge at each end |
+| bottom-red | **VGND ≈ 2.5 V** (Phase 1 step 7) | **No** |
+
+Bridging the blue pair keeps GND at the same potential across the board despite
+the resistance and inductance of long jumper runs. **Bridging the red pair would
+tie +5 V to VGND**, because bottom-red stops being a +5 V rail in Phase 1.
+
+> **🔻 CORRECTED in v3.1.** This paragraph used to end *"so we bridge the top rails
+> to the bottom rails for redundancy. Two bridges per side…"* — describing **both**
+> pairs, which is the destructive version of step 5. The prose, the diagram and the
+> verify table were all corrected together; if you find a fourth place in this
+> document still saying to bridge the red rails, that is a defect — report it.
 
 ---
 
@@ -2241,7 +2258,7 @@ would have produced a driver that silently does not work (C1-05, C1-06).
 
 | # | Where | What was wrong | Severity |
 |---|---|---|---|
-| **C1-01** | Phase 0 step 5 + its verify row | Bridged top-red ↔ bottom-red. **Phase 1 step 7 then re-purposes bottom-red as VGND — so the sequence shorts +5 V to VGND.** Nothing said to remove the bridges. | **Destructive** |
+| **C1-01** | Phase 0 step 5 — **prose, diagram, verify row AND Background** | Bridged top-red ↔ bottom-red. **Phase 1 step 7 then re-purposes bottom-red as VGND — so the sequence shorts +5 V to VGND.** Nothing said to remove the bridges. *The defect was stated in **four** places; correcting only the numbered step would have left the diagram and the Background paragraph still teaching it.* | **Destructive** |
 | **C1-02** | Phase 1 step 7 | Re-purposes `BOT_RED` as VGND with no check that C1-01's bridges are absent. Also still cites the VGND tap at col 15; as-built is **col 45**. | High |
 | **C1-03** | Phase 4 step 1 → end-of-phase verify | *"Unplug USB"* with **no reconnect step**, followed by five live DMM readings. **Cost ≈ two days of bench debugging** and nearly a replaced healthy op-amp. | **High** |
 | **C1-04** | Phase 4 step 6 | Called `45a` *"a free column"*. Column 45 A–E is the **VGND divider** (R3 is in that hole). | Medium |
