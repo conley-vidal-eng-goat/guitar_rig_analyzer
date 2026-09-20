@@ -12,6 +12,68 @@ How to use this file:
 
 ---
 
+## 2026-09-19 (4) — ✅ **FIRST VALID TRANSFER FUNCTION THROUGH THE INTENDED CHAIN.** Rig Send jack built; real guitar signal ran Instrument In → buffer → Rig Send → cable → Rig Return TS → relay → RETURN_NODE, TF confidence 15 % (> 10 % threshold)
+
+### Rig Send jack — install and pre-power checks
+
+The third Switchcraft #11 is in, completing the three-jack architecture the record had been describing conceptually since Phase 5 (journal 2026-09-19 (2) corrected the belief that it already existed).
+
+| Check | Result | Tier |
+|---|---|---|
+| TIP → `SOURCE_NODE` | continuity | `MEAS` |
+| Sleeve → **Audio Shield GND** | continuity | `MEAS` |
+| TIP → sleeve, powered off | ~0 Ω → 50 MΩ over ~15 s → **OL** | `MEAS` |
+| `48e` → LINE-IN-L permanent tap | **preserved** | `PHYS` |
+
+**On the TIP→sleeve reading: record only what it proves — no stable low-resistance TIP-to-sleeve short after installation.** The rising trace is charging behaviour; which capacitance dominates was not determined and does not need to be.
+
+**Note the grounding contrast, deliberately:** Rig Send's sleeve went to **Audio Shield GND**, matching the 2026-09-12 (3) lesson. The Phase 8 XLR's pins 1/3 went to the **breadboard** rail. Both are recorded as built; the XLR one remains the flagged signal-quality risk (TODO-8), and this send-side choice is the one that agrees with the 33.1 dB evidence.
+
+### Boot with nothing connected — no disturbance to SOURCE
+
+`SOURCE_NODE −63.5 dBFS · RETURN_NODE −63.9 dBFS · TF confidence 0 % · acquisition normal` (`MEAS`, one cycle).
+
+**Nothing indicates the parallel Rig Send branch disturbed SOURCE acquisition.** That is all it shows. **It is not a noise-floor figure** — one cycle, no stimulus, and not comparable to the −57…−60 dBFS readings of earlier sessions, which had different cabling.
+
+### ✅ The result: first valid TF through the intended architecture
+
+With a real guitar at Instrument In and the TS loop in place (`MEAS`):
+
+| Quantity | Observed |
+|---|---|
+| SOURCE peak | **−10.1 dBFS** |
+| RETURN peak | **−10.2 dBFS** |
+| **TF confidence** | **15 %** (threshold 10 %) |
+| 120 Hz / 500 Hz / 1 kHz | **−0.0 dB** each |
+| 5 kHz / 10 kHz | `---` |
+| Raw samples | SOURCE and RETURN track sample-for-sample (e.g. −1710/−1706, −1518/−1517, +432/+427) |
+
+**Chain exercised:** Instrument In → buffer → SOURCE_NODE → Rig Send → external TS cable → Rig Return TS → RELAY_RETURN NC → COM → LINE IN R → RETURN_NODE.
+
+**This is the first time a deliberate signal has travelled the intended path and the measurement engine has produced a valid estimate from it.** Every earlier correlation was a noise floor through an improvised path.
+
+**Bounds — none of this is a specification:**
+- **`---` at 5 kHz and 10 kHz is not evidence of roll-off.** This strum simply produced no qualifying data in those spot-check bins. Do not infer high-frequency response from it.
+- **−0.0 dB at three bins is a cable loop, not a calibrated result.** Unity through a short cable is the expected sanity outcome, not a validated flat response. The formal proof is TODO-9's Test 1 with its specified fixture.
+- **15 % confidence is barely over the threshold**, from a decaying, non-stationary guitar strum. It demonstrates validity, not quality.
+- **No A/B was run with the stimulus present.** The strongest closure evidence would be: play, select XLR, watch RETURN collapse, select TS, watch it return. That has been done on the noise floor only.
+
+### 🐞 Separate defect observed, not part of the signal result: stale route description at boot
+
+`[Main] Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R` — during an otherwise valid measurement, **on a board whose router is in TS.**
+
+**Cause, and it is ADR-004 working as designed:** `signalRouter_init()` deliberately does not call `audioEngine_setRoute()`, because boot is not a route-change transition (ADR-004 Decision 2, and the "no transition at boot" property that makes TS-at-boot clean). So `audio_engine` keeps the description set in its own `init()` until the first `j`/`k`.
+
+**Consequence:** the `[Main] Route:` diagnostic — and the same string in any Pi UI packet — **misreports the route until the first selection change.** The authoritative state is the router's; this is presentation state, and it is stale, not wrong at the hardware level.
+
+**Deliberately not "fixed" by sending `j` before this test**, which would have added an unnecessary state transition to the first clean post-boot loopback. Recorded as **TODO-50**.
+
+### Where this leaves the phases
+
+**Phase 7's return path is now demonstrated end-to-end with a real signal.** Remaining before sign-off: the stimulus-present A/B above, and a decision on whether anything else in TODO-7's checklist is outstanding. **Phase 8 still owes a real signal through the XLR path plus the noise-floor comparison against TS** — today's guitar never went through XLR.
+
+---
+
 ## 2026-09-19 (3) — ✅ PHASE 8 XLR RETURN PATH BUILT AND CONTACT-PROVEN (A→B→A from the connector to LINE IN R). Detect switch intentionally omitted under ADR-004. **Contact-path proof only — no analog signal has been through it**
 
 ### As-built
