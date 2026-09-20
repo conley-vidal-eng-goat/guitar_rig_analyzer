@@ -121,9 +121,16 @@
 // The actual measured rates are what matter — these are the targets.
 
 
+// CHANGED [todo-27]: was FFT_SIZE, giving 92.9 ms — wrong by exactly 2×.
+// AudioAnalyzeFFT1024 runs 50 % overlap, so a result arrives every HOP
+// (512 samples), not every window (1024). See FFT_HOP_SAMPLES in config.h.
+// Diagnostic-only: no measured value depends on this constant. But left
+// uncorrected, every diagnostic line forever reported a phantom -46.6 ms
+// anomaly against healthy hardware — exactly the kind of false signal that
+// has already cost this project days of debugging.
 static const float EXPECTED_BLOCK_MS =
-    1000.0f * FFT_AVERAGE_COUNT * FFT_SIZE / (float)SAMPLE_RATE;
-    // = 1000 × 4 × 1024 / 44100 ≈ 92.9 ms
+    1000.0f * FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES / (float)SAMPLE_RATE;
+    // = 1000 × 4 × 512 / 44100 ≈ 46.4 ms   (measured on hardware: 46.3 ms)
 
 
 static const float EXPECTED_DISPLAY_MS =

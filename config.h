@@ -398,12 +398,27 @@ set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 
 
 // FFT window size. Must be 1024 for AudioAnalyzeFFT1024.
-// Frame duration = 1024 / 44100 ≈ 23.2 ms per raw frame.
+// Window duration = 1024 / 44100 ≈ 23.2 ms of signal per transform.
 // Bin width       = 44100 / 1024 ≈ 43.1 Hz per bin.
 // Usable bins     = 512 (indices 0–511, covering 0 to 22,050 Hz).
 #define FFT_SIZE      1024
 #define SAMPLE_RATE   44100
 #define FFT_BINS      (FFT_SIZE / 2)
+
+
+// CHANGED [todo-27]: AudioAnalyzeFFT1024 runs 50 % OVERLAP — it does NOT
+// consume 1024 fresh samples per result. Verified in the Audio library source
+// (analyze_fft1024.cpp): after setting outputflag = true it resets state = 4,
+// keeping the last 4 blocks (512 samples) and needing only 512 NEW ones.
+//
+// So the RESULT RATE is set by the hop, not by the window:
+//      window = 1024 samples ≈ 23.2 ms of signal
+//      hop    =  512 samples ≈ 11.6 ms between successive results
+//
+// Anything computing a RATE or a PERIOD must use the hop. Anything describing
+// how much signal a transform sees uses the window. Conflating the two is what
+// produced a permanent phantom -46.6 ms timing anomaly in the diagnostics.
+#define FFT_HOP_SAMPLES   (FFT_SIZE / 2)
 
 
 // --- Linear frame averaging ---
@@ -416,8 +431,13 @@ set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 //   Averaging first produces a stable spectral estimate representative of
 //   the rig's steady-state frequency response — which is what we care about.
 //
-// Timing:
-//   4 frames × 23.2 ms = 92.8 ms per averaged output block ≈ 10.8 blocks/sec.
+// Timing (CHANGED [todo-27] — this arithmetic was wrong by 2×):
+//   FFT results arrive every HOP, not every window: 512 / 44100 ≈ 11.6 ms.
+//   4 results × 11.6 ms ≈ 46.4 ms per averaged output block ≈ 21.6 blocks/sec.
+//   Measured on hardware: 46.3 ms — agreement to 0.3 %.
+//   The previous note read "4 frames × 23.2 ms = 92.8 ms ≈ 10.8 blocks/sec",
+//   which used the window duration in place of the hop. The HARDWARE was
+//   always running at the correct rate; only the expectation was wrong.
 //   Display updates every DISPLAY_UPDATE_EVERY_N_FRAMES blocks.
 #define FFT_AVERAGE_COUNT     4
 
