@@ -406,25 +406,40 @@ void loop() {
                case 'v': case 'V':
                    validation_runAll();
                    break;
+               // CHANGED [todo-48]: the single-test commands used to call
+               // validation_waitForUser() and then run the test directly,
+               // bypassing the preflight level check that only 'v' performed.
+               // A dead SOURCE therefore surfaced as a NaN table inside a
+               // result report instead of a clear preflight failure. Each
+               // path now gates on validation_preflightGate().
+               //
+               // The gate's argument states whether the test's OWN fixture
+               // attenuates RETURN: tests 3 and 4 do so deliberately (pad, RC
+               // filter), and gating those on preflight's RETURN level window
+               // would fail a correct fixture. See validation.h.
                case '1':
-                   validation_waitForUser("Test 1: Connect Y-split loopback, then" " " "press Enter.");
+                   if (!validation_waitForUser("Test 1: Connect Y-split loopback, then" " " "press Enter.")) break;
+                   if (!validation_preflightGate(false)) break;
                    validation_runFlatLoopback();
                    break;
                case '2':
-                   validation_waitForUser("Test 2: Keep Y-split loopback, press" " " "Enter.");
+                   if (!validation_waitForUser("Test 2: Keep Y-split loopback, press" " " "Enter.")) break;
+                   if (!validation_preflightGate(false)) break;
                    validation_runChannelSwapSymmetry();
                    break;
                case '3': {
-                   validation_waitForUser("Test 3: Insert resistive pad in" " " "RETURN_NODE path.\n"
-                                          "Enter expected attenuation (e.g. -6.0)" " " "then press Enter.");
+                   if (!validation_waitForUser("Test 3: Insert resistive pad in" " " "RETURN_NODE path.\n"
+                                               "Enter expected attenuation (e.g. -6.0)" " " "then press Enter.")) break;
+                   if (!validation_preflightGate(true)) break;
                    Serial.print("Expected offset dB: ");
                    float off = readSerialFloatWithAudioPump(-6.0f);
                    validation_runKnownGainOffset(off);
                    break;
                }
                case '4': {
-                   validation_waitForUser("Test 4: Insert RC low-pass filter in" " " "RETURN_NODE path.\n"
-                                          "Enter corner frequency Hz then press" " " "Enter.");
+                   if (!validation_waitForUser("Test 4: Insert RC low-pass filter in" " " "RETURN_NODE path.\n"
+                                               "Enter corner frequency Hz then press" " " "Enter.")) break;
+                   if (!validation_preflightGate(true)) break;
                    Serial.print("Corner Hz: ");
                    float fc = readSerialFloatWithAudioPump(1989.0f);
                    validation_runKnownFilter(fc, -6.0f);

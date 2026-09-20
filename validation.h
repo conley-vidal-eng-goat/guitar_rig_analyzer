@@ -298,8 +298,45 @@ void validation_printResult(const ValidationResult& result);
 // when the next test ran.
 // -----------------------------------------------------------------------------
 void validation_printBaseline(const ValidationResult& loopback_result);
-// Utility — blocks until user sends any Serial character.
-void validation_waitForUser(const char* prompt);
+// -----------------------------------------------------------------------------
+// CHANGED [todo-48]: validation_waitForUser() now returns a CONSENT VERDICT.
+//
+// Was: void, and it read-and-discarded every byte — so a keystroke meant as
+// "cancel" was consumed as consent and started a test on a nonconforming
+// fixture. It now captures the first byte.
+//
+// Returns true  on CR, LF, 'y' or 'Y'  — proceed.
+// Returns false on anything else       — the caller MUST NOT run its test.
+//
+// 'y' is accepted alongside CR/LF deliberately: a serial monitor set to
+// "No Line Ending" sends nothing on Enter, so a CR/LF-only rule would hang the
+// prompt with no way out. The printed prompt states both.
+//
+// Blocks while pumping audio_capture, so the LIVE FFT consumer slot stays
+// drained during the wait (unchanged from the previous behaviour).
+// -----------------------------------------------------------------------------
+bool validation_waitForUser(const char* prompt);
+
+
+// -----------------------------------------------------------------------------
+// CHANGED [todo-48]: validation_preflightGate() — the shared entry gate.
+//
+// validation_runPreflightLevelCheck() previously had ONE caller, runAll(). The
+// single-test commands '1'–'4' ran their test directly, so a dead SOURCE showed
+// up as a NaN table inside a result report instead of a clear preflight failure.
+// Every entry point now gates on this function.
+//
+// return_is_attenuated:
+//   false — plain Y-split fixture (preflight, test 1, test 2). SOURCE and
+//           RETURN carry the same signal, so the FULL preflight applies.
+//   true  — test 3 (resistive pad) and test 4 (RC low-pass). These fixtures
+//           attenuate RETURN BY DESIGN, and preflight requires RETURN inside a
+//           6 dB-wide window. Gating on the RETURN criteria would fail a
+//           CORRECT fixture, so only the SOURCE-side criteria are gated on.
+//
+// Returns true when the test may proceed. Prints the reason when it may not.
+// -----------------------------------------------------------------------------
+bool validation_preflightGate(bool return_is_attenuated);
 
 
 #endif // VALIDATION_H

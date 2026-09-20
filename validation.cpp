@@ -38,6 +38,7 @@
                                // whichever renderer is selected; see
                                // docs/adr/ADR-001-display-architecture.md.
 #include <math.h>
+#include <string.h>    // CHANGED [todo-48]: strcmp() in criterionPassed()
 #include <stdlib.h>
 
 
@@ -445,12 +446,22 @@ void validation_printBaseline(const ValidationResult& loopback_result) {
 // =============================================================================
 // PUBLIC: validation_waitForUser()
 // Hardened in v0.3.0 with 30 ms post-flush delay. Unchanged through v0.5.0.
+//
+// CHANGED [todo-48]: was void and read-and-discarded EVERY byte, so a keystroke
+// meant as "cancel" was indistinguishable from consent and started a test on a
+// nonconforming fixture. It now CAPTURES the first byte and returns a verdict:
+// CR / LF / 'y' / 'Y' consent; anything else declines, is echoed back, and the
+// caller must not run its test.
+//
+// WHY 'y' IS ACCEPTED ALONGSIDE CR/LF: a serial monitor set to "No Line Ending"
+// transmits nothing at all when Enter is pressed. A strict CR/LF-only rule would
+// hang this prompt with no way out. The printed prompt states both.
 // =============================================================================
-void validation_waitForUser(const char* prompt) {
+bool validation_waitForUser(const char* prompt) {
      Serial.println();
      Serial.println(">>> WAITING FOR USER <<<");
      Serial.println(prompt);
-     Serial.println(">>> Press Enter to continue <<<");
+     Serial.println(">>> Press Enter (or 'y') to continue — any other key cancels <<<");
      presentation_status("VALIDATION: waiting — see Serial");
      while (Serial.available()) Serial.read();
 
@@ -476,6 +487,11 @@ void validation_waitForUser(const char* prompt) {
          }
          delay(5);
      }
+
+     // CHANGED [todo-48]: read the FIRST byte and keep it — this is the verdict.
+     // It must be captured before the flush below, which discards the rest of
+     // the line (e.g. the LF of a CRLF pair, or type-ahead).
+     int first = Serial.read();
      delay(30);
      while (Serial.available()) Serial.read();
 
@@ -485,6 +501,17 @@ void validation_waitForUser(const char* prompt) {
      if (audioCap_isBlockFresh(AudioConsumer::LIVE)) {
          audioCap_markConsumed(AudioConsumer::LIVE);
      }
+
+     bool consented = (first == '\r' || first == '\n' ||
+                       first == 'y'  || first == 'Y');
+     if (!consented) {
+         Serial.printf("[Validation] DECLINED — received '%c' (0x%02X), not Enter/'y'.\n",
+                       (first >= 32 && first < 127) ? (char)first : '?',
+                       (unsigned)(first & 0xFF));
+         Serial.println("[Validation] Test NOT run.");
+         presentation_status("VALIDATION: cancelled by operator");
+     }
+     return consented;
 }
 // =============================================================================
 // CHANGED [audit-3]: PREFLIGHT LEVEL CHECK — new function.
@@ -623,6 +650,81 @@ addCriterion(&result, "Source-to-gate gap (> min)",
          ? "PREFLIGHT: PASS — levels OK"
          : "PREFLIGHT: FAIL — adjust gain, see Serial");
      return result;
+}
+
+
+// =============================================================================
+// CHANGED [todo-48]: criterionPassed() + validation_preflightGate()
+//
+// THE DEFECT THIS CLOSES: validation_runPreflightLevelCheck() had exactly one
+// caller — validation_runAll(). The single-test commands '1'–'4' ran their test
+// directly, so a dead SOURCE surfaced as a NaN table inside a result report
+// instead of a clear preflight failure. Every entry point now gates on the
+// same check.
+//
+// THE FIXTURE PROBLEM, and why this gate takes a parameter:
+// runAll() runs preflight ONCE, against the plain Y-split, where SOURCE and
+// RETURN carry the SAME signal. Tests 3 and 4 then DELIBERATELY attenuate
+// RETURN (a 6 dB pad; an RC low-pass). Preflight requires RETURN to sit inside
+// a 6 dB-wide window (VALIDATION_TARGET_LEVEL_MIN/MAX_DBFS = -12 .. -6 dBFS)
+// and to clear TF_SOURCE_GATE by VALIDATION_GATE_GAP_MIN_DB.
+//
+// So running the FULL preflight before a single test 3 or 4 would FAIL on a
+// CORRECT fixture — the pad is doing its job. Gating tests 3/4 on the RETURN
+// criteria would have replaced one false result with another.
+//
+// What is actually being guarded against is a DEAD OR MIS-LEVELLED SOURCE, and
+// those criteria apply to every test. With return_is_attenuated = true the gate
+// therefore evaluates the SOURCE-side criteria only, and says so on Serial.
+//
+// Criteria are looked up BY NAME rather than by array index: a rename or a
+// reorder inside the preflight then fails loudly here instead of silently
+// gating on the wrong criterion.
+// =============================================================================
+static bool criterionPassed(const ValidationResult& r, const char* name) {
+    for (int i = 0; i < r.criterion_count; i++) {
+        if (r.criteria[i].name && strcmp(r.criteria[i].name, name) == 0) {
+            return r.criteria[i].passed;
+        }
+    }
+    // Not found — the preflight's criterion names have drifted from this gate.
+    // Fail closed and say which one, rather than gating on a missing result.
+    Serial.printf("[Validation] GATE ERROR: preflight criterion \"%s\" not found.\n", name);
+    return false;
+}
+
+
+bool validation_preflightGate(bool return_is_attenuated) {
+    ValidationResult pre = validation_runPreflightLevelCheck();
+
+    // An aborted preflight (no audio inside the 2 s deadline, or ROUTE_CHANGED
+    // mid-collection) returns with all_passed = false and NO criteria recorded.
+    // There is nothing to evaluate selectively — stop.
+    if (pre.criterion_count == 0) {
+        Serial.println("[Validation] PREFLIGHT ABORTED — test not run.");
+        presentation_status("PREFLIGHT ABORT — test not run");
+        return false;
+    }
+
+    bool ok;
+    if (return_is_attenuated) {
+        ok = criterionPassed(pre, "SOURCE_NODE level in window") &&
+             criterionPassed(pre, "Source-to-gate gap (> min)") &&
+             criterionPassed(pre, "No clipping (both channels)");
+        Serial.println("[Validation] NOTE: this test attenuates RETURN by design");
+        Serial.println("[Validation] (pad / RC filter), so the RETURN level and");
+        Serial.println("[Validation] RETURN gate-gap criteria are NOT gated on.");
+        Serial.println("[Validation] Gated on the SOURCE-side criteria only.");
+    } else {
+        ok = pre.all_passed;
+    }
+
+    if (!ok) {
+        Serial.println("[Validation] PREFLIGHT FAILED — test NOT run.");
+        Serial.println("[Validation] Fix the signal level, then re-run.");
+        presentation_status("PREFLIGHT FAIL — test not run");
+    }
+    return ok;
 }
 
 
@@ -1125,6 +1227,25 @@ if (!isnan(measured_slope)) {
 
 
 // =============================================================================
+// CHANGED [todo-48]: suiteDeclined() — the single exit used when the operator
+// declines any prompt inside validation_runAll().
+//
+// Before this, a declined prompt could not exist: waitForUser() consumed any
+// byte as consent. The suite therefore had no abort path at all, and the code
+// below simply ran the next test. Routing every decline through one function
+// keeps that abort consistent and greppable.
+// =============================================================================
+static bool suiteDeclined() {
+    Serial.println("\n================================================");
+    Serial.println("   SUITE ABORTED — declined by operator");
+    Serial.println("   No further tests were run.");
+    Serial.println("================================================");
+    presentation_status("VALIDATION: aborted by operator");
+    return false;
+}
+
+
+// =============================================================================
 // PUBLIC: validation_runAll()
 // CHANGED [audit-3]: Preflight level check added as first step.
 // CHANGED [audit-7]: All prompts updated — "play guitar" removed throughout;
@@ -1147,14 +1268,19 @@ bool validation_runAll() {
      // CHANGED [audit-3]: Preflight promoted to a counted test step.
 // If this fails, stop — the signal level is wrong and all subsequent
 // tests will produce unreliable data regardless of pass/fail status.
-validation_waitForUser(
+// CHANGED [todo-48]: a declined prompt now aborts the suite instead of
+// falling through into the next test.
+if (!validation_waitForUser(
     "PREFLIGHT: Signal Level Check\n"
     "Connect your broadband signal source (signal generator set to\n"
     "pink noise or white noise, ~0.3 Vrms / –10 dBV) to SOURCE_NODE.\n"
     "Connect the same source to RETURN_NODE (Y-split).\n"
-    "Press Enter to check that levels are in the –6 to –12 dBFS window.");
-ValidationResult preflight = validation_runPreflightLevelCheck();
-if (preflight.all_passed) {
+    "Press Enter to check that levels are in the –6 to –12 dBFS window.")) {
+    return suiteDeclined();
+}
+// Y-split fixture: SOURCE and RETURN carry the same signal, so the full
+// preflight applies (return_is_attenuated = false).
+if (validation_preflightGate(false)) {
     passed++;
 } else {
     Serial.println("[Validation] PREFLIGHT FAILED — stopping suite.");
@@ -1166,33 +1292,39 @@ if (preflight.all_passed) {
 
 // --- Test 1: Flat Loopback ---
 // CHANGED [audit-7]: "play guitar" removed. Broadband bench source required.
-validation_waitForUser(
+if (!validation_waitForUser(
     "TEST 1: Flat Loopback\n"
     "Keep the Y-split connection from the preflight check.\n"
     "Stimulus: pink noise or white noise from signal generator or DAW.\n"
     "Both SOURCE_NODE and RETURN_NODE receive the SAME signal.\n"
-    "Press Enter to begin collection.");
+    "Press Enter to begin collection.")) {
+    return suiteDeclined();
+}
 if (validation_runFlatLoopback().all_passed) passed++;
 
 
 // --- Test 2: Channel Swap Symmetry ---
-validation_waitForUser(
+if (!validation_waitForUser(
     "TEST 2: Channel Swap Symmetry\n"
     "Keep the same Y-split loopback connection and same stimulus.\n"
     "The firmware will automatically swap and restore the route.\n"
-    "Press Enter to begin.");
+    "Press Enter to begin.")) {
+    return suiteDeclined();
+}
 if (validation_runChannelSwapSymmetry().all_passed) passed++;
 
 
 // --- Test 3: Known Gain Offset ---
-validation_waitForUser(
+if (!validation_waitForUser(
     "TEST 3: Known Gain Offset\n"
     "Insert a fixed resistive voltage divider in the RETURN_NODE path.\n"
     "Use 1% metal film resistors — NOT a potentiometer.\n"
     "Example: R1=10kΩ, R2=10kΩ → attenuation = –6.02 dB\n"
     "Verify the attenuation with a DMM (measure Vout/Vin ratio).\n"
     "Keep both resistors ≤10kΩ to avoid HF rolloff from cable capacitance.\n"
-    "Enter the expected offset in dB, then press Enter.");
+    "Enter the expected offset in dB, then press Enter.")) {
+    return suiteDeclined();
+}
 
 
 float expected_offset = -6.0f;
@@ -1207,7 +1339,7 @@ if (validation_runKnownGainOffset(expected_offset).all_passed) passed++;
 // --- Test 4: Known Filter Response ---
 // CHANGED [audit-7]: Prompt now specifies WHITE NOISE and explains why.
 // CHANGED [audit-8]: RC example corrected to show loaded corner frequency.
-validation_waitForUser(
+if (!validation_waitForUser(
     "TEST 4: Known Filter Response\n"
     "Insert a first-order RC low-pass filter in the RETURN_NODE path.\n"
     "\n"
@@ -1221,7 +1353,9 @@ validation_waitForUser(
     "   R_eff = 10k || 40k = 8kΩ → fc_loaded ≈ 1989 Hz\n"
     "Enter THE LOADED corner frequency (or buffer the filter output\n"
     "with the second OPA1642 channel to use the unloaded value).\n"
-    "Then press Enter.");
+    "Then press Enter.")) {
+    return suiteDeclined();
+}
 
 
 float corner = 1989.0f;     // CHANGED [audit-8]: Default is now the loaded corner.
