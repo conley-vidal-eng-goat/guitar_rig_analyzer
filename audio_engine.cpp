@@ -372,6 +372,39 @@ void audioEngine_setRoute(const SignalRoute& route) {
 
 
 // -----------------------------------------------------------------------------
+// CHANGED [todo-50]: audioEngine_setRouteDescription(description)
+//
+// Updates ONLY the human-readable description carried in AudioFrame metadata.
+// Deliberately does NOT: apply mixer gains, reset EMA smoothing, or call
+// audioCap_notifyRouteChanged(). No ROUTE_CHANGED event is raised.
+//
+// WHY THIS EXISTS: signalRouter_init() does not call audioEngine_setRoute(),
+// because boot is not a route-change transition (ADR-004 Decision 2 — that is
+// the property that makes TS-at-boot clean, with no relay actuation and no
+// spurious measurement abort). The consequence was that audio_engine kept the
+// description from its OWN init() and the 5 s diagnostic printed
+// "Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R" on a board whose router
+// was in TS. The same stale string went to the Pi in ROUTER_STATUS, so a UI
+// would have shown it too.
+//
+// The router's state was always authoritative and correct; only this
+// PRESENTATION copy was stale. This setter closes that gap without
+// reintroducing the boot transition ADR-004 removed on purpose.
+//
+// NOT a substitute for audioEngine_setRoute(). A real route change must go
+// through setRoute() so that gains, smoothing and the event all follow.
+//
+// LIFETIME: stores the caller's pointer, exactly as setRoute() already does.
+// signal_router passes its module-static s_description buffer in both cases,
+// so the semantics here are unchanged from the existing path.
+// -----------------------------------------------------------------------------
+void audioEngine_setRouteDescription(const char* description) {
+    if (description == nullptr) return;
+    s_active_route.description = description;
+}
+
+
+// -----------------------------------------------------------------------------
 // audioEngine_getRoute()
 // -----------------------------------------------------------------------------
 const SignalRoute& audioEngine_getRoute() {

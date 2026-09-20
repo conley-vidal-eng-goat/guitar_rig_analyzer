@@ -39,7 +39,7 @@
 // =============================================================================
 
 #include "signal_router.h"
-#include "audio_engine.h"      // for audioEngine_setRoute()
+#include "audio_engine.h"      // for audioEngine_setRoute() / setRouteDescription()
 #include "audio_capture.h"     // for audioCap_setInjectionMode()
 
 // =============================================================================
@@ -235,6 +235,19 @@ void signalRouter_init() {
     // Build initial status
     updateStatus();
     s_initialised = true;
+
+    // CHANGED [todo-50]: synchronise audio_engine's route DESCRIPTION with the
+    // router's actual selection. Description only — no mixer gains, no
+    // smoothing reset, no ROUTE_CHANGED. Boot remains a non-transition
+    // (ADR-004 Decision 2): no relay actuation, no measurement abort.
+    //
+    // Deliberately NOT audioEngine_setRoute(), which would reintroduce exactly
+    // the boot transition ADR-004 removed on purpose.
+    //
+    // Ordering is safe: audioEngine_init() runs at guitar_rig_analyzer.ino:264
+    // and signalRouter_init() at :334, so audio_engine's own init string is
+    // already in place and is overwritten here rather than the reverse.
+    audioEngine_setRouteDescription(s_description);
 
     Serial.println("[SignalRouter] Initialised.");
     Serial.printf("[SignalRouter] Jacks: instrument=%d send=%d return_ts=%d return_xlr=%d\n",

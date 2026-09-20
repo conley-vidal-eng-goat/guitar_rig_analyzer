@@ -269,6 +269,29 @@ void audioEngine_setRoute(const SignalRoute& route);
 
 
 // -----------------------------------------------------------------------------
+// CHANGED [todo-50]: audioEngine_setRouteDescription(description)
+//
+// Updates ONLY the route description carried in AudioFrame metadata.
+// No mixer gains. No smoothing reset. No audioCap_notifyRouteChanged().
+// NO ROUTE_CHANGED EVENT.
+//
+// Exists so signalRouter_init() can synchronise the description at boot
+// WITHOUT making boot a route-change transition (ADR-004 Decision 2). Before
+// this, the 5 s diagnostic and the Pi's ROUTER_STATUS both reported
+// audio_engine's own init string on a board whose router was already in TS.
+//
+// THIS IS NOT A SUBSTITUTE FOR audioEngine_setRoute(). Use setRoute() for any
+// real route change — it is what makes gains, smoothing and the event follow.
+// Using this setter in its place would leave the mixer bound to the old
+// channels while the metadata claimed otherwise.
+//
+// Stores the caller's pointer; the string must outlive the binding. A nullptr
+// is ignored.
+// -----------------------------------------------------------------------------
+void audioEngine_setRouteDescription(const char* description);
+
+
+// -----------------------------------------------------------------------------
 // audioEngine_getRoute()
 // Returns the currently active SignalRoute (const reference, read only).
 // -----------------------------------------------------------------------------
