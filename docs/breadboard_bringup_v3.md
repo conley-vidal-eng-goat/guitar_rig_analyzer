@@ -1,6 +1,14 @@
-# Guitar Rig Analyzer — Breadboard Bring-Up Guide (v3)
+# Guitar Rig Analyzer — Breadboard Bring-Up Guide (v3.1)
 
-**Document version:** 3.0 (2026-06-01) — *LEGO-instruction style. Built around the parts you actually purchased. v3 fixes five critical bugs found in v2: a severed SOURCE tap and inverted relay topology in Phase 7, a stale parts-availability claim in Phase 1, a missing TQ2 pinout in Phase 6, and a draft "Wait — correction:" note in Phase 4. See the v3 changelog at the end of this document.*
+**Document version:** 3.1 (2026-09-20) — *LEGO-instruction style. Built around the parts you actually purchased.*
+
+*v3.0 (2026-06-01) fixed five critical bugs found in v2: a severed SOURCE tap and inverted relay topology in Phase 7, a stale parts-availability claim in Phase 1, a missing TQ2 pinout in Phase 6, and a draft "Wait — correction:" note in Phase 4.*
+
+*__v3.1 corrects eleven further defects found while actually building the board__, including two that are destructive if followed literally: a Phase 0 → Phase 1 sequence that shorts +5 V to VGND, and two phases that direct a GPIO onto the VGND rail. It also adds a **[Board coordinates](#board-coordinates--read-before-using-any-hole-number)** authority section, which this document had never had — that absence is how three separate phases came to claim the same column. **See [Appendix C.1](#appendix-c1--v31-correction-pass-2026-09-20) for the full table.***
+
+> **⚠️ If you are holding a printed or PDF copy older than v3.1, stop and get the current Markdown.** Several corrected steps are indistinguishable from the originals at a glance — a coordinate, a pin order, a wire direction — and the originals damage hardware.
+
+*v1 and v2 are kept alongside for cross-reference. v3 supersedes both.*
 
 **v1** ([breadboard_bringup.md](breadboard_bringup.md)) and **v2** ([breadboard_bringup_v2.md](breadboard_bringup_v2.md)) are kept alongside for cross-reference. v3 supersedes both.
 
@@ -16,7 +24,9 @@ Pin this page to your monitor.
 4. **Never trust a part until you've continuity-tested it.** A new $3 OPA1642 from DigiKey can still be DOA from a static zap during shipping.
 5. **Take photos of the breadboard at the end of each phase.** When something stops working in phase 6 that worked in phase 5, the photo is the diff.
 
-You have **5× OPA1642 spares, 100× MMBT3904 spares, 5× TQ2-5V (2 used + 3 spare), and 4× spare Chip Quik adapter boards.** Your first attempt does not have to be perfect.
+You have **5× OPA1642 spares, 100× MMBT3904 spares, and 4× spare Chip Quik adapter boards.** Your first attempt does not have to be perfect.
+
+> **🔻 CORRECTED in v3.1 — this line used to claim "5× TQ2-5V (2 used + 3 spare)" on hand**, while the [master parts list](#master-parts-list--what-you-have-on-hand) marks TQ2-5V as **"to buy"**. Both cannot be true, and v3.0's own changelog says v3 had already fixed *"a stale parts-availability claim in Phase 1"* — this was a second one, in the front matter. **Count your actual relays before Phase 6.** What is known to be on hand is 10× **TQ2-L2-5V**, which is the *wrong* part for this build.
 
 > **ESD note.** Touch the silicone mat (or any grounded metal — a screw on a wall plate works) before grabbing the OPA1642 or any other IC. Don't shuffle on carpet during the SMD steps. Static you can't feel will quietly degrade a JFET input.
 
@@ -223,6 +233,59 @@ This consolidates your **DigiKey + Mouser + Vilros + Amazon** orders into one pl
 
 ---
 
+## Board coordinates — read before using any hole number
+
+> **This section is the authority for what is already spoken for on this board.
+> A phase step that disagrees with it is wrong.** It exists because v3.0 had no
+> such section, and three separate phases independently claimed the same column.
+
+### Reserved — do not treat as free
+
+| Location | What is there | Evidence | Claimed "free" by |
+|---|---|---|---|
+| **col 45, rows A–E** | **VGND divider.** R3 10 kΩ `TOP_GND`→`45a`, R4 10 kΩ `TOP_RED`→`45b`, jumper `45c`→`BOT_RED`. The whole strip is the VGND net. | `PHYS`, `docs/asbuilt/netlist.md` | Phase 4 step 6, Phase 6 steps 3–4 — **both corrected in v3.1** |
+| **`BOT_RED` rail** | **VGND (≈ 2.5 V), not +5 V.** Painted red; re-purposed in Phase 1 step 7. | `PHYS` | Phase 0 step 5 — **corrected in v3.1** |
+| **cols 30–48** | Analog front end: C1, bias network, OPA1642, C2, `SOURCE_NODE` at col 48 A–E. | `PHYS` | — |
+| **cols 49–59** | Phase 6 RELAY_SEND driver + TQ2-5V #1. | `PHYS` | — |
+| **cols 8–18** | Phase 7 RELAY_RETURN driver + TQ2-5V #2 (as-built site). | `PHYS` | — |
+
+**Before putting anything in a hole, check it against `docs/asbuilt/netlist.md`,
+not against this document's prose.** The netlist is a record of what is on the
+board; a phase step is a record of what someone intended.
+
+### ⚠️ How long is this board? — UNRESOLVED
+
+Three sources disagree, and **this has not been settled by counting**:
+
+| Source | Columns | Kind of claim |
+|---|---|---|
+| `docs/asbuilt/netlist.md` | **60** | written record |
+| A standard BB830's 830 tie points | **63** | inference from the part |
+| Bench observation | **64** | `PHYS`, single report |
+
+**They are recorded as disagreeing rather than silently reconciled**, because
+picking one would manufacture a fact. The practical rule until someone counts:
+
+> **Do not site anything above column 59 without counting the columns first.**
+
+This is not academic. Phase 7 step 1 originally read *"build a mirror of phase 6
+at columns 60–70"* — a span of eleven columns starting at 60. Under **every one**
+of the three figures above, that location does not exist. The step was followed
+by building the driver at cols 8–18 instead, and the text stayed wrong for weeks.
+
+### Evidence tags used in this document
+
+`PHYS` observed on the board · `PHOTO` from a photograph · `MEAS` measured ·
+`DERIV` computed from a measurement · `RPT` builder-reported, unconfirmed ·
+`NYV` not yet verified.
+
+**A part's position and a part's value are different claims needing different
+evidence.** Do not let one tag stand for both — four capacitors were once
+recorded as 0.1 µF from the parts list when only their positions had been seen,
+and the one actually measured read 10 nF.
+
+---
+
 # Phase 0 — Workspace and inventory
 
 > **Goal:** A clean, well-lit workspace with the Teensy on standby and every part for phases 1–9 sorted into labeled cups or bins.
@@ -271,7 +334,25 @@ This consolidates your **DigiKey + Mouser + Vilros + Amazon** orders into one pl
 
 **4. Power up the Teensy on USB and confirm it boots.** Open the Arduino IDE Serial Monitor at 115200 baud. You should see `[Main] Guitar Rig Analyzer v0.5.0 ...`. If not, fix that first (see [README.md](../README.md)).
 
-**5. Bridge top + bottom power rails on the BB830 with two short jumpers each side.** Cut 4 short pieces of solid wire — 2 red, 2 black. Bridge the top-red rail to the bottom-red rail (one bridge at column 1, one at column 60). Same for top-blue ↔ bottom-blue.
+**5. Bridge the top and bottom GROUND rails only.** Cut 2 short pieces of black solid wire. Bridge top-blue ↔ bottom-blue (one at each end of the board). **Leave the two RED rails separate.**
+
+> **🔻 CORRECTED in v3.1 — this step used to bridge the red rails too, and that is destructive.**
+> It read: *"Cut 4 short pieces of solid wire — 2 red, 2 black. Bridge the top-red rail to the bottom-red rail (one bridge at column 1, one at column 60). Same for top-blue ↔ bottom-blue."*
+>
+> **Phase 1 step 7 re-purposes `BOT_RED` as the VGND rail (≈ 2.5 V).** Nothing between
+> here and there told you to remove the red bridges. Followed literally and in
+> order, this document connected **+5 V directly to VGND** — collapsing the
+> reference the entire analog front end is built on, and back-driving the divider.
+>
+> It gets worse in combination. With `BOT_RED` sitting at +5 V, the col-45 → GPIO
+> jumper that Phase 6 step 4 used to instruct would put **+5 V onto a Teensy pin
+> that is not 5 V-tolerant**, destroying it on first power-up. Either defect alone
+> is survivable; together they are not.
+>
+> **This was never built on the current board** — direct visual inspection on
+> 2026-09-07 found no red conductor bridging the rails (`PHYS`, netlist §6b), and
+> VGND measured 2.480 V. The defect is in the instructions, not in the hardware.
+> If you have already fitted red bridges, **remove them before Phase 1 step 7.**
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 160" width="100%" style="max-width:700px;background:#ffffff;border:1px solid #ccc;">
   <style>
@@ -300,7 +381,7 @@ This consolidates your **DigiKey + Mouser + Vilros + Amazon** orders into one pl
 
 | **[STOP]** Check | How | Pass |
 |---|---|---|
-| Top-red ↔ bottom-red bridged | DMM continuity, top-red anywhere to bottom-red anywhere | Beep |
+| Top-red and bottom-red are **NOT** bridged | DMM continuity, top-red anywhere to bottom-red anywhere | **No beep** *(corrected in v3.1 — this row used to demand a beep; `BOT_RED` becomes VGND in Phase 1 step 7)* |
 | Top-blue ↔ bottom-blue bridged | Same, on the blue rails | Beep |
 | Red and blue rails are NOT shorted to each other | DMM continuity, top-red to top-blue | **No beep** |
 | Teensy boots normally | Serial Monitor, 115200 baud | `[Main] Guitar Rig Analyzer v0.5.0 ...` banner |
@@ -501,7 +582,17 @@ The MMBT3904 is a SOT-23 part — even smaller, with 3 pins. Same technique, mor
   <text x="250" y="175" text-anchor="middle" class="lbl">— that's the date/lot code, not the part number</text>
 </svg>
 
-**12. Look at your SIPH06-1 adapter.** It has a SOT-23 footprint on one face and a short row of DIP-style pin holes. Note the C / B / E silkscreen markings.
+**12. Look at your SIPH06-1 adapter.** It has a SOT-23 footprint on one face and a short row of DIP-style pin holes. It carries C / B / E silkscreen markings.
+
+> **⚠️ The silkscreen label order is NOT the part's pin order — do not infer one from the other.**
+> An **MMBT3904 in SOT-23 is pin 1 = Base, pin 2 = Emitter, pin 3 = Collector**:
+> the collector is the lone pin on its side, and **the centre pin is the emitter.**
+> On this board the adapter measured **C – E – B** left-to-right (`MEAS`).
+>
+> v3.0 stated the order two different ways in two places — *"C / B / E"* here and
+> *"E – B – C"* in Phase 6 step 2 — and **both put the Base in the centre, which is
+> wrong for this part.** Step 15's continuity test below is the only thing in this
+> document that was ever authoritative about it. Treat it that way.
 
 **13. Tin one of the SOT-23 pads, place the part, tack it down, then solder the remaining pins.** Same technique as the OPA1642 — just smaller. Steady hands.
 
@@ -638,7 +729,19 @@ Surface-mount soldering relies on a technique called "tack and stitch": you crea
   <line x1="200" y1="190" x2="200" y2="180" class="wire"/>
 </svg>
 
-**7. Run a wire from the VGND tap (column 15) to the bottom-red rail.** This *re-purposes the bottom-red rail as VGND.* It's painted red but it's not +5V anymore. **Stick a piece of masking tape on the breadboard right next to the bottom-red rail and write "VGND ~2.5V" on it.**
+**7. Run a wire from the VGND tap to the bottom-red rail.** This *re-purposes the bottom-red rail as VGND.* It's painted red but it's not +5V anymore. **Stick a piece of masking tape on the breadboard right next to the bottom-red rail and write "VGND ~2.5V" on it.**
+
+> **⚠️ STOP — confirm the red rails are not bridged before you run this wire.**
+> Phase 0 step 5 used to instruct bridging top-red ↔ bottom-red. If those bridges
+> are fitted, this step shorts **+5 V to VGND**. Put the DMM on continuity,
+> top-red to bottom-red: you want **no beep**. See [Board coordinates](#board-coordinates--read-before-using-any-hole-number)
+> and the corrected Phase 0 step 5.
+
+> **📍 As-built note.** This step says the VGND tap is at column 15. **On the
+> current board the divider is at column 45, not column 15** (netlist deviation
+> D3, `PHYS`). The relocation is electrically equivalent — but **column 45 is
+> therefore VGND and is not a free column**, which two later phases used to
+> assume it was. See [Board coordinates](#board-coordinates--read-before-using-any-hole-number).
 
 **8. Place a 10 µF cap from VGND to GND at column 18.** Longer leg (+) into the bottom-red (VGND), shorter leg (−) into the bottom-blue (GND). This is your VGND reservoir — it stabilizes the divider against transient loads from the op-amp.
 
@@ -965,8 +1068,39 @@ So in the breadboard at columns 35–38 straddling the gap:
 </svg>
 
 **6. Build the input bias path.** This is what holds pin 3 (+in) at VGND so the op-amp has a defined operating point. Two pieces:
-   - Place a **100kΩ resistor** lying horizontally with one leg at `37a` (the pin-3 column on the a–e side) and the other leg at `45a` (a free column 8 spots to the left). The two legs must be in *different* column strips so the resistor actually carries current — same-column legs would short the resistor across one node and do nothing.
-   - Add a **jumper from `45a` down to the bottom-red rail (VGND)**.
+   - Place a **100kΩ resistor** lying horizontally with one leg at `37a` (the pin-3 column on the a–e side) and the other leg in **a column you have verified is dead** — **not `45a`**, see the correction below. The two legs must be in *different* column strips so the resistor actually carries current — same-column legs would short the resistor across one node and do nothing.
+   - Add a **jumper from that column down to the bottom-red rail (VGND)**.
+
+> **🔻 CORRECTED in v3.1 — this step called `45a` "a free column 8 spots to the left". It is not free: column 45 A–E is the VGND divider** (R3 in `45a`, R4 in `45b`, jumper `45c`→`BOT_RED`, all `PHYS`). Putting the bias resistor's leg there lands it in the same hole as R3.
+>
+> Electrically *this* instance was almost harmless — both ends would have been VGND
+> anyway, so the resistor would simply have done nothing. **The Phase 6 instance of
+> the same mistake is the dangerous one.**
+>
+> **No replacement column is named here on purpose.** The obvious-looking
+> candidates are taken: **col 41 A–E is `OPA_BIAS`** (0.874 V `MEAS`, bridged to
+> col 43), col 43 is the same net, and col 48 is `SOURCE_NODE`. **Verify whatever
+> column you pick is dead first** — no continuity to either rail, to col 45, to
+> col 41/43, or to col 48. Do not trust a document that calls a column free,
+> **including this one**. See [Board coordinates](#board-coordinates--read-before-using-any-hole-number).
+
+> **📍 As-built note — this step no longer describes the board.** The TODO-21
+> common-mode rework replaced the bias-to-VGND arrangement above with an
+> **`OPA_BIAS` divider at ≈ 0.874 V**: R5 100 kΩ runs `37c`→`41d`, and U1 pin 5
+> ties to `OPA_BIAS` directly. **That rework is also what made this step's `45a`
+> error harmless by accident** — it moved the resistor before anyone followed the
+> instruction. Treat `docs/asbuilt/netlist.md` as authoritative for this phase, not
+> the text above, and see the common-mode note below for why the bias point moved.
+
+> **⚠️ This phase also carries a second, separate defect: the op-amp's bias point
+> is outside the OPA1642's specified common-mode range at a 5 V supply.** Pin 3 is
+> biased to VGND ≈ 2.5 V; TI specifies V<sub>CM</sub> up to (V+) − 3.5 V, i.e. a
+> **1.5 V ceiling** here, and states that midsupply is excluded for
+> V<sub>S</sub> < ±3.5 V. 5 V is a legal *supply* for the part, which is what makes
+> this easy to miss — the supply is valid, the bias point at that supply is not.
+> Measured: pin 3 = 2.480 V chip-out, **2.153 V** chip-in. **This is an unresolved
+> design decision, not a wiring error** — it is tracked as TODO-21 and must be
+> settled before this circuit is treated as the PCB architecture.
 
 This puts the resistor between pin 3 and VGND, which biases pin 3 at the midpoint of the supply.
 
@@ -1037,6 +1171,20 @@ This puts the resistor between pin 3 and VGND, which biases pin 3 at the midpoin
    - **Ring** (right audio) — not used. Tape it off.
 
 ## End-of-phase verify
+
+> **🔻 ADDED in v3.1 — RECONNECT USB NOW.**
+>
+> **This phase began with "1. Unplug USB" and never told you to plug it back in.**
+> Every check below is a **live** reading and needs the board powered. Phase 4 was
+> the only phase with this gap — Phase 1 says "Plug in USB", Phase 2 restores power
+> implicitly through `arduino-cli upload`, and Phase 3 opens by asserting USB is
+> connected.
+>
+> **Cost of this one missing line: roughly two days of bench debugging**, across
+> two sessions, two false hardware hypotheses, and a healthy OPA1642 that was
+> nearly replaced — all because a 0 V rail reading was taken on an unpowered board
+> and read as a fault. If a rail reads 0 V, **check the USB cable before you
+> suspect the hardware.**
 
 **First — DMM checks before any signal:**
 
@@ -1226,7 +1374,25 @@ There's an alternative — buy **Cliff CL1384** (make-on-insertion) instead — 
 
 > **Goal:** Build the transistor driver + flyback diode + relay coil for RELAY_SEND, energised by Teensy pin 14 going HIGH. Verify the contacts switch with a continuity test. Don't wire signal through the contacts yet — that's phase 7.
 
-> **Wait for the TQ2-5V to arrive before doing this phase.** TQ2-L2-5V (latching) won't work with the current firmware.
+> **🛑 HARD GATE — do not start this phase until you have physically confirmed you are holding a TQ2-5V.**
+>
+> 1. **Read the marking on the relay case.** It must say **TQ2-5V**. A **TQ2-L2-5V**
+>    is a *dual-coil latching* part: it will click and **the contacts will never
+>    transfer** under this firmware, which drives the coil statically.
+> 2. **Record what the case actually says** before wiring it in. "It came from the
+>    relay cup" is not a part identification.
+>
+> **This gate was not enforced when Phase 6 was first built**, and the document
+> gave contradictory stock information about whether the part was even on hand:
+> the front matter claimed *"5× TQ2-5V (2 used + 3 spare)"* while the master parts
+> list marked TQ2-5V as **"to buy"**. Both could not be true. **Corrected in v3.1 —
+> see the master parts list.**
+>
+> *Postscript worth knowing: when the contacts later failed to transfer, a latching
+> part was the leading hypothesis for a full bench session. It was wrong — the
+> fitted relay was a genuine TQ2-5V and the real cause was reversed coil polarity
+> (see the coil-polarity correction in step 7). Identifying the part up front would
+> have cost one minute and removed the hypothesis entirely.*
 
 ## Parts tray
 
@@ -1260,19 +1426,59 @@ There's an alternative — buy **Cliff CL1384** (make-on-insertion) instead — 
 
 **1. Unplug USB.**
 
-**2. Place the MMBT3904 adapter at column 50, straddling the center gap.** The SIPH06-1 carries the SOT-23 to a 3-pin SIL header. Orient the adapter so its silkscreen reads **E – B – C** left-to-right (E nearest column 49, C nearest column 51) and push all three pins firmly into row `e` (a–e half). This means:
-   - Emitter (E) → `49e`
-   - Base (B) → `50e`
-   - Collector (C) → `51e`
-   - *Sanity-check with the DMM in continuity mode: probe each header pin back to the SOT-23 pad and confirm it matches the label — you tested this in Phase 0.5.*
+**2. Place the MMBT3904 adapter at column 50, straddling the center gap.** The SIPH06-1 carries the SOT-23 to a 3-pin SIL header. Push all three pins firmly into row `e` (a–e half). The pins land as:
+   - **Collector (C) → `49e`**
+   - **Emitter (E) → `50e`**  — *the CENTRE pin is the emitter*
+   - **Base (B) → `51e`**
+   - **🔴 MANDATORY, not optional: DMM in continuity mode, probe each header pin back to the SOT-23 pad and confirm it matches.** Do not proceed on the silkscreen alone.
 
-**3. 1 kΩ base resistor:** one leg in `50a` (same strip as Base, since column 50 row a–e is one node), the other leg in `45a` (a free column to the left).
+> **🔻 CORRECTED in v3.1 — this step's pin order was wrong, and the document contradicted itself about it.**
+> It read: *"Orient the adapter so its silkscreen reads **E – B – C** left-to-right
+> (E nearest column 49, C nearest column 51)"*, giving E→`49e`, B→`50e`, C→`51e`.
+> Phase 0.5 step 12 says the adapter is marked *"**C / B / E**"*. **Both put the Base
+> in the centre, and both are wrong about this part.**
+>
+> An **MMBT3904 in SOT-23 has pin 1 = Base, pin 2 = Emitter, pin 3 = Collector** —
+> the collector is the lone pin on its side of the package, and **the emitter is
+> the centre pin**. The bench confirmed C=`49`, E=`50`, B=`51` (`MEAS`).
+>
+> **Built as the old step 2 instructed, the emitter and base are swapped: the
+> driver does not switch at all, and the base-emitter junction is reverse-biased
+> toward its ~6 V breakdown.** The step's own sanity-check line is what caught
+> this, which is why it is now mandatory rather than parenthetical.
 
-**4. Jumper from `45a` → Teensy pin 14.**
+**3. 1 kΩ base resistor:** one leg in `51a` (same strip as Base, since column 51 row a–e is one node), the other leg in **`53a`**.
 
-**5. 10 kΩ base pulldown:** one leg in `50b` (still on the Base strip), the other leg into the top-blue GND rail. This holds the BJT off when the GPIO is floating (during reset/boot).
+**4. Jumper from `53a` → Teensy pin 14.**
 
-**6. Emitter to GND:** jumper from `49a` (Emitter strip) to top-blue GND.
+> **🔻🔻 CORRECTED in v3.1 — steps 3 and 4 used to route the base drive through `45a`, and this is the most dangerous defect in the document.**
+> They read: *"the other leg in `45a` (a free column to the left)"* and *"Jumper from
+> `45a` → Teensy pin 14."*
+>
+> **Column 45 A–E is the VGND divider**, not a free column — R3 is already in `45a`
+> (`PHYS`). Step 4 therefore put a **direct, unresistored 3.3 V push-pull GPIO onto
+> the analog reference rail.** `signalRouter_init()` drives pin 14 LOW at boot, so
+> **first power-up clamps VGND to 0 V and dumps C8 (10 µF at 2.5 V) into the pin.**
+>
+> And if the Phase 0 step 5 red bridges are also fitted, `BOT_RED` is +5 V — which
+> this jumper then feeds straight into a Teensy pin that is **not 5 V-tolerant**,
+> destroying it instantly.
+>
+> **This was caught mid-build with the firmware already flashed.** The build halted
+> here on 2026-09-15. The base drive was relocated to **column 53**, verified dead
+> first (no continuity to either rail, to col 45, or to col 48), and measured
+> 0.993 kΩ strip-to-strip. Column 46 A–E is the fallback if 53 is ever needed.
+>
+> A 1 kΩ resistor will not beep on most meters — **use resistance mode, strip to
+> strip.** A leg that reads from one side only is a leg that never seated.
+
+**5. 10 kΩ base pulldown:** one leg in `51b` (still on the Base strip), the other leg into the top-blue GND rail. This holds the BJT off when the GPIO is floating (during reset/boot).
+
+**6. Emitter to GND:** jumper from `50a` (Emitter strip) to top-blue GND.
+
+> **🔻 CORRECTED in v3.1:** steps 3, 5 and 6 all inherited the swapped pin order
+> from step 2 — they read `50a` (base resistor), `50b` (pulldown) and `49a`
+> (emitter). With the real pinout they become **`51a`**, **`51b`** and **`50a`**.
 
 **7. Place the TQ2-5V relay at columns 55–59, straddling the center gap.** Pin 1 (marked with a small triangle, circle, or "1" on the case) goes to `55a`. The TQ2-5V is a 10-pin DIP-form package; pins march down the left side (a–e half) from `55a` through `59a`, then continue up the right side (f–j half) from `59f` through `55f`. Pinout (looking at the top, pin-1 indicator at upper-left), verified against the **Panasonic ASCTB14E datasheet, 2014-07**:
 
@@ -1317,7 +1523,12 @@ There's an alternative — buy **Cliff CL1384** (make-on-insertion) instead — 
 
 We use POLE 1 only in this phase. POLE 2 is left unconnected.
 
-**8. Wire COIL (−) → collector of the MMBT3904.** Jumper from `55f` (pin 10) to `51b` (Collector strip — same node as `51a`).
+**8. Wire COIL (−) → collector of the MMBT3904.** Jumper from `55f` (pin 10) to `49b` (Collector strip — same node as `49a`).
+
+> **🔻 CORRECTED in v3.1:** this read `51b` *"(Collector strip)"*, which followed
+> from step 2's swapped pin order. **Column 51 is the Base** — and under the old
+> text it was also carrying the 10 kΩ pulldown, so the coil would have been tied
+> to the base node. The collector is **column 49**.
 
 **9. Wire COIL (+) → +5V rail.** Jumper from `55a` (pin 1) to the top-red +5V rail.
 
@@ -1396,17 +1607,34 @@ case 'p': case 'P': {
 
 ## End-of-phase verify
 
-Type `p` and `P` alternately at the Serial monitor.
+Press the toggle key at the Serial monitor. **`p` and `P` are the SAME toggle** —
+each press flips the state, so pressing `p` twice de-energises. **Read the printed
+`[BringUp]` state line to know which state you are in; do not infer it from which
+key you pressed.**
 
-| Action | DMM probes | Expected |
+| State | DMM probes | Expected |
 |---|---|---|
-| Type `p` (energise) | red on collector (coil A column), black on GND | 0.1–0.3 V (saturated BJT) |
-| Same | red on coil B column, black on GND | ~5 V |
-| Same | continuity, COM_1 ↔ NO_1 contacts | Beep (relay clicked closed) |
-| Same | continuity, COM_1 ↔ NC_1 contacts | Open |
-| Type `P` (de-energise) | continuity, COM_1 ↔ NC_1 | Beep (relay clicked back) |
-| Same | continuity, COM_1 ↔ NO_1 | Open |
+| **Energised** (the `[BringUp]` line says HIGH) | red on collector (col 49), black on GND | 0.1–0.3 V (saturated BJT) |
+| Same | red on the coil's rail-side column (`55a`), black on GND | ~5 V |
+| Same | continuity, COM_1 ↔ NO_1 (`57a` ↔ `58a`) | Beep (relay clicked closed) |
+| Same | continuity, COM_1 ↔ NC_1 (`57a` ↔ `56a`) | Open |
+| **De-energised** (press again; the line says LOW) | continuity, COM_1 ↔ NC_1 (`57a` ↔ `56a`) | Beep (relay clicked back) |
+| Same | continuity, COM_1 ↔ NO_1 (`57a` ↔ `58a`) | Open |
+| **Both states** | continuity, NC_1 ↔ NO_1 (`56a` ↔ `58a`) | **Open in BOTH** — catches a welded/bridged contact pair |
 | Listen for a soft "click" each time | | Yes |
+
+> **🔻 CORRECTED in v3.1 — this table contradicted the code snippet in step 11.**
+> It read *"Type `p` (energise)"* and *"Type `P` (de-energise)"* as if they were two
+> different commands. Step 11's own snippet is `case 'p': case 'P':` wrapped around
+> a `static bool` toggle — **so either character flips the state**, and following
+> the table literally ("type `p`, then type `P`") happens to work only because two
+> presses is two flips. Press `p` twice and you are de-energised while the table
+> says you should be energised.
+>
+> **Contact labels are now bench-proven by state, not taken from the datasheet:**
+> `56a` = NC, `57a` = COM, `58a` = NO (`MEAS`, 2026-09-19). The NC↔NO row was added
+> because it is the check that would have caught a bridged pair — it was verified
+> open in both states.
 
 **13. Remove the `p`/`P` Serial command** before phase 7.
 
@@ -1454,7 +1682,25 @@ This is the biggest phase by part count. Take it slow.
 
 ### Duplicate the driver for RELAY_RETURN
 
-**1. Build a mirror of phase 6 at columns 60–70**, but driven from Teensy **pin 15** instead of 14. All components: MMBT3904 on adapter, 1 kΩ base, 10 kΩ pulldown, TQ2-5V #2, 1N4148 flyback. Verify with the same DMM checks as phase 6 (use a quick temporary `q`/`Q` Serial command to toggle pin 15 if you want — or just lean on `signalRouter_setReturnPreference(XLR)` later to drive it).
+**1. Build a mirror of phase 6 at columns 8–18**, but driven from Teensy **pin 15** instead of 14.
+
+> **🔻 CORRECTED in v3.1 — this step used to say "columns 60–70", which does not exist on this board.**
+> A Phase 6 mirror spans eleven columns (49→59). Starting it at column 60 needs the
+> board to run to column 70. **It does not** — the three available figures are 60
+> (netlist), 63 (implied by a BB830's 830 tie points) and 64 (bench `PHYS`), and
+> **the step is impossible under all three.** See [Board coordinates](#board-coordinates--read-before-using-any-hole-number),
+> where that disagreement is recorded rather than resolved.
+>
+> **As built, this driver is at columns 8–18** (`PHYS`) — checked against the
+> occupied cols 30–64 region, the Phase 6 driver at 49–59, and VGND at col 45:
+> no overlap, and the only shared nodes are the two rails, both continuity-verified
+> first.
+>
+> **⚠️ Copy the driver from [TODO-6's as-built line](../ai/todo.md), not from Phase 6's prose.** Phase 6's
+> text and its as-built columns differ. In particular the mirror must **not**
+> inherit the coil polarity that Phase 6 step 7 used to specify — pin 1 is COIL
+> **(+)** and goes to +5 V. Only **pole 1** of either relay is bench-proven;
+> pole 2 is datasheet-level and untested. All components: MMBT3904 on adapter, 1 kΩ base, 10 kΩ pulldown, TQ2-5V #2, 1N4148 flyback. Verify with the same DMM checks as phase 6 (use a quick temporary `q`/`Q` Serial command to toggle pin 15 if you want — or just lean on `signalRouter_setReturnPreference(XLR)` later to drive it).
 
 ### Wire RELAY_SEND into the signal path
 
@@ -1708,12 +1954,12 @@ Each check is one line you read out loud. Tick each as you confirm.
 
 - [ ] Phase 1: VGND stays at 2.4 – 2.6 V even when relays are clicking.
 - [ ] Phase 2: LED smoke test toggles cleanly at boot.
-- [ ] Phase 3: All four GPIOs respond to GND taps.
+- [ ] Phase 3: All four GPIOs respond to GND taps — **and** each emits `JACK_CHANGED`, with pin 22/24 also emitting `ROUTE_CHANGED`. *(v3.1: the electrical half is proven; the **event half is not**. A DMM showing 3.3 V idle and <0.1 V on tap does NOT tick this line — the router must be in the live path. Do not tick on electrical evidence alone.)*
 - [ ] Phase 4: Phone test signal visible on SOURCE spectrum.
-- [ ] Phase 5: Switchcraft #11 + invert define both work — guitar plays through, detect events fire.
+- [ ] Phase 5: a standard 1/4" TS guitar at Instrument In passes cleanly through the analog path — normal level, **no unintended loading**, no distortion, no oscillation, no loss of signal. *(v3.1, per ADR-003: **"detect events fire" is REMOVED from this criterion.** The installed Switchcraft #11 is a two-terminal open-circuit jack with no switched contact — bench-identified, and Switchcraft's own catalogue agrees. Jack presence is a UX feature, not a hardware requirement. The remaining work here is **measurement**, not construction, and "no unintended loading" is a real test this phase may legitimately fail — the input bias resistor is ~100 kΩ against a 6–250 kΩ pickup where a guitar amp presents ~1 MΩ.)*
 - [ ] Phase 6: TQ2-5V #1 clicks on `p`/`P`; continuity matches expected state.
 - [ ] Phase 7: Operator selection of TS de-energises RELAY_RETURN and routes the TS return to Line-In R; operator selection of XLR energises RELAY_RETURN and generates ROUTE_CHANGED. Route state follows operator selection independent of jack-presence inputs. XLR signal-path verification occurs in Phase 8. *(ADR-004)*
-- [ ] Phase 8: XLR + microswitch detect both work end-to-end.
+- [ ] Phase 8: a real analog signal through XLR pin 2 reaches RETURN_NODE, **with a noise floor comparable to the TS path**. *(v3.1, per ADR-004: **the microswitch is REMOVED from this criterion and is deliberately not built** — routing no longer depends on detection, so this phase is the signal path. The signal half is met; the **noise-floor comparison is still outstanding** and must state which grounding topology was in place, because the XLR's reference has changed since the risk was first written down.)*
 - [ ] Phase 9: `1`, `2`, `3`, `4` all PASS.
 - [ ] Phase 10: Pi link — common ground verified, HELLO reports protocol v2, known data renders, **clamped bins marked rather than drawn**, CRC rejection and unknown-packet tolerance demonstrated, reboot recovery demonstrated, and the **T1 acceptance matrix** passed: all four runs recorded, runs 2-4 indistinguishable from the `_NONE` control on `block_ms_*`, and `blocks_skipped = 0` in every run.
 
@@ -1981,6 +2227,86 @@ If you ever need to source replacements, here's what works:
 | 10K + 10K VGND divider | TLE2426 rail-splitter IC | Cleaner, quieter, ~$2 |
 
 ---
+
+---
+
+# Appendix C.1 — v3.1 correction pass (2026-09-20)
+
+Every defect below was found **by building the board**, not by proofreading. That
+is the point worth carrying forward: v3.0 was internally plausible and had already
+been through one correction pass. These are what survived it.
+
+**Two of them damage hardware if followed literally** (C1-01, C1-07). Two more
+would have produced a driver that silently does not work (C1-05, C1-06).
+
+| # | Where | What was wrong | Severity |
+|---|---|---|---|
+| **C1-01** | Phase 0 step 5 + its verify row | Bridged top-red ↔ bottom-red. **Phase 1 step 7 then re-purposes bottom-red as VGND — so the sequence shorts +5 V to VGND.** Nothing said to remove the bridges. | **Destructive** |
+| **C1-02** | Phase 1 step 7 | Re-purposes `BOT_RED` as VGND with no check that C1-01's bridges are absent. Also still cites the VGND tap at col 15; as-built is **col 45**. | High |
+| **C1-03** | Phase 4 step 1 → end-of-phase verify | *"Unplug USB"* with **no reconnect step**, followed by five live DMM readings. **Cost ≈ two days of bench debugging** and nearly a replaced healthy op-amp. | **High** |
+| **C1-04** | Phase 4 step 6 | Called `45a` *"a free column"*. Column 45 A–E is the **VGND divider** (R3 is in that hole). | Medium |
+| **C1-05** | Phase 0.5 step 12 | Said the adapter silkscreen reads *"C / B / E"* and implied that is the pin order. **It is not** — MMBT3904 SOT-23 is pin 1 = B, pin 2 = E, pin 3 = C. | High |
+| **C1-06** | Phase 6 step 2 (+ steps 3, 5, 6, 8) | Specified *"E – B – C"*, putting the **Base** in the centre. The **Emitter** is the centre pin. Built as written, **the driver does not switch and the B-E junction is reverse-biased toward breakdown.** Steps 3/5/6/8 inherited the error. | **High** |
+| **C1-07** | Phase 6 steps 3–4 | Routed the base drive through `45a` and jumpered **`45a` → Teensy pin 14** — an unresistored 3.3 V GPIO **onto the VGND rail**. First power-up clamps VGND to 0 V. **With C1-01 also fitted, it puts +5 V on a non-5 V-tolerant pin.** | **Destructive** |
+| **C1-08** | Phase 6 gate + front matter vs parts list | The TQ2-5V gate was never enforceable — and the document claimed *"5× TQ2-5V (2 used + 3 spare)"* on hand while the parts list marked it **"to buy"**. | Medium |
+| **C1-09** | Phase 6 end-of-phase verify | Table treated `p` and `P` as separate energise/de-energise commands; step 11's own snippet is `case 'p': case 'P':` around a toggle, **so either key flips the state**. | Medium |
+| **C1-10** | Phase 7 step 1 | *"Build a mirror of phase 6 at columns 60–70."* The mirror spans eleven columns and **the board does not reach column 70 under any of the three available length figures.** Built at cols 8–18 instead. | Medium |
+| **C1-11** | Sign-off, Phase 3 | *"All four GPIOs respond to GND taps"* was tickable on DMM evidence alone, hiding that the `JACK_CHANGED` / `ROUTE_CHANGED` half was never proven. | Medium |
+| **C1-12** | Sign-off, Phase 5 | Required *"detect events fire"* from a jack that **has no switched contact**. Superseded by ADR-003. | Medium |
+| **C1-13** | Sign-off, Phase 8 | Required *"XLR + microswitch detect both work"* for a microswitch that is **deliberately not built**. Superseded by ADR-004. | Medium |
+
+**Also added:** a [Board coordinates](#board-coordinates--read-before-using-any-hole-number)
+authority section. v3.0 had none, and that absence is the common root of C1-04,
+C1-07 and C1-10 — three separate phases claiming a column without any single place
+recording what was already spoken for.
+
+### Corrected earlier, recorded here for completeness
+
+- **Phase 6 step 7 coil polarity** (corrected 2026-09-17, already in the text
+  above). The pinout table had pin 1 = COIL (−) and pin 10 = COIL (+); the TQ2 is
+  **polarised** and the datasheet says **pin 1 = +**. Built inverted, the relay
+  clicks and **the contacts never transfer**. Confirmed by intervention at the
+  bench. *The runbook cited the correct datasheet while contradicting it — a
+  citation is not a verification.*
+
+### ⚠️ Known-stale, NOT fixed in this pass
+
+- **Appendix C item 5** (below) still says the diode's cathode band goes *"toward
+  COIL (+), **pin 10**, the +5 V side."* Since the coil-polarity correction,
+  **COIL (+) is pin 1**. The *principle* stated there is right — band toward the
+  +5 V side — but the pin number is now wrong. Phase 6 step 10 itself is correct.
+  Left in place because Appendix C is a historical changelog of what v3.0 changed;
+  **do not wire from it.**
+
+### The v3.0 PDF was removed, not regenerated
+
+`docs/breadboard_bringup_v3.pdf` was **deleted from the repository in this same
+commit.** It was a 37-page pandoc/LaTeX rendering of v3.0 (created 2026-06-02,
+`xdvipdfmx`), and it carried **every defect in the table above, verbatim and
+legibly** — including both destructive ones, and the pre-2026-09-17 inverted coil
+polarity. A corrected source sitting beside an authoritative-looking obsolete PDF
+is a trap: the warning at the top of this file does nothing for someone who opens
+the PDF directly.
+
+It was **not regenerated** because the toolchain that produced it (pandoc + a TeX
+distribution, plus an SVG conversion stage for the 26 embedded diagrams) is not
+present, and improvising a different renderer would have produced an artifact
+whose provenance nobody could vouch for. **The bytes remain in git history at
+`64894d4`** if they are ever needed.
+
+**This Markdown file is now the only copy. Treat it as the source of truth.**
+
+### What this pass did not do
+
+- **No hardware was touched and no measurement was taken.** These are documentation
+  corrections, verified against `docs/asbuilt/netlist.md`, the bench record, and
+  the active firmware tree.
+- **The board-length question is still open** — 60 vs 63 vs 64 columns. It is
+  recorded as three disagreeing figures rather than resolved, because resolving it
+  needs someone to count and nobody has.
+- **Phase 4's op-amp common-mode defect is flagged, not fixed.** The bias point is
+  outside the OPA1642's specified range at a 5 V supply. That is an open
+  architecture decision, not a wiring correction.
 
 ---
 
