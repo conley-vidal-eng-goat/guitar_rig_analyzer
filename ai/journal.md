@@ -12,6 +12,440 @@ How to use this file:
 
 ---
 
+## 2026-09-20 (1) — The 2026-09-19 firmware and runbook work was **lost, not merged**. Rewritten from the record and committed in four reviewed commits. **Compile/link verified only — nothing has been flashed and nothing is bench-verified.**
+
+### What happened to `firmware/bench-safe-todos`
+
+Journal 2026-09-19 (5) recorded three firmware fixes and an eleven-defect runbook
+pass as *"done on branch `firmware/bench-safe-todos` in a separate git worktree
+… Nothing is committed. Review with `git diff main firmware/bench-safe-todos`."*
+
+**That branch is an empty label.** It points at `f1b13ed`, the same commit as
+`docs/asbuilt-capture`, with **zero commits on it.** The worktree it lived in was
+under a session scratchpad, `git worktree list` marks it **prunable**, and the
+directory is gone. No stash. `git fsck` turns up two dangling commits, both
+unrelated (the Sep 1 initial commit and a Sep 7 WIP).
+
+Verified against the live tree rather than the record, per this file's own
+source-of-truth rule — and the tree was unambiguous: `validation_waitForUser()`
+was still `void`, there was no `validation_preflightGate`, no
+`audioEngine_setRouteDescription`, `EXPECTED_BLOCK_MS` still used `FFT_SIZE`, and
+the runbook had no Appendix C.1 and no "Board coordinates" section.
+
+**The work was unrecoverable and was rewritten from the descriptions in journal
+(5) and the TODO items.**
+
+> **🔻 The lesson is not "be careful with worktrees."** A scratchpad worktree is
+> ephemeral by design. The failure was leaving four hours of reviewed work
+> **uncommitted** in one, and then writing the record as though a branch name were
+> durable provenance. **A branch that has never been committed to is indistinguishable
+> from one that does not exist.** Commit first, then record the hash — not the
+> branch name.
+
+### The four commits
+
+| Commit | What | Status |
+|---|---|---|
+| `b2cdb4f` | **TODO-48** — harness consent + shared preflight gate | compile/link verified |
+| `3fdde97` | **TODO-50** — `audioEngine_setRouteDescription()`, boot stays a non-transition | compile/link verified |
+| `b275852` | **TODO-27** — `EXPECTED_BLOCK_MS` uses the FFT hop; `config.h` comment corrected | compile/link verified |
+| `b6db3d6` | **Runbook v3.1** — thirteen defects, Board coordinates section, Appendix C.1; stale PDF removed | documentation only |
+
+**⚠️ ALL FOUR ARE COMPILE AND LINK VERIFIED ONLY. NOTHING HAS BEEN FLASHED.
+NOTHING IS BENCH-VERIFIED.** No TODO moves off 🟡 on account of these commits.
+This distinction is the whole point of Phase 9: the validation suite exists to
+establish **real signal-path behaviour against explicit pass criteria on
+repeatable physical measurements**, and "the code is correct" is not a claim it
+makes or accepts. A compiling harness is a precondition for running Phase 9, not
+a part of its result.
+
+### One design decision that departed from journal (5)
+
+Journal (5) described TODO-48 as making the `1`–`4` commands *"run the same
+preflight as `v`."* **Implemented literally, that fails a correct fixture.**
+
+`runAll()` runs preflight **once**, against the plain Y-split where SOURCE and
+RETURN carry the same signal. Tests 3 and 4 then **deliberately attenuate RETURN**
+— a 6 dB resistive pad, an RC low-pass. Preflight requires RETURN inside a
+**6 dB-wide window** (`VALIDATION_TARGET_LEVEL_MIN/MAX_DBFS` = −12 … −6 dBFS) and
+a 40 dB gate gap. Gating tests 3/4 on those criteria would fail the fixture *for
+working correctly*.
+
+So `validation_preflightGate(bool return_is_attenuated)` takes the fixture into
+account: `false` for preflight/1/2 (full check, identical to `v`), `true` for 3/4
+(SOURCE-side criteria only, and it prints that it is doing so). The failure the
+item actually names — a dead SOURCE producing a NaN table instead of a clear
+preflight failure — is caught either way. Criteria are looked up **by name**, not
+array index, so a rename inside the preflight fails loudly instead of silently
+gating on the wrong criterion.
+
+### Compile evidence, and a false alarm worth recording
+
+Teensy 4.1, `teensy:avr:teensy41`, clean build, no errors and no new warnings:
+
+| | FLASH code | FLASH data | RAM1 vars |
+|---|---|---|---|
+| Baseline `f1b13ed` | 156 608 | 72 200 | 218 080 |
+| All three firmware commits | 157 248 | 73 224 | 219 104 |
+
+The baseline **reproduces journal (5)'s recorded numbers exactly**, which is what
+establishes that the same starting tree was rebuilt.
+
+**The size summary was byte-identical between the TODO-48-only build and the
+full build** — the same stale-cache signature journal (5) warned about. It was a
+false alarm, and it was checked the way that entry says to rather than by trusting
+the numbers: the `.elf` md5s differ, `audioEngine_setRouteDescription(char const*)`
+is in the symbol table, and searching the binaries for the IEEE-754 bytes of the
+timing constant finds **4 occurrences of 46.44 ms and zero of 92.88 ms** in the
+full build, and the reverse in baseline. `b2cdb4f` was also rebuilt standalone,
+because it was staged from a split patch and a split patch can leave an
+inconsistent tree.
+
+### A correction found while writing the runbook pass — in my own edit
+
+The first draft of the Phase 4 step 6 correction replaced `45a` with **`41a`**.
+`docs/asbuilt/netlist.md` records **col 41 A–E as `OPA_BIAS`** (0.874 V `MEAS`,
+bridged to col 43). **That is the same "it looks free" reasoning the correction
+exists to stop**, committed while correcting it.
+
+The published text therefore **names no replacement column at all.** It lists
+which nearby columns are taken (41/43 = `OPA_BIAS`, 45 = VGND, 48 = `SOURCE_NODE`),
+says to verify the pick is dead first, and adds *"do not trust a document that
+calls a column free, **including this one**."*
+
+### 🔑 A runbook defect is not closed when ONE occurrence is corrected
+
+**This is the most transferable thing this session produced, and it was found by
+closing TODO-31 rather than by the correction pass itself.**
+
+`b6db3d6` corrected C1-01 — the Phase 0 step 5 instruction that bridges the red
+rails which Phase 1 step 7 then re-purposes as VGND — in the **numbered step** and
+in the **end-of-phase verify row**. Closing TODO-31 required auditing for *other*
+rail re-purposings, and that audit found the same obsolete instruction still alive
+in two more places:
+
+- the **step-5 SVG diagram** — titled *"bridge the rails"*, drawing two red bridge
+  paths, captioned *"two bridges at left, two at right"*
+- the **Background paragraph** — *"we bridge the top rails to the bottom rails for
+  redundancy. Two bridges per side…"*
+
+**A reader who followed the picture, or who read the explanation to understand
+why, would have walked straight back into the destructive version** — from a
+document whose numbered step had just been corrected. That is arguably worse than
+an uncorrected document, because the corrected step lends the stale ones credibility.
+
+> **The rule, stated generally:**
+> **A runbook defect is not closed when one occurrence is corrected. All
+> representations of the affected instruction — the procedure, the verification
+> table, the explanatory prose, and the diagrams — must be audited for the same
+> assumption.**
+>
+> These are four *independent encodings of one fact*. Each can reintroduce the
+> defect on its own, and prose and diagrams are the ones that get skipped, because
+> correcting "the instruction" feels complete once the numbered step is right.
+
+**Both remaining sites are now corrected**, the diagram carries an explicit warning
+line, and Appendix C.1's C1-01 row records that the defect spanned **four** sites.
+The audit found **no other rail re-purposing** in the document: `BOT_RED` → VGND in
+Phase 1 step 7 is the only one.
+
+**This was deliberately NOT folded back into `b6db3d6` by amending it.** The
+history is more useful showing *correction → independent audit → discovery that the
+correction was incomplete → follow-up* than showing a first pass that was
+magically complete. The miss is the lesson.
+
+### The v3.0 PDF was removed, not regenerated
+
+`docs/breadboard_bringup_v3.pdf` was a legible 37-page pandoc/LaTeX rendering
+(`xdvipdfmx`, created 2026-06-02) carrying **every corrected defect verbatim** —
+the red-rail bridge, `45a` → pin 14, the E–B–C pin order, columns 60–70 — plus
+the **pre-2026-09-17 inverted coil polarity** (its step 9 still reads *"Wire
+COIL (+) → +5V rail. Jumper from `55f` (pin 10)"*).
+
+**Not regenerated:** no `pandoc`, no TeX distribution, no alternative renderer on
+this machine, and the original embeds 26 images, so the pipeline had an SVG
+conversion stage that cannot be reconstructed from the artifact. Improvising a
+different renderer would have produced something nobody could vouch for.
+**Removed instead; the bytes remain in history at `64894d4`.** The Markdown is now
+the only copy.
+
+### ⚠️ Phase 9 is NOT unblocked by this session
+
+**TODO-48's firmware defects being closed does not mean validation can run.** The
+harness compiling correctly was one gate of several, and the others are untouched:
+
+- **TODO-53 — open.** The board is running the temporary `q` build (boot stamp
+  `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95`), **not any
+  commit.** Results captured on an unidentified binary are not sign-off evidence;
+  the flash-identity incident in journal (6) is exactly why.
+- **TODO-52 — open.** Test 1's Y-split joins Instrument In and Rig Send, and the
+  Rig Send tip's feed count is still `RPT`, not `MEAS`. This is the node the test
+  fixture attaches to.
+- **Fixture and stimulus not confirmed present** — tests 3 and 4 need a 6 dB
+  resistive pad and an RC low-pass, and every test needs an **external** broadband
+  source.
+
+### 🔒 Phase 9 is external-stimulus work, and the firmware enforces it
+
+Recorded because the internal generator will look like a shortcut, and the reason
+it is not one is stronger than "we decided against it":
+
+1. **`validation.cpp` never touches the generator.** Its prompts call for pink or
+   white noise *"from signal generator or DAW"*. There is no code path from the
+   suite to `signalGen_*`.
+2. **`OBS/CODE`: DUT injection is NOT IMPLEMENTED in the active build.** The
+   architectural comments in `signal_generator.cpp` and `audio_capture.cpp`
+   describe an intended path — generator → send mixer → I2S out L → relay → Rig
+   Send. **Those comments are not evidence of a callable implementation, and under
+   this file's source-precedence rule the active call path wins over them.**
+   `ENABLE_DUT_INJECTION` is **0** (`config.h:308`), and all three
+   `audioCap_setInjectionMode()` calls sit inside `#if ENABLE_DUT_INJECTION`.
+   **`audioCap_setInjectionMode()` is not defined in `audio_capture.cpp` or `.h`
+   at all** — it exists only in the staging header `audiocap_injection_api.h`.
+   **Setting the flag to 1 would fail to LINK, not silently enable injection.**
+   `signalRouter_setInjectionEnabled()` still has **zero callers**.
+3. **TODO-42 would contaminate the control channel anyway** —
+   `signal_generator.cpp:99` sums the generator into `s_mixer_ret` slot 2, which
+   feeds the RETURN analysis taps.
+
+**So the validation procedure's external-stimulus scope is not merely a
+convention to be relaxed — it matches what the firmware can actually do.**
+
+> **Worth stating as its own precedence case:** an earlier working assumption in
+> this session was that the firmware *does* contain a generator-to-Rig-Send
+> injection route, on the strength of those architectural comments. **The
+> active-tree trace refuted it.** This is the 2026-08-25 rule applied to a comment
+> rather than to a contract document or a patch file: *never infer "implemented"
+> from something that describes the design — verify the call path.* The comments
+> are accurate about **intent** and stale about **state**.
+
+> **⚠️ Side finding, not fixed here (records-only pass).** The in-code note at
+> `measurement_engine.cpp:1108–1113` says the generator's output *"is NOT yet
+> connected to the audio graph."* **That is stale** — `signal_generator.cpp:99`
+> connects it to `s_mixer_ret`. The note is what TODO-42 exists to correct; it is
+> recorded there rather than edited here. Mitigating: `m` uses
+> `measureParams_rigAnalysis()`, whose `stimulus` is **`EXTERNAL`**
+> (`measurement_engine.cpp:1302`), so the generator is not started on that path
+> and the contamination is **not live today**. `measureParams_cableCapacitance()`
+> requests `INTERNAL_WHITE` and is **not reachable from any serial command**.
+
+### Open, deliberately not decided here
+
+**The `q`-toggle worktree still exists**, uncommitted, one modified file
+(`guitar_rig_analyzer.ino`), on branch `firmware/todo-51-send-relay-toggle` at a
+session scratchpad path under `wt2/`. **It survived only because its session
+happened not to be cleaned up** — the same exposure that destroyed
+`firmware/bench-safe-todos`.
+
+**Its disposition is left as a separate decision and was deliberately not folded
+into this session's commits.** An uncommitted diagnostic build should not become
+permanent firmware merely by surviving in a temp directory. TODO-53 owns the
+question of who really owns the send path; **`q` is live and can reach an
+output-contention state while TODO-52 is open.**
+
+**Next:** reconcile nothing further in code. The next milestone is bench evidence
+— TODO-52's lifted-wire measurement, then a known-build reflash (TODO-53), and
+only then Phase 9.
+
+---
+
+## 2026-09-19 (8) — Bypass jumper removed and the send path now runs through the relay; loopback unchanged. **The isolation check taken does not discriminate the two-feed condition — TODO-52 stays open**
+
+### Corrective action and result
+
+The old direct `col 48` → Rig Send TIP jumper was **removed**, forcing Rig Send through the relay NC/COM path. Powered loopback afterwards, pin 14 LOW:
+
+| | Value |
+|---|---|
+| SOURCE / RETURN | **−28.9 / −28.9 dBFS** |
+| 1 kHz | **−0.0 dB** |
+| Clamped bins | **0 of 512** |
+| Route | `XLR return, no injection` |
+| Raw SOURCE vs RETURN | essentially identical |
+
+Claimed chain: `SOURCE_NODE`/`48e` → `56a` NC → `57a` COM → Rig Send → external loop → XLR Return → `RETURN_NODE`. **Removing the bypass did not measurably change loopback behaviour**, which is the expected outcome and a good sign.
+
+### ✅ What the power-off check does establish
+
+`58a` → `48d`/SOURCE_NODE = **OPEN**, power off, relay LOW. **This rules out a stray LINE-OUT-L-to-SOURCE_NODE path** — a misplaced jumper, a solder bridge, an unintended tie. That is exactly the framing the check was proposed under, and it holds. Worth having.
+
+### 🔻 What it does NOT establish — recorded before it hardens into a closure
+
+**With the relay de-energised, COM↔NO is open by the relay itself.** `58a` therefore reads OPEN to `48d` **whether or not the direct tip jumper exists**, because the only route between them passes through that open NO contact.
+
+- *Jumper present*: tip↔col 48 direct, tip↔COM, COM↔NC closed, **COM↔NO open** ⇒ `58a`↔`48d` **OPEN**.
+- *Jumper absent*: **COM↔NO open** ⇒ `58a`↔`48d` **OPEN**.
+
+Identical reading under both wirings. **It cannot distinguish them.** The jumper removal is **builder-reported (`RPT`)** and very likely correct — but "removed" and "verified removed" are different claims, and this project's own tier discipline exists because that distinction has cost it time before.
+
+**Also not evidence:** the −28.3 → **−28.9 dBFS** shift. Two identical parallel connections to one node are electrically near-indistinguishable from one (a relay contact adds ~tens of mΩ), so removing a redundant jumper should produce **no** measurable level change. The 0.6 dB is more consistent with source drift. **Do not cite it in either direction.**
+
+### The one decisive test left (power off, one wire lifted)
+
+No power-off measurement can separate the two wirings while COM↔NC is closed, because every point on col 48 then reaches the tip *through the relay*. The parallel path is masked by design. So either lift a wire, or count conductors:
+
+1. Power **OFF**.
+2. Lift the **COM→tip wire at `57a`** (one end, temporarily).
+3. Measure **Rig Send TIP → `48d`**. **OPEN ⇒ COM is the tip's only feed, TODO-52 closes as `MEAS`. BEEP ⇒ a second feed remains** and the HIGH-state loop is live.
+4. While lifted, TIP → `56a` and TIP → `58a` should also both read OPEN; a beep there locates the stray path directly.
+5. Reconnect `57a` → tip and re-verify before powering up.
+
+Purely visual alternative: **count the conductors on the Rig Send tip lug.** One is the answer.
+
+**Position unchanged: do not press `q`, do not drive pin 14 HIGH, until this reads clean.** Pin 14 is LOW, which remains the safe side.
+
+## 2026-09-19 (7) — Send-relay signal path wired and continuity-verified; TODO-51 closes on its stated criterion. **Open hazard: Rig Send tip may have two feeds**
+
+### Reported as-built (`MEAS`, continuity-verified; three intended Phase 7 jumpers installed)
+
+| Contact | Connects to | Role |
+|---|---|---|
+| `56a` **NC** | `48e` / buffer output | LOW / default: external source → Rig Send |
+| `57a` **COM** | Rig Send jack tip | switched output to the rig |
+| `58a` **NO** | Audio Shield **LINE OUT L** | HIGH: codec monitor path → Rig Send |
+
+This matches the runbook's v3 Phase 7 SPDT-selector topology (COM = Rig Send, NC = buffer, NO = codec line-out). **Observed:** LOW delivers the external ~1 kHz source to Rig Send; HIGH delivers the LINE OUT L monitor-path signal. SOURCE/XLR measurement remained healthy at **−28.3 / −28.3 dBFS, −0.0 dB @ 1 kHz**. Pin 14 left **LOW** (safe/default). `injection_active` stayed **false** and `ENABLE_DUT_INJECTION` is still `0` — **no claim of DUT injection is made or implied.**
+
+### ⚠️ Open hazard — NOT resolved, do not energise pin 14 until it is
+
+`docs/asbuilt/netlist.md` §SOURCE_NODE records **column 48 rows A–E as a single node** (C2− at `48d`, jumper `48e` → LINE-IN-L, J2 open stub at `48a`). So **`48d` and `48e` are the same electrical point.**
+
+The as-built recorded up to journal (5) had **Rig Send tip → `48d` directly**. The relay path now added is `48e` → NC → COM → **Rig Send tip**. **If that original direct jumper was not removed, the Rig Send tip has two feeds**, and in the **HIGH** state the codec's LINE OUT L driver is connected straight onto SOURCE_NODE — i.e. onto the OPA1642 buffer output through C2. That is precisely the fault the runbook's own v3 critical fix was written to prevent: *"COM↔NO connects the buffer output directly to the codec's line-out driver (two outputs fighting on one node)."*
+
+**The LOW-state observation cannot discriminate between the two wirings** — both feeds carry the same signal in LOW, so "LOW delivers the source" is true either way. **Whether the direct jumper was removed was never reported, and must not be assumed in either direction.**
+
+**Cheapest decisive check (power off):** count the conductors on the Rig Send tip lug — two means a second path. To confirm, lift the COM→tip wire at `57a` and re-check tip ↔ column 48; a beep with COM lifted proves a second feed. **Do not test this by energising to HIGH** — that is the hazard state.
+
+Recorded as **TODO-52**. Pin 14 is currently LOW, which is the safe side of it.
+
+### Status accounting against TODO-51's actual wording
+
+TODO-51's Proof line reads: *"pin 14 observably driven HIGH and LOW from an operator command, with the RELAY_SEND contacts measured transferring (`MEAS`) — and, separately, a documented decision on whether those contacts are wired into the signal path at all."* Both clauses are now satisfied, so it moves 🟢.
+
+**Explicitly NOT part of that criterion**, and therefore not blocking it — recorded separately so neither is silently dropped:
+- **POLE 2** (`58f`/`57f`/`56f`) remains datasheet-level and untested. That caveat belongs to Phase 6 / TODO-6, not to TODO-51.
+- **Cleanup of the temporary `q` firmware** → now **TODO-53**.
+
+### ⚠️ What is actually on the board right now
+
+**The Teensy is running the TEST build, not `f1b13ed`** — boot stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95`. It contains the `q` toggle and the bring-up boot banner.
+
+**This now matters more than it did when the toggle was written.** When `56a`/`57a`/`58a` were unwired, a stray `q` was electrically inert. **With the three jumpers fitted, `q` routes a real signal** — and, if the hazard above is real, into an output-contention condition. Anyone using this board should know `q` is live.
+
+## 2026-09-19 (6) — ✅ **PIN 14 → SEND-RELAY CONTACT TRANSFER BENCH-PROVEN END TO END.** Also: an upload that appeared to succeed while the board kept running the old binary — caught only because a help menu was one line short
+
+### The flash-identity incident (read this first — it is the transferable lesson)
+
+Before any relay result was trusted, three successive attempts to run a test build left the board still running the **old** firmware. The only reason this was caught: the `q` command printed `Unknown command: 'q'.` and **the help menu ended one line early.** Had the change been silent — a threshold, a constant, a gain — it would have looked like a hardware result.
+
+**What made it detectable in the end:** a deliberate, unmissable build identifier printed at boot, *before* the version banner and *before* `presentation_init()` (the Phase 2 lesson from journal 2026-09-01: a block placed after display init was never reached on this bench):
+
+```
+########################################################
+[BringUp] SEND RELAY TEST BUILD
+[BringUp] Build stamp: Sep 19 2026 22:20:52
+```
+
+`__DATE__`/`__TIME__` make every compile uniquely identifiable, so "which binary is on the chip" stops being an inference.
+
+**Verification discipline used on the artifact itself:** the Intel HEX was **decoded** and searched for the new strings, rather than trusting `arduino-cli`'s size summary — which had earlier reported **byte-identical** figures across two genuinely different builds (journal (5)). Decoded image 238 592 bytes; `SEND RELAY TEST BUILD`, `Build stamp`, `q=RELAY_SEND pin14 toggle` all PRESENT. The hex was then copied to `~/Desktop/sendrelay_test_Sep19_2220.hex`, md5 **`a07722c6e6f5bb64f27b1719a7aa1b95`**, and the copy re-verified independently.
+
+**⚠️ The root cause of the failed uploads was NEVER established — do not record one.** Contributing facts that *are* known: the Teensy platform's upload recipe is `teensy_post_compile ... -path={build.path} ... -reboot`, which hands off to the **`teensy.app` GUI loader** and depends on `-reboot` soft-resetting into HalfKay; `--input-dir` may therefore never have reached it; and this project has already recorded one upload that wrote nothing because "HalfKay never got a manual reset to enter program mode" (journal 2026-09-01). **Which of these applied here is unproven, and the successful flash path was not reported back.** If it recurs, capture the upload command's full stdout/stderr first — that artifact was requested and never obtained, and reasoning proceeded twice without it.
+
+**Standing recommendation:** keep a build stamp in the boot banner **permanently**, not just for bring-up builds. The cost is two lines; the failure it prevents is attributing a stale binary's behaviour to hardware.
+
+### The measurement (`MEAS`, DMM continuity, nothing rewired between states)
+
+Driven by the temporary `q` toggle, which writes `RELAY_SEND_PIN` directly and deliberately does **not** touch injection state:
+
+| Pin 14 | `56a` ↔ `57a` | `57a` ↔ `58a` | `56a` ↔ `58a` |
+|---|---|---|---|
+| **LOW** (~0 V) | **CLOSED** | OPEN | **OPEN** |
+| **HIGH** (3.259 V) | OPEN | **CLOSED** | **OPEN** |
+
+**Therefore, by state rather than by datasheet:** `57a` = **COM**, `56a` = the de-energised contact (**NC**), `58a` = the energised contact (**NO**).
+
+**The full physical chain is proven, not merely firmware intent:**
+`q` → GPIO 14 changes 0 V ↔ 3.259 V → coil energises → contacts transfer `57a` from `56a` to `58a`.
+
+**Two things this measurement got right that are worth keeping as habit:**
+1. **`56a` ↔ `58a` was checked in BOTH states and read OPEN both times.** That rules out NC and NO being bridged — a make-before-break or welded-contact fault would have shown here. Most contact checks omit this and would not have caught it.
+2. **`injection_active` remained `false` throughout**, printed by the toggle itself. So none of this evidence depends on the unresolved injection path, and **TODO-42 is not implicated in it.**
+
+### What this confirms, and what it does not
+
+**Confirms:** the runbook's Phase 6 POLE 1 contact table (pin 2 = NC → `56a`, pin 3 = COM → `57a`, pin 4 = NO → `58a`). TODO-45 had only been able to say "no defect is established in the POLE 1 table" after withdrawing an unsound deduction on 2026-09-15. **It is now positively bench-proven, not merely un-refuted.** That is a stronger claim and should replace the weaker one.
+
+**Does NOT establish:**
+1. **What `56a` / `57a` / `58a` are connected to.** Nothing about the signal path. This is the correct next question and it must be answered *before* any audio behaviour through this relay is interpreted — `docs/asbuilt/netlist.md` still has no entry for these three columns.
+2. **Anything about injection.** The toggle proves the relay. It must not be cited as injection evidence.
+3. **POLE 2** (pins 7/8/9 → `58f`/`57f`/`56f`) — still datasheet-level only, untested. Same caveat already carried for relay #2's pole 2.
+
+### Firmware status
+
+The `q` toggle and the boot identifier are **temporary** and live only on branch `firmware/todo-51-send-relay-toggle` (one file, additive). They must be removed when the send path gets a real owner. Main tree remains clean at `f1b13ed`.
+
+## 2026-09-19 (5) — ✅ **XLR RETURN PATH BENCH-VALIDATED WITH A REAL SIGNAL.** Stimulus-present TS/XLR A/B completed with both return sources live. Send-side relay found **unreachable from the running firmware** — code-derived, before any bench time was spent on it
+
+### The test that was finally possible
+
+The blocker on both Phase 7 sign-off and Phase 8 was the same one: every previous TS/XLR A/B had been run on the **noise floor**, because only one return source ever carried signal. Selecting XLR just disconnected a live TS return and selected an undriven pin 2, which proves relay isolation and nothing about XLR signal transfer.
+
+The fix was to feed the **same** `SOURCE_NODE` stimulus to both return sources at once, with the XLR branch entering through the **physical connector** rather than a jumper to `17a` — specifically so Phase 8's evidence would be end-to-end and not bypass the thing under test.
+
+**As-built for this session — XLR feed via a seated adapter:**
+
+| Adapter terminal | Lands on | Tier |
+|---|---|---|
+| GND (pin 1) | **Audio Shield GND** | `MEAS` (continuity, power off) |
+| L (pin 2) | `48d` / `SOURCE_NODE` | `MEAS` (continuity, power off) |
+| R (pin 3) | top breadboard GND rail | `PHYS` |
+| `48d` → GND | **no continuity** (not shorted) | `MEAS` |
+
+### Results (`OBS`, power on, 1 kHz stimulus present throughout)
+
+| Router state | Pin 15 | Condition | RETURN | Other |
+|---|---|---|---|---|
+| **TS** | ≈ 0 V | TS loop connected | **−28.3 dBFS** | — |
+| **TS** | ≈ 0 V | TS loop **disconnected** | **≈ −68 dBFS** | isolation confirmed |
+| **XLR** | **3.259 V** | XLR signal present | **−28.3 dBFS** | 1 kHz transfer **−0.0 dB**; raw SOURCE/RETURN essentially identical; Serial reports XLR return, no injection |
+
+**This is the stimulus-present A/B that Phase 7 was missing**, and the first real analog signal to reach `RETURN_NODE` through the physical XLR connector. It directly confirms the documented relay convention: **LOW = TS, HIGH = XLR.**
+
+### Bounds — what this does NOT establish
+
+1. **−0.0 dB at 1 kHz is a loop observation, not a calibrated figure.** Same bound as journal (4). The calibrated path is TODO-9 Test 1 with its fixture, and it remains unrun.
+2. **The XLR branch is a direct adapter jumper from `SOURCE_NODE` to pin 2.** So "XLR signal present" is true **by construction**. What is proven is the **connector contact + relay transfer + codec input** — not a rig loop, and not anything about what a real XLR source would do.
+3. **The noise-floor comparison in TODO-8's criterion is NOT satisfied.** A TS-selected, cable-disconnected floor (≈ −68 dBFS) was captured; **an XLR-selected floor was not.** One number is not a comparison.
+4. **⚠️ The grounding topology CHANGED for this test, and that matters for exactly the risk TODO-8 flagged.** The original as-built had XLR pins 1 **and** 3 on the breadboard rail. The adapter now ties pin 1 to **Audio Shield GND** while pin 3 stays on the breadboard rail. The 33.1 dB measurement of 2026-09-12 (3) came from precisely this shield-vs-breadboard distinction. **Any future noise-floor comparison must state which of the two topologies was in place** — the risk TODO-8 describes is no longer the configuration on the bench.
+5. **Pin 15 = 3.259 V is a driver-state reading, not contact proof.** Contact transfer is proven by the RETURN reading, which is present. Both exist here; keep them as separate claims.
+
+### Send-side relay: stopped before the bench, on code evidence
+
+The stated next step was to test the send-side relay "the same way." **It is not currently testable that way, and the reason is in the firmware, not the hardware.** Established by reading the active tree at `f1b13ed`:
+
+1. **`signalRouter_setInjectionEnabled()` has zero callers.** Only its definition (`signal_router.cpp:331`), its declaration (`signal_router.h:235`), and references in `signal_router_contract.md` / the runbook. The contract's step 6 — `measurement_engine` calling it at CAPTURE entry/exit — was never done (TODO-11). The Phase 6 `p`/`P` toggle was removed per the runbook's own step 13. `i` is `insightsEngine_printToSerial()`. **Nothing in the running firmware can drive pin 14 HIGH.**
+2. **It is gated even if reached.** It rejects unless `s_jack_rig_send.debounced` is true (pin 17), and `config.h:279` still carries `JACK_RIG_SEND_DETECT_INVERTED 0 // Phase 7 — not built, sense unverified`.
+3. **Injection is compiled out.** `ENABLE_DUT_INJECTION 0` (`config.h:308`) removes the `audioCap_setInjectionMode(true)` call, so the relay would move while the codec output mixer never switches to the generator.
+4. **The contacts do not appear to be in the signal path.** The as-built has Rig Send tip → `48d` **directly**, and `docs/asbuilt/netlist.md` contains **no entry for `56a` / `57a` / `58a`** (the Phase 6 contact columns). *This is a documentation absence, not a bench observation* — it needs confirming against the board, but if correct, toggling RELAY_SEND would have nothing downstream to observe.
+
+**Why the return-side method does not transfer:** it worked because RELAY_RETURN's contacts are wired into the return path **and** `j`/`k` are bound to `signalRouter_setReturnSource()`. Neither condition holds on the send side.
+
+**Recorded as TODO-51.** The relevant point for the next session: this was caught by reading the tree *before* bench time was spent, which is the check that journal 2026-08-25 (2) was written to enforce.
+
+### Firmware and runbook work done in parallel (compile-verified, NOT bench-verified)
+
+Done on branch `firmware/bench-safe-todos` in a **separate git worktree**, deliberately so the main tree stayed clean at `f1b13ed` and could not be flashed with unproven code mid-session. **Nothing here has been on the board.**
+
+- **TODO-48** — `validation_waitForUser()` returned `void` and read-and-discarded every byte, which is exactly why a cancel keystroke could not be distinguished from consent. Now captures the first byte and returns `bool`. Added `validation_preflightGate()` so the `1`–`4` single-test commands run the same level check that only `v` ran. `runAll()` aborts on decline. *(Consent accepts `y` as well as CR/LF: a monitor set to "No Line Ending" sends nothing on Enter, and strict CR/LF-only would hang the prompt with no exit.)*
+- **TODO-50** — added `audioEngine_setRouteDescription()`, a description-only setter (no mixer gains, no smoothing reset, no `ROUTE_CHANGED`), called from `signalRouter_init()`. **ADR-004 Decision 2 is preserved** — boot is still not a route-change transition. Verified `signalRouter_init()` (`.ino:327`) runs after `audioEngine_init()` (`.ino:257`), so the sync is not overwritten.
+- **TODO-27** — `EXPECTED_BLOCK_MS` now uses the hop size (`FFT_SIZE / 2`), giving 46.4 ms against the measured 46.3 ms instead of a permanent phantom −46.6 ms anomaly.
+- **Runbook v3.1 correction pass** — eleven defects, tabulated in a new Appendix C.1: the Phase 0→1 sequence that shorts +5 V to VGND (TODO-31), Phase 4's missing USB reconnect (TODO-18), the swapped transistor pin order and the `45a`-on-the-VGND-rail base drive (TODO-45), Phase 7's impossible "columns 60–70", the unenforced parts gate, the `p`/`P` toggle contradiction, and three stale sign-off lines (TODO-3 / TODO-5 / TODO-8). Added a **"Board coordinates"** authority section, which the document had never had — the absence is how three separate phases came to claim column 45 and a column 70 that does not exist.
+
+**Compile evidence (Teensy 4.1, clean build):** FLASH code 156 608 → 156 864, data 72 200 → 73 224; RAM1 variables 218 080 → 219 104. No errors, no warnings. `arduino-cli`'s size summary was byte-identical across two builds, which looked like a stale cache — **inclusion was confirmed by string-matching the linked `.elf` instead**, not by trusting the reported numbers.
+
+**Nothing is committed.** Review with `git diff main firmware/bench-safe-todos`.
+
 ## 2026-09-19 (4) — ✅ **FIRST VALID TRANSFER FUNCTION THROUGH THE INTENDED CHAIN.** Rig Send jack built; real guitar signal ran Instrument In → buffer → Rig Send → cable → Rig Return TS → relay → RETURN_NODE, TF confidence 15 % (> 10 % threshold)
 
 ### Rig Send jack — install and pre-power checks
