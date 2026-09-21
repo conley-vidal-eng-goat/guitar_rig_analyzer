@@ -818,7 +818,24 @@ Serial reported XLR return, no injection. **Confirms the documented convention: 
 **⚠️ Do not resolve this by enabling injection casually.** TODO-42 is unresolved and is exactly the "known routing caveat" that internal stimulus is currently withheld over.
 **Proof:** pin 14 observably driven HIGH and LOW from an operator command, with the RELAY_SEND contacts measured transferring (continuity, `MEAS`) — and, separately, a documented decision on whether those contacts are wired into the signal path at all.
 
-### TODO-52 — Rig Send tip may have TWO feeds — potential output contention in the HIGH state 🟡 **DIRECT JUMPER REPORTED REMOVED 2026-09-19; the confirming measurement has NOT yet been taken (journal (7), (8))**
+### TODO-52 — Rig Send tip may have TWO feeds — potential output contention in the HIGH state 🟡 **✅ HAZARD CLEARED `MEAS` 2026-09-21 — no second feed detected. Netlist clause still outstanding**
+**✅ THE DECISIVE TEST WAS RUN 2026-09-21 (journal (1)).** Power OFF, one wire lifted at one end, nothing else changed:
+
+| # | Condition | Probe | Reading | Tier |
+|---|---|---|---|---|
+| 1 | **COM→TIP lifted at `57a`** | Rig Send TIP → `48d` | **OPEN** | `MEAS` |
+| 2 | **COM→TIP restored at `57a`** | Rig Send TIP → `48d` | **CONTINUITY (beep)** | `MEAS` |
+
+**PHYS:** probes removed; the Rig Send ↔ Rig Return loop cable was disconnected for the test and **restored at both ends afterwards**. Power left OFF.
+**✅ CONCLUSION, stated narrowly: no second feed to the Rig Send TIP was detected by this isolation test. The known COM→TIP connection accounts for the measured continuity.**
+**Reading 2 is not a formality — it is what makes reading 1 evidence.** It proves the meter, probes and TIP node were live, so the OPEN was an open circuit and not a bad probe contact. Reading 1 alone is indistinguishable from a failed measurement.
+**The HIGH-state loop is refuted at its precondition.** It required a direct TIP↔col 48 tie *in addition to* the COM path; there is none.
+**🔻 STILL NOT ESTABLISHED — do not overstate this:**
+- **"Exactly one feed" is NOT proven.** Proven is *no second path from TIP to `SOURCE_NODE`/col 48*. A conductor to an unrelated node would not have appeared. **The conductor count on the TIP lug was not taken visually.**
+- **The two supplementary checks were not performed:** TIP → `56a` and TIP → `58a` while COM was lifted.
+- **The `58a` case is covered by a DIFFERENT measurement, a day earlier** — journal 2026-09-19 (8)'s `58a` → `48d` = OPEN, taken relay-LOW with the TIP connected through COM: a stray TIP↔`58a` would have reached col 48 via `58a`→TIP→COM→NC→`48e` and beeped. **The conclusion rests on two measurements taken a day apart; that dependency is stated, not hidden.**
+**🟡 WHY THIS IS NOT 🟢:** the Proof line's second clause — *"`docs/asbuilt/netlist.md` records `56a`/`57a`/`58a` and the tip's source explicitly"* — is **unmet**; that netlist still has no entry for those three columns. **Owner note: that file belongs to the concurrent capture session — coordinate, do not edit unilaterally.**
+> **🔒 This does NOT license pressing `q`.** One specific hazard is cleared. **TODO-53's conditions are unchanged** — unidentified build on the board, send path with no real owner — and whether to energise pin 14 is a bench judgement, not an inference from this item. Pin 14 was last left **LOW**.
 **✅ Corrective action taken (builder-reported):** the old direct `col 48` → Rig Send TIP jumper was **removed**, forcing Rig Send through the relay's NC/COM path. Powered loopback afterwards: **SOURCE −28.9 / RETURN −28.9 dBFS, −0.0 dB @ 1 kHz, 0 clamped bins**, `XLR return, no injection`, pin 14 LOW. Chain now claimed as `SOURCE_NODE`/`48e` → `56a` NC → `57a` COM → Rig Send → external loop → XLR Return → `RETURN_NODE`.
 **✅ Genuinely established (`MEAS`, power off, relay LOW): `58a` → `48d`/SOURCE_NODE = OPEN.** This rules out a **stray** LINE-OUT-L-to-SOURCE_NODE path — a misplaced jumper, a solder bridge, an unintended tie. That was the framing the check was proposed under, and it holds.
 
@@ -860,7 +877,8 @@ That is a **closed electro-acoustic loop around the codec** with roughly one aud
 
 ### TODO-53 — Remove the temporary `q` toggle and bring-up boot banner 🔴 **cleanup debt — the board is currently running this build, not `f1b13ed`**
 **Why:** journal (6)/(7). Branch `firmware/todo-51-send-relay-toggle` adds a `q` toggle that writes `RELAY_SEND_PIN` directly, plus a `[BringUp] SEND RELAY TEST BUILD` boot identifier. Both were explicitly temporary. **The flashed firmware on the Teensy is this build** — boot stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95` — **not** the main tree's `f1b13ed`.
-**⚠️ `q` is no longer electrically inert.** When `56a`/`57a`/`58a` were unwired it did nothing observable. **With the three Phase 7 jumpers fitted it routes a real signal**, and while **TODO-52** is open it can reach an output-contention state. Anyone using this board must know `q` is live.
+**⚠️ `q` is no longer electrically inert.** When `56a`/`57a`/`58a` were unwired it did nothing observable. **With the three Phase 7 jumpers fitted it routes a real signal.** Anyone using this board must know `q` is live.
+**🔄 UPDATED 2026-09-21 — the two-feed contention hazard is CLEARED (`MEAS`, TODO-52, journal (1)).** The clause that previously read *"while TODO-52 is open it can reach an output-contention state"* **no longer applies**: with no second TIP feed, energising pin 14 moves COM from NC to NO and `SOURCE_NODE` is disconnected from the TIP rather than fighting LINE OUT L. **This removes one hazard; it does not make `q` a sanctioned command.** This item's own conditions stand — the board runs an unidentified build, and the send path still has no decided owner. **Whether to press `q` remains a bench judgement.** Pin 14 was last left **LOW**.
 **What:** decide the send path's real owner first — a permanent operator command, or the TODO-11 step-6 promotion (which pulls in `ENABLE_DUT_INJECTION`, `s_mixer_send` and **TODO-42**). Remove the toggle when that lands, and reflash a known build.
 **➕ Keep, don't delete, the build stamp.** The `__DATE__`/`__TIME__` boot line is the only reason the stale-binary incident in journal (6) was caught. **Recommendation: make it permanent in the main boot banner** rather than removing it with the toggle. Two lines; it retires a class of error that nearly produced a false hardware result.
 **📍 WORKTREE STATUS RECORDED 2026-09-20 — disposition deliberately NOT decided here.** The `q` toggle still exists as **one uncommitted modified file** (`guitar_rig_analyzer.ino`) on branch `firmware/todo-51-send-relay-toggle`, in a session scratchpad worktree under `wt2/`. **It survived only because its session happened not to be cleaned up** — the identical exposure that destroyed `firmware/bench-safe-todos` and cost a full rewrite (journal 2026-09-20 (1)).
@@ -880,12 +898,19 @@ untouched:
 | Gate | Item | State |
 |---|---|---|
 | Board runs an **identified build** | **TODO-53** | 🔴 board is on the temporary `q` build, stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95` — **not any commit** |
-| Rig Send tip feed count | **TODO-52** | 🔴 `RPT`, not `MEAS`. **Test 1's Y-split attaches to this node** |
+| Rig Send tip feed count | **TODO-52** | ✅ **CLEARED `MEAS` 2026-09-21** — no second feed detected. This was the gate on trusting the Test 1 Y-split fixture, and it is met |
 | Fixture parts | this item | 🔴 6 dB resistive pad + RC low-pass, and an **external** broadband source, not confirmed on hand |
 | The three new firmware fixes on the board | TODO-27/48/50 | 🔴 committed, **never flashed** |
 
 **Results captured on an unidentified binary are not sign-off evidence** — journal 2026-09-19 (6) is exactly that
 lesson. Reflashing to `b275852` picks up all three fixes at once and gives the run a known build identity.
+
+**🔑 SEQUENCING — why TODO-52 came BEFORE the reflash, recorded so the ordering survives without the conversation
+that produced it:** not because any firmware depended on it, but because it was the outstanding **physical-topology**
+fact needed to trust the **Test 1 Y-split fixture**, which attaches to exactly that node. **Knowing which binary is on
+the board is *repository identity*; knowing the TIP has no second feed is *electrical validity*. A reflash settles the
+first and says nothing about the second.** Conflating the two is how a clean-looking test run gets mistaken for a
+valid one.
 
 **🔒 THIS PHASE IS EXTERNAL-STIMULUS WORK. The internal generator is not a shortcut, and the firmware agrees.**
 Verified in the active tree 2026-09-20 (journal (1)):

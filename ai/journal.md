@@ -12,6 +12,93 @@ How to use this file:
 
 ---
 
+## 2026-09-21 (1) — ✅ **TODO-52's decisive test was run. No second Rig Send TIP feed was detected.** The output-contention hazard is cleared as `MEAS`; the netlist clause is not
+
+### The measurements, exactly as observed
+
+Power **OFF** throughout. One wire lifted at one end, nothing else changed.
+
+| # | Condition | Probe | Reading | Tier |
+|---|---|---|---|---|
+| 1 | **COM→TIP lifted at `57a`** | Rig Send TIP → `48d` | **OPEN** | `MEAS` |
+| 2 | **COM→TIP restored at `57a`** | Rig Send TIP → `48d` | **CONTINUITY (beep)** | `MEAS` |
+
+**PHYS:** probes removed; Rig Send ↔ Rig Return loop cable disconnected for the
+test and **restored at both ends afterwards, exactly as before**. Power left OFF.
+
+### What this establishes — stated narrowly on purpose
+
+> **No second feed to the Rig Send TIP was detected by this isolation test. The
+> known COM→TIP connection accounts for the measured continuity.**
+
+Reading 1 is the decisive one. With COM lifted, **every** remaining path from the
+TIP to col 48 would have to be a *second* feed — and there was none. Reading 2 is
+the control that makes reading 1 mean something: it proves the meter, the probes
+and the TIP node were all live, so the OPEN was an open circuit and **not a bad
+probe contact**. Taken alone, reading 1 is indistinguishable from a failed
+measurement. **That pairing is what upgrades this from `RPT` to `MEAS`.**
+
+**This is what the hazard required.** TODO-52's concern was a direct TIP↔col 48
+tie *in addition to* the COM path: in the HIGH state COM moves to `58a` = LINE
+OUT L, and with a second feed still holding the TIP on col 48, the codec's
+line-out driver would be tied to the OPA1642 buffer output through C2 — and,
+because `audio_capture.cpp:168–172` puts a reconstructed copy of SOURCE_NODE on
+LINE OUT L, that is a **closed loop around the codec**, not merely static
+contention. **Reading 1 refutes the condition that loop depends on.**
+
+### ⚠️ What it does NOT establish — recorded before it hardens into more than it is
+
+- **"Exactly one feed" is NOT proven.** What is proven is *no second path from the
+  TIP to `SOURCE_NODE`/col 48*. A conductor from the TIP to some unrelated node
+  would not have shown up. **The visual check — count the conductors on the TIP
+  lug — was not performed**, and it remains the only thing that would establish
+  the count directly.
+- **The two supplementary checks suggested with the decisive test were not taken:**
+  TIP → `56a` and TIP → `58a`, both while COM was lifted.
+- **The `58a` case is nevertheless covered — by an earlier measurement, not by this
+  one.** Journal 2026-09-19 (8) recorded `58a` → `48d` = **OPEN**, power off,
+  relay LOW, **with the TIP connected through COM**. Had a stray TIP↔`58a` tie
+  existed, that probe would have reached col 48 the long way round
+  (`58a` → TIP → COM `57a` → NC `56a` → `48e` ≡ `48d`) and beeped. It did not.
+  **So the conclusion rests on two measurements taken a day apart, and that
+  dependency is stated here rather than folded into today's result.**
+
+### Status change, and one that deliberately does not follow
+
+**TODO-52's electrical hazard is cleared (`MEAS`).** The item does **not** go
+🟢, because its Proof line has a second clause — *"`docs/asbuilt/netlist.md`
+records `56a`/`57a`/`58a` and the tip's source explicitly"* — and that netlist
+still has no entry for those three columns. **That file belongs to the concurrent
+capture session; coordinate rather than editing it unilaterally.** TODO-52 is
+therefore 🟡 with the hazard resolved and the record clause outstanding.
+
+> **🔒 This does NOT mean "`q` is now safe to press", and nothing here should be
+> cited that way.** What is cleared is *one specific* hazard: the two-feed
+> contention/loop. **TODO-53's other conditions are unchanged** — the board is
+> still running an unidentified temporary build, the send path still has no real
+> owner, and whether to energise pin 14 is a bench judgement that belongs to the
+> bench, not to this entry. Pin 14 was last left **LOW**, which remains the safe
+> side.
+
+### Where this leaves the Phase 9 chain
+
+`preserve/understand q worktree` ✅ (`3ea3880`) → **`TODO-52 feed-count` ✅ (today)**
+→ `build/flash an identified HEAD` → `bench-verify 27/48/50` → `construct
+fixtures` → `Phase 9`.
+
+**Why TODO-52 came before the reflash, restated so the ordering survives without
+this conversation:** not because any firmware depended on it, but because it was
+the outstanding **physical-topology** fact needed to trust the Test 1 Y-split
+fixture — Test 1 attaches to exactly this node. Knowing which binary is on the
+board is *repository identity*; knowing the TIP has no second feed is *electrical
+validity*. **A reflash settles the first and says nothing about the second.**
+Conflating them is how a clean-looking test run gets taken for a valid one.
+
+**Next:** build and flash an identified HEAD (TODO-53), then re-verify TODO-27,
+TODO-48 and TODO-50 on hardware — they are still compile/link-verified only.
+
+---
+
 ## 2026-09-20 (1) — The 2026-09-19 firmware and runbook work was **lost, not merged**. Rewritten from the record and committed in four reviewed commits. **Compile/link verified only — nothing has been flashed and nothing is bench-verified.**
 
 ### What happened to `firmware/bench-safe-todos`
