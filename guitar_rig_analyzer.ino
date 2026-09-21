@@ -211,8 +211,36 @@ void setup() {
     delay(500);
 
 
+    // =====================================================================
+    // PERMANENT BUILD IDENTITY — do NOT remove.
+    //
+    // This is infrastructure for trustworthy bench evidence, not a diagnostic.
+    // Every measurement recorded in ai/journal.md must be attributable to a
+    // specific source revision, and identity must be a POSITIVE statement the
+    // firmware makes about itself — never inferred from something being absent.
+    //
+    // Earned on 2026-09-19: three uploads appeared to succeed while the board
+    // kept running an older binary, and the only clue was a help menu one line
+    // short. A bench result was nearly attributed to the wrong firmware.
+    //
+    // Printed here — immediately after Serial.begin(), before presentation_init()
+    // and before any audio bring-up — so it cannot be lost behind a renderer
+    // failure or a slow display init. (Phase 2 lesson, journal 2026-09-01: a
+    // block placed after display init was never reached on this bench.)
+    //
+    // FIRMWARE_VERSION identifies the intended release; __DATE__/__TIME__
+    // identify the actual compile, which is what distinguishes two builds of
+    // the same version. Both are needed: the version alone cannot tell you
+    // whether the binary in front of you is the one you just built.
+    //
+    // NOTE: the stamp identifies the COMPILE, not the commit. It does not make
+    // a build bit-reproducible — recompiling the same source yields a new
+    // stamp. To tie a run to a revision, record this line together with the
+    // git hash in the journal.
+    // =====================================================================
     Serial.println("================================================");
     Serial.println("     Guitar Rig Analyzer   v" FIRMWARE_VERSION);
+    Serial.printf ("     Build: %s %s\n", __DATE__, __TIME__);
     Serial.println("================================================");
     // Record the renderer in the banner, not just at init: every serial log
     // pasted into ai/journal.md should state which display architecture the
