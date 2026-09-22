@@ -957,6 +957,37 @@ That is a **closed electro-acoustic loop around the codec** with roughly one aud
 **Why it matters:** comment-only, no behavioural effect. But it is the comment a reader of the router consults to understand power-on safety, and it currently tells them the hardware protecting that state does not exist.
 **Proof:** `signal_router.cpp` no longer states that the pin-15 driver is unbuilt, the accurate two-layer description is preserved, and the change is compile-verified.
 
+### TODO-55 — Phase 9 fixture topology: read literally, the harness and runbook can put an external generator in contention with the OPA1642 output 🟡 **topology APPROVED IN PRINCIPLE 2026-09-21 — NOT authorized for testing (journal (6))**
+> **🛑 Do NOT follow the current Phase 9 operator instructions, and do NOT build hardware from them** — neither the harness prompts nor the runbook's Phase 9 table. Taken literally, both put an external generator in contention with the OPA1642 output.
+
+**Why:** `SOURCE_NODE` is **col 48, the op-amp output after C2** (10 µF ≈ 16 Ω at 1 kHz), and the permanent `48e → LINE-IN-L` jumper ties the codec's SOURCE input to that node. The harness prompt says *"Connect your broadband signal source … to SOURCE_NODE"*; the runbook says *"Y-split so Instrument In + Rig Send are joined"*, and Rig Send is driven *from* col 48. Found in the read-only triage; not covered by any earlier item.
+
+**✅ Topology — approved in principle:**
+```
+external source → J4 Instrument In → buffer → col 48 → Rig Send → [FIXTURE] → Rig Return TS
+SOURCE sampled at col 48 / LINE-IN-L (ch0)      RETURN sampled at LINE-IN-R (ch1)
+Preconditions: pin 14 LOW (relay #1 NC), pin 15 LOW (relay #2 TS) — both boot defaults on 44c4680
+```
+SOURCE is measured at the fixture's input terminal and RETURN at its output, so the TF is the fixture's own loaded ratio and **the driving impedance drops out.** The generator drives the high-impedance instrument input, so there is no contention.
+
+**✅ Physical gaps resolved 2026-09-21, POWER OFF:**
+
+| Gap | Finding | Tier |
+|---|---|---|
+| Return reference | Rig Return TS sleeve → Audio Shield/breadboard GND = **0.9 Ω** — DC continuity only, not a noise-reference claim | `MEAS` |
+| Return connector | **No loop installed.** Phase 9 must require **Rig Return TS** explicitly | `PHYS/OBS` |
+| J2 | **Disconnected; no conductor from col 48 to the former J2.** The earlier "open stub on `48a`" is stale and is dropped as a precondition | `PHYS/OBS` |
+
+**Remaining, in order:**
+1. **✅ Test 3 fixture — DECIDED 2026-09-21: option (a).** Keep the **10 k/10 k** pad, and take its **expected attenuation from an independent in-circuit measurement** — **not** from the −6.02 dB nominal or the harness's −6.0 default. *Independent* means an instrument other than the analyzer (scope or DMM) reading the Rig Send tip and the Rig Return TS tip, with the analyzer powered so the codec is loading the pad. **Why the default cannot be used:** codec loading takes the real ratio to −7.04 dB at Z_in 40 k … −7.96 at 20 k, and the harness fails anything ≥ 1.0 dB from the entered value — so the −6.0 default fails a correct fixture at every plausible Z_in. **Consequence for step 3:** the text reconciliation must remove or replace the −6.0 defaults (`validation.cpp` and `.ino:434`) and the 10 k/10 k → −6.02 example, so an operator cannot fall back on them. *Option (b), 2.2 k/2.2 k, was considered and not chosen.*
+2. **Test 4 fixture — design.** 10 k + 10 nF passes for Z_in 20 k–∞ and C −20 %…+80 %, so it cannot detect a wrong corner. The slope criterion's −6 dB/oct is unattainable over its window (≈ −5.0 even with the true corner). The planned 1 nF C0G conflicts with the ≤ 10 kΩ guidance. The 10 nF ceramic on hand has an unknown dielectric.
+3. **Reconcile all operator-facing Phase 9 text:** the `validation.cpp` preflight prompt, the Test 1 setup comment and Test 1/2 prompts, the Test 3 example and the −6.0 defaults in `validation.cpp` **and** `.ino:434`, the Test 4 RC example, and the runbook Phase 9 table. **The measurement code itself does not need changing.**
+4. **Then** reconcile TODO-48's Proof line against the final harness behaviour.
+
+**Known unverified input:** Z_in, the SGTL5000 LINE-IN-R input impedance. The ~40 kΩ figure is an assumption in code comments only. It matters for Test 3 option (a) and for knowing Test 4's true corner.
+**Records note:** `docs/asbuilt/netlist.md` still records J2 in six places (lines 106, 130, 137, 397, 429, 486) and `RETURN_NODE` as unconnected — frozen at Phase 5. Owned by the capture session; not edited here.
+**Proof:** the Phase 9 procedure, harness prompts and runbook table all specify this topology with no instruction that drives SOURCE_NODE or Rig Send from an external source; the Test 3 and Test 4 fixtures are specified with expected values calculated for the loaded circuit; and TODO-48's Proof matches the final harness behaviour.
+
 ### TODO-9 — Phase 9: Validation harness on real hardware (tests 1–4) 🔴 **still blocked — the 2026-09-20 firmware commits did NOT unblock this**
 **Why:** This is `validation_runAll()' exercised against actual physical loopback/pads/filters — not `SELF_TEST`, which only proves the audio block counter is advancing (see journal.md). Do not treat a passed self-test as equivalent to this.
 **What:** Run tests 1 (flat loopback), 2 (channel-swap symmetry), 3 (known 6 dB gain offset), 4 (known RC filter response) per the runbook.
@@ -968,9 +999,10 @@ untouched:
 
 | Gate | Item | State |
 |---|---|---|
-| Board runs an **identified build** | **TODO-53** | ✅ **CLEARED 2026-09-21** — board self-reports `Build: Sep 21 2026 17:09:03   v0.6.0`, bound to `399e54b` / hex md5 `55a45287ae39c5a5ffbc33f08e6801eb` by the build record (journal (2)) |
+| Board runs an **identified build** | **TODO-53** | ✅ **CLEARED 2026-09-21** — board now runs **`44c4680`**, self-reporting `Build: Sep 21 2026 17:21:24   v0.6.0`, hex md5 `65405de70fc778fdd8cf6a48e1cbe45e` (journal (3)). *Corrected 2026-09-21: this row named the earlier `399e54b` flash (`17:09:03`), since superseded.* |
 | Rig Send tip feed count | **TODO-52** | ✅ **CLEARED `MEAS` 2026-09-21** — no second feed detected. This was the gate on trusting the Test 1 Y-split fixture, and it is met |
-| Fixture parts | this item | 🔴 6 dB resistive pad + RC low-pass, and an **external** broadband source, not confirmed on hand |
+| **Fixture topology** | **TODO-55** | 🟡 **approved in principle, NOT authorized for testing.** Current harness/runbook instructions are electrically unsafe — **do not build from them** |
+| Fixture parts | TODO-55 | 🔴 pad and RC values not yet decided (Test 3 option (a)/(b); Test 4 design). An **external** broadband source with **both pink and white** noise — Test 4 requires white. None confirmed on hand |
 | The three new firmware fixes on the board | TODO-27/48/50 | **TODO-27 🟢** (bench-verified 2026-09-21, `44c4680`). **TODO-48 🟡** — harness runtime check not yet run. **TODO-50 🟢** (2026-09-21, journal (4)) — closed on its existing Proof line; the missed boot prefix is closed by code evidence |
 
 **Results captured on an unidentified binary are not sign-off evidence** — journal 2026-09-19 (6) is exactly that

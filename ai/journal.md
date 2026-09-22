@@ -12,6 +12,117 @@ How to use this file:
 
 ---
 
+## 2026-09-21 (6) — Phase 9 fixture topology **approved in principle, NOT authorized for testing.** Three physical gaps resolved; the J2 stub is gone. **No hardware is to be built from the current Phase 9 instructions**
+
+### Why this entry exists
+
+The read-only triage found the Phase 9 fixture routing specified inconsistently — and read
+literally, it can put an external generator in contention with the OPA1642 output. **This records the evidence and the decision before any
+procedure is changed**, so the procedure change can cite what it rests on.
+
+### The problem the topology resolves
+
+- **The harness** (`validation.cpp`) says *"Y-split to both SOURCE_NODE and RETURN_NODE inputs"*,
+  and its preflight prompt tells the operator to *"Connect your broadband signal source … to
+  SOURCE_NODE."*
+- **The runbook** (Phase 9 table) says *"Y-split so Instrument In + Rig Send are joined."*
+- **SOURCE_NODE is col 48 — the OPA1642 output after C2** (10 µF ≈ 16 Ω at 1 kHz), and the
+  permanent `48e → LINE-IN-L` jumper ties the codec's SOURCE input to that same node. Rig Send is
+  driven *from* it through relay #1.
+- **Read literally, both instructions put an external generator in contention with the op-amp
+  output** — the same class of hazard as TODO-52.
+
+### ✅ Three physical gaps, resolved — POWER OFF
+
+| Gap | Finding | Tier |
+|---|---|---|
+| **Return reference** | Rig Return TS sleeve → Audio Shield/breadboard GND = **0.9 Ω** | `MEAS` |
+| **Return connector** | **No loop is currently installed.** Phase 9 will require **Rig Return TS** explicitly rather than inherit any prior configuration | `PHYS/OBS` |
+| **J2** | **Disconnected. No remaining conductor from SOURCE_NODE / col 48 to the former J2 connection** | `PHYS/OBS` |
+
+**Bound on the 0.9 Ω reading.** It establishes **DC continuity** from the return sleeve to ground.
+It does **not** by itself establish which ground point is the better *noise* reference: journal
+2026-09-12 (3) measured a 33.1 dB difference between two ground points that are bonded at DC. The
+reading is recorded as a return-path fact, not as a noise-floor claim.
+
+**Why the connector finding matters.** Entry 2026-09-19 (8) had the loop running Rig Send →
+**XLR** Return with the route on XLR, while today's fresh boot is on TS. **"Which return jack the
+loop uses" was not established. It no longer needs to be** — nothing is installed, so the Phase 9
+procedure will specify it.
+
+### 🔻 Correction: the J2 stub assumption is stale
+
+The trace in this session carried *"J2 = an open stub on SOURCE_NODE at `48a` — it must stay empty
+during the tests."* **That came from `docs/asbuilt/netlist.md` and is no longer true.** J2 is
+disconnected and leaves no stub. **It is dropped from the Phase 9 topology** — there is no J2
+precondition.
+
+**The netlist still records J2 in six places, all now stale:** lines 106, 130, 137, 397, 429 and
+486 (the J2 row, its shield in the GND net, `J2 open jack (48a)` in the SOURCE_NODE net, deviation
+X-2, GAP-3, and the "open stub" finding). **Not edited here** — the netlist belongs to the capture
+session. This is the second stale netlist statement found this session, after `RETURN_NODE =
+"no conductor fitted"`: **the netlist is frozen at Phase 5**, and the RETURN path exists only in
+TODO/journal prose.
+
+### The topology — APPROVED IN PRINCIPLE, NOT AUTHORIZED FOR TESTING
+
+```
+external source → J4 Instrument In → C1 → U1 buffer → C2 → col 48 = SOURCE_NODE
+                                                          ├─► 48e → LINE-IN-L   = SOURCE (ch0)
+                                                          └─► 48e → 56a NC → 57a COM → Rig Send
+                                                                    [ FIXTURE UNDER TEST ]
+                    LINE-IN-R ← 16a COM ← 15a NC ← Rig Return TS   = RETURN (ch1)
+```
+
+**SOURCE is sampled at col 48 / LINE-IN-L; RETURN at LINE-IN-R.** Preconditions: pin 14 LOW
+(relay #1 NC) and pin 15 LOW (relay #2 TS) — both the boot defaults on `44c4680`.
+
+**Why this topology is the right one.** The generator drives the high-impedance instrument input
+(R5 through C1; the JFET draws pA) instead of fighting the op-amp output. And because **SOURCE is
+measured at the fixture's input terminal and RETURN at its output**, the measured TF is the
+fixture's own loaded voltage ratio — **the driving impedance drops out entirely** (op-amp, C2's
+reactance, the relay contact), and the buffer, C1 and R5 are upstream of both measurement points.
+That is also why TODO-21 does not block Phase 9.
+
+**"Approved in principle" means:** the routing is accepted as the design basis for the procedure.
+**It does not authorize building fixtures or running Phase 9.** Authorization waits for the Test 4
+fixture design and the reconciled operator-facing text.
+
+### What the trace established about the fixtures — recorded, NOT yet decided
+
+Every fixture output is loaded by **Z_in**, the SGTL5000 LINE-IN-R input impedance. **Z_in is
+unverified:** the ~40 kΩ figure appears only as an assumption in `validation.cpp`/`validation.h`
+comments, with no measurement and no datasheet citation.
+
+- **Test 3 — the prompt's own example fails a correct fixture.** A pad's ratio is
+  (R2 ∥ Z_in) / (R1 + R2 ∥ Z_in), and the harness passes only if |measured − expected| **< 1.0 dB**.
+  The prompt's 10 k/10 k example with its −6.0 default gives **−7.04 dB at 40 k, −7.40 at 29 k,
+  −7.96 at 20 k — a FAIL at every plausible Z_in.** **✅ Decided 2026-09-21: option (a)** —
+  keep the 10 k/10 k pad and take its expected attenuation from an **independent in-circuit
+  measurement** (scope or DMM on the two jack tips, analyzer powered so the codec loads the pad),
+  **never** from the −6.02 nominal or the −6.0 default. The text reconciliation must therefore remove
+  or replace those defaults so an operator cannot fall back on them. *Option (b), 2.2 k/2.2 k —
+  nominal holds at every Z_in, 4.4 kΩ load — was considered and not chosen.*
+- **Test 4 — remaining design work.** 10 k + 10 nF passes across Z_in 20 k–∞ and capacitor error
+  −20 %…+80 % (modelled with the harness's own bins and criteria). **That robustness is also a
+  weakness:** the test cannot detect a wrong corner. The slope criterion's −6 dB/oct expectation is
+  **unattainable over its window**, which starts at the corner where a first-order slope is still
+  shallow — it measures about −5.0 even with the true corner entered, and passes only on its
+  ±2 dB/oct tolerance. The runbook's planned 1 nF C0G is inconsistent with the harness's "keep
+  resistors ≤ 10 kΩ" guidance (1 nF puts the corner at ≥ 16 kHz, outside the band). The 10 nF
+  ceramic on hand has an unknown dielectric.
+
+### Status and sequence
+
+- **Current Phase 9 operator instructions are NOT to be followed**, in either the harness or the
+  runbook. **No hardware is to be built from them** until the procedure is reconciled.
+- **Next:** design the Test 4 fixture → reconcile all operator-facing Phase 9 text (harness prompts
+  and comments, the `.ino` defaults, the runbook table) → **then** reconcile TODO-48's Proof line
+  against the final harness behaviour.
+- Tracked as **TODO-55**. Power OFF.
+
+---
+
 ## 2026-09-21 (5) — ✅ **TODO-54 CLOSED.** One stale sentence in `signal_router.cpp` corrected. **Documentation only — and proven comment-only at the machine-code level**
 
 ### Scope, stated first
