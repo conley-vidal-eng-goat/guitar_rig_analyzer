@@ -12,6 +12,165 @@ How to use this file:
 
 ---
 
+## 2026-09-21 (4) — ✅ **TODO-50 CLOSED on its existing Proof line.** The unobserved boot prefix is closed by code evidence, not by redefining the criterion. Pin-15 scope work is recorded separately, as evidence that goes *beyond* what TODO-50 requires
+
+### The Proof line, and how it was read
+
+> *"a fresh boot with no commands prints a route description matching the router's
+> selection, and the boot still **shows** no relay actuation and no ROUTE_CHANGED."*
+
+**It was evaluated as written.** It does not say "electrically prove that neither relay
+coil energised during reset" — it asks what the boot *shows*. Closing it on that reading
+is **not** a reinterpretation; strengthening it now to require electrical proof would have
+been one, in the other direction.
+
+**Why it was held at 🟡 in entry (3):** the serial capture began mid-boot, so the
+early part of startup was not observed. That was the right call **while serial output was
+the only evidence.** It no longer is.
+
+### Evidence layer 1 — `OBS/RUN`: the fresh boot
+
+- **Fresh boot of identified firmware `44c4680`** (`Build: Sep 21 2026 17:21:24   v0.6.0`,
+  hex md5 `65405de70fc778fdd8cf6a48e1cbe45e`). The upload rebooted the board.
+- **No serial command was sent.**
+- `signalRouter_init()`'s own output was captured:
+  `[SignalRouter] Return source: TS (operator-selected; boot default)` and
+  `[SignalRouter] Route: TS return, no injection`.
+- The first 5 s diagnostic agreed: `[Main] Route: TS return, no injection`.
+- **No `ROUTE_CHANGED` appears.** The stale `Default bench: SOURCE_NODE=L, RETURN_NODE=R`
+  string TODO-50 was opened for is gone.
+
+### Evidence layer 2 — `CODE/ELF`: the unobserved prefix contains no path that can drive a relay pin
+
+Traced read-only at clean `08f50cf`, checked against the **flashed ELF** rather than source
+alone.
+
+**Where the capture began:** `audio_capture.cpp:412`
+(`[SGTL]   NOTE: codec silicon ID/revision.`), partway through the SGTL register dump inside
+`audioCap_init()` (`.ino:323`). **The first firmware writes to pins 14 and 15 are all
+inside `signalRouter_init()` at `.ino:402` — inside the captured window**, and its output is
+in the transcript.
+
+**Every relay write in the tree** — nine sites, all in `signal_router.cpp`:
+
+| Site | Call | Class |
+|---|---|---|
+| `:200` `:201` | `pinMode(RELAY_SEND/RETURN_PIN, OUTPUT)` | executed by `signalRouter_init()` |
+| `:202` `:203` | `digitalWrite(…, LOW)` | executed by `signalRouter_init()` |
+| `:153` | `applyReturnRelay(TS)` → LOW | executed by `signalRouter_init()` (also `j` at runtime) |
+| `:148` | `applyReturnRelay(XLR)` → HIGH | operator command `k` only; init always passes TS |
+| `:289` | `digitalWrite(RELAY_SEND_PIN, LOW)` | `loop()` only, behind a guard that cannot be true |
+| `:354` `:363` | `signalRouter_setInjectionEnabled()` | **zero callers** |
+
+**None is reachable before the capture boundary. None is reachable between the boundary and
+`signalRouter_init()`.** No literal `pinMode/digitalWrite(14|15, …)`; no direct
+`GPIO6_DR`/`GDIR`/`digitalWriteFast` writes. `signal_router_config_additions.h` also
+defines both pins but is **not `#include`d anywhere.**
+
+**Non-project paths, checked because a name search cannot settle them:**
+- **Teensy core ResetHandler.** `GPR26–29 = 0xFFFFFFFF` selects the fast GPIO bank; it
+  sets neither direction nor output. `analog_init()`, `pwm_init()`, `usb_init()` make no
+  pin mux, pad or drive changes.
+- **Peripheral claims.** Pins 14/15 are also A0/A1 and Serial3 TX/RX. `Serial3`,
+  `analogRead`, `A0`/`A1`, `analogWrite`, `tone(`, SPDIF and MQS: **0 hits.** The linked
+  I2S objects configure pins **7, 8, 20, 21, 23** only.
+
+**🔍 The non-obvious route, worth keeping as method.** Four Audio-library translation
+units *do* configure pins 14/15 — `AudioInputSPDIF3`, `AudioOutputSPDIF3`,
+`AudioOutputI2SQuad`, `AsyncAudioInputSPDIF3` — and **all four are linked into the flashed
+binary, with static initializers that run in `__libc_init_array()` before `setup()`.** A
+substring match on class names made this look alarming. It resolved cleanly only by
+checking the chain link by link:
+
+1. Each one's pin-14/15 configuration lives entirely inside **`::begin()`**
+   (`input_spdif3.cpp:72`, `output_spdif3.cpp:94`, `output_i2s_quad.cpp:69`,
+   `async_input_spdif3.cpp:115`).
+2. **None of the four `::begin()` functions is linked.** The project constructs no
+   instance of any of them.
+3. What the static initializers *do* build is the static `DMAChannel dma` member, whose
+   constructor calls `DMAChannel::begin()` — **DMA channel allocation only, no pin, pad or
+   GPIO access.**
+
+> **Lesson:** "linked" and "executed" are different claims, as are "a static initializer
+> runs" and "the code that touches the pin runs." The Arduino build links every `.o` of a
+> used library, so library code a sketch never calls still gets static initialization.
+
+**What this layer does and does not establish.** It establishes that **no firmware can
+actuate a relay** during the unobserved prefix. It does **not** by itself establish the
+relays' *physical* state then: with no code driving them, pins 14/15 sit as undriven inputs
+at MCU reset state, and each relay is held off by its **base pulldown**, not by firmware.
+That gap is hardware, and layer 3 addresses it for pin 15.
+
+### Evidence layer 3 — `MEAS`: pin 15, passive and dynamic
+
+**Passive, POWER OFF, in circuit:**
+
+| Probe | Reading |
+|---|---|
+| Pin 15 → GND | **9.38 kΩ** |
+| Pin 15 → +3.3 V | **14.58 kΩ** |
+
+*In-circuit readings include parallel paths; they are not the resistor's value and are not
+interpreted as such here.* They **confirm a DC path to ground is present** on pin 15 —
+the pulldown TODO-7 recorded as built (`RPT`) but never measured.
+
+**Dynamic, three OFF→ON boots, DHO804 CH1 on Teensy pin 15, rising-edge trigger:**
+
+| Boot | Trigger threshold | Result |
+|---|---|---|
+| 1 | +1.0 V | no positive excursion detected |
+| 2 | +500 mV | no positive excursion detected |
+| 3 | **+200 mV** | **scope remained WAIT for 10 s** |
+
+> **Conclusion, stated at its true strength: no positive pin-15 excursion ≥200 mV was
+> detected during the tested OFF→ON startup.**
+>
+> **Not** "pin 15 remained at 0 V", and **not** "no transient of any magnitude occurred."
+> Below 200 mV the test increasingly measures noise, probe and trigger behaviour rather
+> than the engineering question, so the threshold was deliberately not lowered further. A
+> transistor driver designed to switch from a 3.3 V GPIO is nowhere near turn-on at
+> <200 mV at its input.
+
+**Scope of layer 3:** pin **15** only. **Pin 14 was not measured dynamically**; its
+pulldown presence is `MEAS` from Phase 6 (V6f, 8.94 kΩ in circuit).
+
+**Why this matters beyond TODO-50:** TODO-7 recorded explicitly that *why* pin 15 is LOW
+at power-on was unproven — *"the 10 kΩ pulldown and `signalRouter_init()`'s
+`digitalWrite(RELAY_RETURN_PIN, LOW)` both hold it there … Distinguishing them needs a
+measurement during reset, before `setup()` reaches the router."* **This is that
+measurement.** Combined with layer 2, which shows no firmware drives pin 15 before
+`signalRouter_init()`, pin 15's reset-time behaviour now rests on direct dynamic evidence
+rather than on an inference from the pulldown.
+
+### Clause-by-clause result
+
+| Proof clause | Evidence | Result |
+|---|---|---|
+| Fresh boot with no commands | Upload rebooted `44c4680`; no command sent | **PASS** |
+| Route description matches router selection | Router reported TS; `[Main] Route: TS return, no injection` agreed | **PASS** |
+| Boot shows no relay actuation | Captured router output shows no actuation/transition; **layer 2** shows the uncaptured prefix contains no firmware path capable of it | **PASS** |
+| No ROUTE_CHANGED | None in the capture; the fix uses a description-only setter by design | **PASS** |
+
+**TODO-50 → 🟢.** **The scope measurements (layer 3) are NOT part of this acceptance
+criterion** and are not being retroactively made part of it. They strengthen the
+engineering record independently.
+
+### Source-documentation defect found during the trace — recorded, NOT fixed here
+
+`signal_router.cpp:33–35`: *"As of ADR-004 the pin-15 driver is not built: that is a
+Phase 7 bench requirement, not something this code proves."* **Stale** — the driver was
+built at columns 8–18 on 2026-09-17 and bench-proven on 2026-09-19.
+
+**Only that final sentence is wrong.** Lines 30–33 — the two-layer TS-at-boot model, and
+that before `signalRouter_init()` the physical state *"depends on the RELAY_RETURN driver's
+base pulldown"* — **are still accurate, and today's measurements now support them.** A
+correction should replace the stale sentence, not the paragraph.
+
+**Deliberately not fixed in this records commit**, so that discovery and correction stay
+separate in the history. Tracked as TODO-54.
+
+---
+
 ## 2026-09-21 (3) — ✅ **TODO-27 CLOSED on hardware.** The firmware now describes FFT cadence consistently everywhere it speaks. **The fix grew from one known line to ten sites across seven files — including a Phase 9 runtime defect**
 
 ### Why this entry exists as more than a status flip
