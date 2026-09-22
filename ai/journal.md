@@ -7,8 +7,137 @@ How to use this file:
 - One entry per session/decision, not per commit. Skip trivial stuff.
 - Each entry should answer: why did we do this, what did we consider/reject, and what should the next session know.
 - If you are an AI starting a session on this project, read this file top-to-bottom before touching code — the most recent entries are the most likely to still be relevant.
-- **Source-of-truth precedence (added 2026-08-25):** the checked *active local tree* (`/Users/conleyvidal/Desktop/guitar_rig_analyzer/`, verified by actually reading the files, not by reading about them) is authoritative for current implementation status. Below that: runbook/bench observations (`docs/breadboard_bringup_v3.md` and actual serial-log/photo evidence) > explicitly staged design docs (contracts, patch headers, `development/`-style staging code) > historical/project-upload snapshots. Never infer "implemented" from a contract doc, a patch file, a staged source file, or a newer-looking version header/comment — verify the actual call path in the active build tree before recording a feature as done.
+- **Source-of-truth precedence (added 2026-08-25):** the checked *active local tree* (`/Users/conleyvidal/Developer/guitar_rig_analyzer/` since 2026-09-21 — it was `/Users/conleyvidal/Desktop/guitar_rig_analyzer/`, now frozen as evidence; see 2026-09-21 (8) — verified by actually reading the files, not by reading about them) is authoritative for current implementation status. Below that: runbook/bench observations (`docs/breadboard_bringup_v3.md` and actual serial-log/photo evidence) > explicitly staged design docs (contracts, patch headers, `development/`-style staging code) > historical/project-upload snapshots. Never infer "implemented" from a contract doc, a patch file, a staged source file, or a newer-looking version header/comment — verify the actual call path in the active build tree before recording a feature as done.
 - **Source-of-truth precedence — extended to REQUIREMENTS (added 2026-09-13):** the rule above governs *implementation state*; it now governs *requirements* too. **Runbooks, diagrams, TODO acceptance criteria, and prior design assumptions must not override observed hardware behaviour, active code paths, or explicitly accepted ADRs. When they conflict, reconcile the documentation rather than forcing the implementation to satisfy a stale assumption.** Earned the hard way: a runbook drawing asserted a switch contact the physical jack did not have, and a TODO acceptance line then kept Phase 5 blocked on a GPIO transition that no code in the tree reads. See 2026-09-13 (7) through (13), and `docs/adr/ADR-002` / `ADR-003`.
+
+---
+
+## 2026-09-21 (8) — Canonical repository **moved out of iCloud** to `~/Developer/guitar_rig_analyzer`. Old Desktop repository **FROZEN as evidence**. Environment verified before any new commit
+
+### Why this entry exists
+
+The working repository lived at `~/Desktop/guitar_rig_analyzer`, inside the iCloud Drive–managed
+Desktop, and a file Git had deleted came back there (entry (7)). **A working tree that something
+other than Git can write to cannot be the authoritative "active local tree"** that this journal's
+source-of-truth rule depends on. So the repository was moved first, and the first commit in the new
+location (this one) was held until the new environment had been verified.
+
+### How it was moved
+
+- **Cloned with `--no-local` from the complete local Desktop repository**, not re-cloned from
+  GitHub. The local branches carry commits GitHub does not have: `docs/asbuilt-capture` is 26
+  ahead of origin, `main` is 2 ahead, and the two firmware branches are local-only. `--no-local` copies objects
+  rather than hard-linking or borrowing them, so the new repository shares no storage with the old.
+- **Not pushed.** No commits were pushed during the migration.
+- **Pruned:** stale remote-tracking refs for the firmware branches, inherited from the local clone.
+- **Carried over:** the repository-local `user.name`/`user.email`, and the untracked `.mcp.json` with
+  exactly one change — its absolute path `Desktop` → `Developer`. That change was proven by
+  reversing the substitution and running `cmp` against the original (exit 0).
+- **Not migrated, deliberately:** the config key `branch.docs/asbuilt-capture.vscode-merge-base`,
+  which is disposable VS Code metadata.
+
+### ✅ Verified state
+
+| Check | Result | Tier |
+|---|---|---|
+| HEAD, old vs new | both `d8e1c9ab8e2b5393bf167aa42659628ee1eb37ad` | `OBS` |
+| HEAD tree, old vs new | both `a0c250729fd11cd3a56c0250470e9fdc18862049` | `OBS` |
+| Four local branches | identical commits in both repositories: `docs/asbuilt-capture` `d8e1c9a`, `main` `aa9a795`, `firmware/bench-safe-todos` `f1b13ed`, `firmware/todo-51-send-relay-toggle` `3ea3880` | `OBS` |
+| Object storage | no `objects/info/alternates` file in the new repository | `OBS` |
+| Tags / custom hooks | none / none | `OBS` |
+| `origin` | `github.com/conley-vidal-eng-goat/guitar_rig_analyzer`; GitHub's default branch queried and confirmed as `main` | `OBS` |
+| File Provider association | `~/Desktop` carries `com.apple.file-provider-domain-id`. **`~/Developer` and the new repository do not** | `OBS` |
+| Obsolete PDF | `docs/breadboard_bringup_v3.pdf` **absent** from the new repository | `OBS` |
+
+The table combines the migration session's checks with a read-only re-check at the start of this
+session. Branches, HEAD/tree, alternates, tags, hooks, the xattrs and the PDF were re-observed
+directly. The config value comparison, the `.mcp.json` `cmp` and the GitHub default-branch query come
+from the migration session and were not repeated.
+
+### Environment gate — passed before this commit
+
+1. **Claude project memory** follows the working-directory path, so it did not move with the
+   repository. All six memory files were copied to the new project's memory directory, SHA-256
+   verified file by file (6/6 match), and the originals left in place. A seventh memory, *repository
+   location discipline*, was added separately; none of the migrated memories was edited.
+2. **Serial MCP initially failed to connect** in the new location. `.mcp.json` passes
+   `--capture-dir=<repo>/.serial-logs`. That directory is gitignored, so the clone did not bring it
+   (`OBS`), and the Teensy was also unplugged at the time (`OBS`). **With both conditions present,
+   neither is established as the cause.** The missing directory is a plausible contributor
+   (`INFERENCE`). After the empty `.serial-logs/` was created and the Teensy connected, the server
+   connected and exposed all 28 tools. It enumerated `/dev/cu.usbmodem192895301` (Teensyduino,
+   VID 16C0 / PID 0483, serial 19289530) and created its lock file in the **new** `.serial-logs/`.
+   **No port was opened and nothing was sent to the board.** The old `.serial-logs/` held only an
+   empty lock file, so no capture evidence was left behind.
+
+### What the next session must know
+
+- **Work only in `~/Developer/guitar_rig_analyzer`.** The journal header's source-of-truth path is
+  updated to it in this commit. The one older `~/Desktop` mention (a HEX copied there on 2026-09-19)
+  is historical and is left as written.
+- **`~/Desktop/guitar_rig_analyzer` is FROZEN.** Do not edit, clean, move or delete it, or the
+  returned PDF inside it. It is the evidence for entry (7). Retiring it is a later, explicit
+  decision.
+- **Do not put the canonical repository under Desktop or Documents** while those folders are iCloud
+  managed.
+- **The board is unchanged:** it still runs the `44c4680` build, and this commit is records-only.
+  Firmware identity was **not** re-read in the new environment, since no port was opened.
+
+No hardware action. No serial traffic. POWER ON (Teensy connected by USB only). No breadboard
+changes.
+
+---
+
+## 2026-09-21 (7) — The obsolete `docs/breadboard_bringup_v3.pdf` **came back after Git deleted it.** Evidence strongly supports iCloud/File Provider restoration — **the restore itself was not observed**
+
+### Why this is its own entry
+
+This is a finding about the development environment, not about the analyzer. It is recorded apart
+from the migration (entry (8)) so that the evidence and the inference can each be cited on their own,
+and so that the move that followed is never read as proof of the mechanism.
+
+### What was observed — `OBS` / `MEAS`
+
+- **Deleted by Git:** `b6db3d6` (2026-09-20, the runbook v3.1 correction pass) deleted
+  `docs/breadboard_bringup_v3.pdf`. It is not in HEAD.
+- **Came back, byte-identical:** the file then reappeared in the Desktop working tree, where
+  Git reports it as untracked (`??`). Its Git blob hash, `d066b4db3262a3089a0a21b2fc6bf140cbd5b4a5`,
+  matches the blob `b6db3d6` removed.
+- **Quarantine xattr names `com.apple.cloudd`.** Its embedded timestamp decodes to
+  **2026-09-04 19:54**, which is **before** the 2026-09-20 deletion.
+- **File dates:** birth and mtime are the original 2026-08-24 20:16:54; ctime is
+  2026-09-21 21:42:37. Mode is `0600`.
+- **`~/Desktop` carries the iCloud Drive File Provider domain** (`com.apple.file-provider-domain-id`),
+  and **Desktop & Documents sync is enabled** (observed in the migration session; not re-checked
+  here). Everything else in this list was re-observed read-only in this session.
+- **Not affected:** `~/Developer` and the new repository carry no File Provider association.
+
+### Inference — `INFERENCE`, not observation
+
+**iCloud/File Provider most likely restored the deleted file.** The cloudd quarantine attribute, the
+File Provider–managed parent directory, Desktop sync being on, and a byte-identical return with its
+original dates all point there.
+
+**Limits, stated so they are not lost:**
+
+- **The restore transaction was never directly observed or reconstructed.** No sync log, event
+  record or restore timestamp ties the file's return to iCloud.
+- **The quarantine timestamp predates the deletion,** so it most likely records cloudd's *earlier*
+  handling of the file, not the restore. It shows cloudd has touched this file. It does not
+  timestamp the reappearance.
+- **The 2026-09-21 ctime marks a metadata change on that date.** Nothing links it to the restore
+  specifically.
+- **The `0600` mode differs from the `0644` a normal Git checkout would give** under the default
+  umask. That is consistent with a non-Git writer, but it is weak evidence and is not relied on.
+
+### Consequence
+
+- **The response is the repository move (entry (8)), not a cleanup.** The returned PDF is **left in
+  place** in the frozen Desktop repository as evidence. It is **not** deleted in this commit.
+- **Standing rule:** the canonical working repository stays outside iCloud/File Provider–managed
+  directories.
+
+No hardware action.
 
 ---
 
