@@ -443,8 +443,18 @@ set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 
 
 // How many averaged output blocks to skip between display redraws.
-// 1 → update every block (~92.8 ms, ~10.8 fps) — start here.
-// 2 → update every other block (~185 ms, ~5.4 fps) — if display stalls audio.
+// 1 → update every block (~46.4 ms, ~21.6 fps) — start here.
+// 2 → update every other block (~92.9 ms, ~10.8 fps) — if display stalls audio.
+// CHANGED [todo-27]: read "~92.8 ms, ~10.8 fps" and "~185 ms, ~5.4 fps", both
+// derived from the window instead of the hop. **This block sat four lines below
+// the todo-27 correction above and was missed by it** — that correction was
+// scoped to the paragraph being edited and to the EXPECTED_BLOCK_MS identifier,
+// and this comment matched neither. Same failure shape as the runbook C1-01
+// defect (journal 2026-09-20 (1)): fix every representation, not the one in front
+// of you.
+// Note the collision: "~92.9 ms" is now CORRECT on the N=2 line (2 × 46.44 ms).
+// It is the same number that was wrong on the N=1 line. Check the multiplier
+// before assuming either is a defect.
 #define DISPLAY_UPDATE_EVERY_N_FRAMES    1
 
 

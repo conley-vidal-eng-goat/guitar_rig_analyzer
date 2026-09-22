@@ -216,7 +216,7 @@ static uint32_t audioBlockCounterFromMicros() {
 //
 // audio_capture does not use an averaged-output counter for timing. That
 // eliminates the previous bug where s_block_counter incremented once per
-// averaged output block (~92.9 ms), making the claimed 2.9 ms timing precision
+// averaged output block (~46.4 ms), making the claimed 2.9 ms timing precision
 // 32× coarser than advertised.
 //
 // s_output_block_number: a separate display-only counter that increments once
@@ -517,14 +517,26 @@ s_fft_ret.windowFunction(AudioWindowHanning1024);
      Serial.println("[AudioCapture] SGTL5000 initialised. Acquisition active.");
      Serial.printf ("[AudioCapture] Route: SOURCE_NODE=ch%d, RETURN_NODE=ch%d\n",
                      s_source_ch, s_return_ch);
-     Serial.printf ("[AudioCapture] FFT: %d bins, %.2f Hz/bin, %.1f ms/frame\n",
+     // CHANGED [todo-27]: these two lines were the surviving second copy of the
+     // window-vs-hop error. The first printed "23.2 ms/frame" — a correct WINDOW
+     // duration wearing a label that reads as a cadence — and the second then
+     // multiplied that window by FFT_AVERAGE_COUNT, yielding "92.9 ms" against a
+     // true block period of 46.4 ms. The firmware contradicted itself by 2×
+     // within one boot sequence (see [Main] Block: expected 46.4 ms).
+     //
+     // Both quantities are now named explicitly so the distinction cannot be
+     // lost again: the 23.2 ms window is real and useful, it simply is not the
+     // rate at which results arrive.
+     Serial.printf ("[AudioCapture] FFT: %d bins, %.2f Hz/bin, "
+                     "%.1f ms/window, %.1f ms hop (50%% overlap)\n",
                      FFT_BINS,
                      (float)SAMPLE_RATE / FFT_SIZE,
-                     1000.0f * FFT_SIZE / SAMPLE_RATE);
-     Serial.printf ("[AudioCapture] Block period: %d frames × %.1f ms = %.1f ms\n",
+                     1000.0f * FFT_SIZE        / SAMPLE_RATE,
+                     1000.0f * FFT_HOP_SAMPLES / SAMPLE_RATE);
+     Serial.printf ("[AudioCapture] Block period: %d results × %.1f ms hop = %.1f ms\n",
                      FFT_AVERAGE_COUNT,
-                     1000.0f * FFT_SIZE / SAMPLE_RATE,
-                     1000.0f * FFT_AVERAGE_COUNT * FFT_SIZE / SAMPLE_RATE);
+                     1000.0f * FFT_HOP_SAMPLES / SAMPLE_RATE,
+                     1000.0f * FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES / SAMPLE_RATE);
 
 
      return true;

@@ -333,7 +333,9 @@ part of TODO-35's acceptance.
 **Candidate fixes** (decide after measuring): `Serial1.addMemoryForWrite()` with a
 buffer sized to a whole live frame; chunked non-blocking transmission across loop
 iterations; sending RESULT in sections; or raising
-`DISPLAY_UPDATE_EVERY_N_FRAMES` to 2 and taking ~5.4 fps. Note that the
+`DISPLAY_UPDATE_EVERY_N_FRAMES` to 2 and taking ~10.8 fps (corrected 2026-09-21
+from "~5.4 fps", which derived from the pre-todo-27 92.9 ms block period; the
+argument below is unaffected — only the rate figure was wrong). Note that the
 `data_sender.h` bandwidth table reasons about **average** throughput (~18 KB/s of
 46 KB/s) and is correct on that axis — the problem is **burst latency inside one
 block period**, which the table does not model.

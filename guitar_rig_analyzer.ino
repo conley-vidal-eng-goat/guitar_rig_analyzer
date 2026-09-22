@@ -649,7 +649,7 @@ MeasurementState::RESULT) {
     }
 
 
-    // Poll audio engine. Returns true once per averaged output block (~92.9 ms).
+    // Poll audio engine. Returns true once per averaged output block (~46.4 ms).
     // Returns false the vast majority of the time — caller spins freely.
     // v0.4 acquisition model:
     // Per-iteration order:

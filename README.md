@@ -263,7 +263,7 @@ Tolerances are intentionally conservative on first pass. `printResult()` emits a
 - **Logging surface.** The firmware logs to USB Serial. Calibration files, JSON fingerprints, and CSV exports are written to the microSD card. Under `DISPLAY_TARGET_PI` it additionally streams binary measurement packets out of `Serial1` to the Pi — a local point-to-point display link, not network telemetry.
 - **Sticky abort.** A measurement that aborts (route changed mid-capture, hard parameter mismatch on stored calibration, etc.) latches in the `ABORTED` state until `x` is pressed. This is deliberate — see [measurement_engine.h:55-66](measurement_engine.h#L55-L66).
 - **Headphone passthrough** (SOURCE → left, RETURN → right) is a **temporary** bench convenience for ear-checking the signal path. It will be replaced by a user-selectable monitor source when `signal_router` and the touch UI land.
-- **FFT block timing.** Averaged output block ≈ 92.9 ms (4 × 1024 / 44100); target display rate ≈ 10.8 fps. If the display stalls audio, raise `DISPLAY_UPDATE_EVERY_N_FRAMES` to 2.
+- **FFT block timing.** Averaged output block ≈ **46.4 ms** (4 × 512 / 44100 — `AudioAnalyzeFFT1024` runs **50 % overlap**, so results arrive every 512-sample **hop**, not every 1024-sample window); target display rate ≈ **21.6 fps**. Measured on hardware: 46.3 ms. If the display stalls audio, raise `DISPLAY_UPDATE_EVERY_N_FRAMES` to 2 (≈ 92.9 ms, ≈ 10.8 fps). *Corrected 2026-09-21: previously stated 92.9 ms / 10.8 fps, which used the window in place of the hop.*
 
 ## Security / trust boundaries
 

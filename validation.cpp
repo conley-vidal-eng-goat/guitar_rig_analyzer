@@ -159,8 +159,15 @@ AudioFrame frame;
 // causes collectFrames() to spin forever. Budget: expected duration of
 // (count + settle) blocks plus 50% margin, with a 30-second hard ceiling
 // so even pathologically slow configurations cannot hang the device.
+// CHANGED [todo-27]: was FFT_SIZE — the WINDOW — which made this deadline
+// exactly 2× the intended duration. AudioAnalyzeFFT1024 runs 50 % overlap, so
+// an averaged output block arrives every FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES,
+// not * FFT_SIZE. The old expression gave 4829 ms for 52 blocks where the
+// collection itself takes ~2415 ms, so the guard was twice as loose as designed.
+// Failed safe (never a spurious abort) but did not bound a stuck codec as
+// tightly as intended. The 50 % + 1000 ms margin below is unchanged.
 uint32_t expected_ms = (uint32_t)((count + VALIDATION_SETTLE_BLOCKS) *
-                                  FFT_AVERAGE_COUNT * FFT_SIZE * 1000UL /
+                                  FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES * 1000UL /
                                   (uint32_t)SAMPLE_RATE);
 uint32_t deadline_ms = millis() + expected_ms + expected_ms / 2 + 1000;
 if (expected_ms > 30000UL) deadline_ms = millis() + 30000UL;
@@ -330,11 +337,14 @@ void validation_init() {
     Serial.println("[Validation] Harness ready       (v0.5.0).");
     Serial.printf ("[Validation] Analysis band: %.0f – %.0f Hz\n",
                    VALIDATION_FREQ_MIN, VALIDATION_FREQ_MAX);
+    // CHANGED [todo-27]: was FFT_SIZE, printing ~3.0 s / ~1.9 s where the real
+    // durations are ~1.5 s / ~0.9 s. This is the figure the operator uses to
+    // know how long a Phase 9 test takes, so a 2× error here is not cosmetic.
     Serial.printf ("[Validation] Collection: %d blocks (~%.1f s) + %d settle blocks (~%.1f s)\n",
                    VALIDATION_FRAME_COUNT,
-                   (float)VALIDATION_FRAME_COUNT   * FFT_AVERAGE_COUNT * FFT_SIZE / SAMPLE_RATE,
+                   (float)VALIDATION_FRAME_COUNT   * FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES / SAMPLE_RATE,
                    VALIDATION_SETTLE_BLOCKS,
-                   (float)VALIDATION_SETTLE_BLOCKS * FFT_AVERAGE_COUNT * FFT_SIZE / SAMPLE_RATE);
+                   (float)VALIDATION_SETTLE_BLOCKS * FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES / SAMPLE_RATE);
     Serial.printf ("[Validation] Target level: %.0f to %.0f dBFS        "
                    "Gate gap min: %.0f dB\n",
                    VALIDATION_TARGET_LEVEL_MIN_DBFS,

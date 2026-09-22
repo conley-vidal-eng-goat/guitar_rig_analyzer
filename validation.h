@@ -89,8 +89,11 @@
 
 
 // Number of output blocks to collect per test (after settle period).
-// Each block = FFT_AVERAGE_COUNT raw frames ≈ 92.8 ms at 44.1 kHz / 1024.
-// 32 blocks ≈ 2.97 seconds of live data collection.
+// Each block = FFT_AVERAGE_COUNT FFT results ≈ 46.4 ms at 44.1 kHz.
+// 32 blocks ≈ 1.49 seconds of live data collection.
+// CHANGED [todo-27]: read "≈ 92.8 ms ... ≈ 2.97 seconds", which multiplied by the
+// 1024-sample WINDOW instead of the 512-sample HOP. Results arrive every hop
+// (50 % overlap), so a block is 4 × 11.6 ms, not 4 × 23.2 ms.
 #define VALIDATION_FRAME_COUNT   32
 // CHANGED [audit-1]: VALIDATION_SETTLE_BLOCKS promoted from magic number
 // inside collectFrames() to a named constant here.
