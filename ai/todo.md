@@ -927,7 +927,21 @@ That is a **closed electro-acoustic loop around the codec** with roughly one aud
 **Two things are true at once and both matter:** the work is **one `rm -rf` from gone**, and `q` is **live** (it routes a real signal now that the three Phase 7 jumpers are fitted) and can reach an output-contention state while **TODO-52** is open. Decide deliberately; do not default either way by inaction.
 **Proof:** the board runs a build whose identity is recorded in the journal, and no temporary relay command remains in the active tree.
 
-### TODO-54 — `signal_router.cpp:33–35` still says the pin-15 driver "is not built" 🔴 **source-documentation defect — found 2026-09-21, deliberately NOT fixed in the same commit**
+### TODO-54 — `signal_router.cpp:33–35` still says the pin-15 driver "is not built" 🟢 **CLOSED 2026-09-21 — comment corrected, compile-verified, proven comment-only at machine-code level (journal (5))**
+**✅ Corrected.** Only the stale sentence was replaced. **Lines 30–32 unchanged byte-for-byte; line 33's accurate first clause unchanged** — the stale sentence began mid-line 33, so that was the precise boundary. New text:
+```
+// base pulldown holding the relay de-energised. The pin-15 driver is built
+// (TODO-7), but that power-on state is still a hardware property, not
+// something this code proves; the reset-time measurements are recorded in
+// TODO-7 and journal 2026-09-21 (4).
+```
+**"not something this code proves" was kept deliberately** — it was the one claim in the stale sentence that was still true, and it is the paragraph's durable epistemic boundary.
+**Proof clause by clause:**
+- *"no longer states that the pin-15 driver is unbuilt"* — **met.**
+- *"the accurate two-layer description is preserved"* — **met**; lines 30–32 and line 33's first clause are untouched.
+- *"compile-verified"* — **met**: exit code **0**, **0 warnings, 0 errors**, fresh build path.
+**➕ Beyond the proof line:** every compared loadable section of the new build checked against the **archived** `44c4680` artifact (the board's flash was not read back; the board is bound to `44c4680` by the controlled flash-and-identity record). **All identical except `.data`, which differs by exactly 4 bytes — the time digits of `__TIME__`** (`17:21:24` → `19:41:10`). The change is **comment-only at the machine-code level**, not merely by inspection of the diff.
+**Scope:** this corrected stale documentation. **It created no new evidence about relay behaviour.** Not flashed — there is no runtime behaviour to validate. The board still runs `44c4680`.
 **Found:** during the read-only TODO-50 startup trace at `08f50cf` (journal 2026-09-21 (4)). **Recorded separately from its correction** so discovery and fix stay distinct in the history — the same discipline as C1-01 and TODO-27.
 **Current text:**
 ```

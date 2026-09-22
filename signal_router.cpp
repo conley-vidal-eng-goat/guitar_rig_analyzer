@@ -30,9 +30,10 @@
 // TS-at-boot has two layers. Firmware establishes TS when signalRouter_init()
 // runs, which is late in setup(). Before that, pin 15 is in the MCU reset
 // state, so the PHYSICAL power-on state depends on the RELAY_RETURN driver's
-// base pulldown holding the relay de-energised. As of ADR-004 the pin-15
-// driver is not built: that is a Phase 7 bench requirement, not something
-// this code proves.
+// base pulldown holding the relay de-energised. The pin-15 driver is built
+// (TODO-7), but that power-on state is still a hardware property, not
+// something this code proves; the reset-time measurements are recorded in
+// TODO-7 and journal 2026-09-21 (4).
 //
 // Route description strings are built from a static buffer to avoid heap
 // allocation. The buffer is stable between signalRouter_update() calls.

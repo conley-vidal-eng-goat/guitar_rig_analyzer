@@ -12,6 +12,109 @@ How to use this file:
 
 ---
 
+## 2026-09-21 (5) — ✅ **TODO-54 CLOSED.** One stale sentence in `signal_router.cpp` corrected. **Documentation only — and proven comment-only at the machine-code level**
+
+### Scope, stated first
+
+**This corrects stale documentation. It creates no new evidence about relay behaviour.**
+The measurements the corrected comment points to were recorded in journal (4); nothing here
+re-measures, extends or reinterprets them.
+
+### The change
+
+`signal_router.cpp`, the TS-at-boot paragraph. **Lines 30–32 unchanged byte-for-byte; the
+accurate first clause of line 33 unchanged.** Only the stale sentence was replaced:
+
+```diff
+ // base pulldown holding the relay de-energised. As of ADR-004 the pin-15
+-// driver is not built: that is a Phase 7 bench requirement, not something
+-// this code proves.
++// base pulldown holding the relay de-energised. The pin-15 driver is built
++// (TODO-7), but that power-on state is still a hardware property, not
++// something this code proves; the reset-time measurements are recorded in
++// TODO-7 and journal 2026-09-21 (4).
+```
+
+**Why the boundary sat mid-line.** The stale sentence began partway through line 33, so "leave
+lines 30–33 unchanged" could not be honoured literally. The precise boundary was lines 30–32
+byte-for-byte plus line 33's first clause.
+
+**The stale sentence made three claims, and only two were stale:**
+
+| Claim | Status |
+|---|---|
+| "the pin-15 driver is not built" | **Stale** — built 2026-09-17, bench-proven 2026-09-19 |
+| "that is a Phase 7 bench requirement" | **Stale** — met and measured |
+| "not something this code proves" | **Still true — deliberately kept** |
+
+**The last claim is the paragraph's durable point**, and it survived the correction on purpose.
+Firmware can show that nothing *drives* pin 15 before `signalRouter_init()`; it cannot
+establish the pin's *physical* level during reset. Measuring the hardware did not move that
+boundary — it gave the hardware claim evidence.
+
+**The corrected block now separates three kinds of authority:**
+- **code** — establishes TS when `signalRouter_init()` executes;
+- **hardware** — determines the physical state before that point;
+- **records** — hold the empirical evidence for that hardware behaviour.
+
+**Wording choices, recorded so the next edit understands them:**
+- **It points at the evidence rather than restating it.** No `9.38 kΩ` or `≥200 mV` in the source:
+  numbers in comments are what go stale, and pointers into the append-only `ai/` records do not.
+- **It drops the dated "As of ADR-004" framing** — the phrasing that let the original rot, by
+  describing a moment rather than a lasting fact.
+- **It cannot overclaim.** It asserts no voltage or threshold, and names pin 15 only, so it
+  implies nothing about a dynamic pin-14 test that was never made.
+- **"that power-on state"** refers back to line 32's "PHYSICAL power-on state", keeping one
+  concept rather than introducing a second term that could be read as a different interval.
+
+### Verification — stronger than "it compiles"
+
+**Compile:** `teensy:avr:teensy41`, **exit code 0** (captured as the return status), `--warnings all
+--verbose`, fresh build path. **0 warnings, 0 errors.** Memory figures identical to `44c4680`.
+
+**Machine-code comparison against the archived `44c4680` build artifact**, section by section.
+That artifact is bound to the board by the controlled flash-and-identity record in entry (3) —
+**the board's flash contents were not read back and compared.** The sections compared are the
+allocated sections with file contents, enumerated from the ELF section table; `.bss`,
+`.bss.dma` and `.bss.extram` are `NOBITS` and carry no contents to compare:
+
+| Section | Result |
+|---|---|
+| `.text.headers` `.text.code` `.text.progmem` `.text.itcm` `.fini` `.ARM.exidx` `.text.csf` | **IDENTICAL** |
+| `.data` | **4 bytes differ** |
+
+**The four bytes are exactly the time digits of `__TIME__`** — at offsets 16705, 16707, 16710,
+16711, `17:21:24` → `19:41:10`. The date string is unchanged. **Every compared loadable section
+is byte-identical to the archived `44c4680` artifact except `.data`, which differs by exactly the
+four time digits of `__TIME__`.**
+
+> **So "comment-only" is established at the machine-code level, not asserted from the diff.**
+> Matching memory figures alone would not have shown that.
+
+**⚠️ The first comparison attempt FAILED — and printed nothing.** A loop over section names
+extracted from `readelf` returned **empty output**, because the name extraction itself had
+failed. **Empty output is not evidence of equality.** It was not treated as a pass: the section
+table was listed explicitly and each section compared by name, which produced the table above.
+
+> **This is the same failure mode as the lost upload exit code (entry (2)):** the absence of an
+> error signal read as success. **A check that cannot fail is not a check** — before trusting a
+> "no differences" result, confirm the check actually examined something.
+
+**Not flashed, deliberately.** No executable difference was found in the compared loaded sections
+apart from build-identity timestamp data, so there is no runtime behaviour to validate.
+
+### State after this commit
+
+- **The board still runs `44c4680`** (`Build: Sep 21 2026 17:21:24   v0.6.0`, hex md5
+  `65405de70fc778fdd8cf6a48e1cbe45e`). **HEAD is now ahead of the board by a comment-only
+  commit.** No executable difference was found between the two in the compared sections, but the board's
+  self-reported identity is still `44c4680`'s, and any future bench entry should record it as such.
+- Power **OFF**.
+
+**Next:** TODO-48 — the validation harness runtime check — and then the Phase 9 fixtures.
+
+---
+
 ## 2026-09-21 (4) — ✅ **TODO-50 CLOSED on its existing Proof line.** The unobserved boot prefix is closed by code evidence, not by redefining the criterion. Pin-15 scope work is recorded separately, as evidence that goes *beyond* what TODO-50 requires
 
 ### The Proof line, and how it was read
