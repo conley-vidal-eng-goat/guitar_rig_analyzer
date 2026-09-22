@@ -12,6 +12,166 @@ How to use this file:
 
 ---
 
+## 2026-09-21 (3) — ✅ **TODO-27 CLOSED on hardware.** The firmware now describes FFT cadence consistently everywhere it speaks. **The fix grew from one known line to ten sites across seven files — including a Phase 9 runtime defect**
+
+### Why this entry exists as more than a status flip
+
+TODO-27 was believed to be one stale diagnostic in `audio_capture.cpp`. **A read-only
+audit run *before* any edit, searching by value and expression rather than by
+identifier, found ten current representations of the same window-for-hop error
+across seven files.** One of them changed runtime behaviour in the Phase 9 path.
+The original fix had been scoped by the `EXPECTED_BLOCK_MS` identifier and by the
+paragraph being edited, and **every instance that computed the period inline
+survived** — including one four lines below the correction itself, in `config.h`.
+
+That is the C1-01 four-representations lesson (journal 2026-09-20 (1)) recurring in
+firmware, **after** the rule had been written down. What changed this time is that the
+lesson altered the *method* — audit first, edit second — rather than only being
+recorded afterward.
+
+### The audit inventory (`44c4680`, 10 sites / 7 files)
+
+| Class | Site | What was wrong |
+|---|---|---|
+| **ACTIVE/RUNTIME** | `validation.cpp:170` | `collectFrames()` deadline used `FFT_SIZE`: **4829 ms for a 2415 ms collection** |
+| ACTIVE/DIAGNOSTIC | `audio_capture.cpp` FFT line | `23.2 ms/frame` — a correct *window* wearing a label that reads as a cadence |
+| ACTIVE/DIAGNOSTIC | `audio_capture.cpp` block line | `4 frames × 23.2 ms = 92.9 ms` — the known contradiction |
+| ACTIVE/DIAGNOSTIC | `validation.cpp:345,347` | Operator timing estimate `~3.0 s + ~1.9 s`; true `~1.5 s + ~0.9 s` |
+| ACTIVE/COMMENT | `config.h:446-447` | Display-rate note `~92.8 ms, ~10.8 fps` — **four lines below the first todo-27 fix** |
+| ACTIVE/COMMENT | `validation.h:92-94` | `≈ 92.8 ms … ≈ 2.97 seconds` |
+| ACTIVE/COMMENT | `audio_capture.cpp:219` | `~92.9 ms` |
+| ACTIVE/COMMENT | `guitar_rig_analyzer.ino:652` | `~92.9 ms` |
+| DOC/CURRENT | `README.md:266` | `92.9 ms … 10.8 fps`, user-facing |
+| DOC/CURRENT | `docs/pi_link_protocol_audit.md:336` | `~5.4 fps`, derived from the wrong base |
+
+**The runtime defect failed safe** — the guard was loosened, never tightened — so it
+caused no spurious aborts. But it did not bound a stuck codec as tightly as designed,
+and it sits directly in the Phase 9 path. Verified numerically from the constants
+after the fix: `expected_ms` = **2414 ms**, tracking the true 2414.9 ms duration at
+**1.000×**; deadline `2414 + 1207 (50 %) + 1000` = **4621 ms**. **The designed
++50 % + 1000 ms margin policy is unchanged**; ~2.2 s of slack remains over the
+measured collection.
+
+### ⚠️ Legitimate numerical collisions — preserved on purpose
+
+A value-only search would have "fixed" these into errors. **Classify semantically
+before replacing.**
+
+- **`measurement_core.h:134` — `92.9 ms/frame` for a 4096-point FFT.** That is
+  `4096 / 44100`, a correct window duration for a different transform. Same number as
+  the defect; unrelated quantity. **Untouched.**
+- **`config.h:447` — `~92.9 ms` for `DISPLAY_UPDATE_EVERY_N_FRAMES = 2`.** That is
+  `2 × 46.44 ms` and is **correct** — the same number that was wrong on the N=1 line
+  four lines above. A collision warning was added so the next auditor does not
+  "correct" it.
+- **`config.h:401,415` and `measurement_core.h:128`** — 23.2 ms explicitly described as
+  the 1024-sample *window*. Correct; kept.
+
+The `audio_capture.cpp` fix therefore **names both quantities** instead of replacing
+one with the other: the 23.2 ms window is real and useful — it simply is not the rate
+at which results arrive.
+
+### The evidence chain on hardware
+
+| Tier | Link | Value |
+|---|---|---|
+| `OBS/BUILD` | Clean revision | **`44c4680`**, tree verified CLEAN |
+| `OBS/BUILD` | Artifact | HEX **MD5 `65405de70fc778fdd8cf6a48e1cbe45e`**, embedded `Sep 21 2026 17:21:24   v0.6.0` |
+| `OBS/BUILD` | Re-verified | MD5 re-checked immediately before upload, after the session scratchpad path changed |
+| `OBS/UPLOAD` | Upload | **EXIT 0**, captured as the process return status |
+| `OBS/RUN` | Board's own report | **`[Main] Build: Sep 21 2026 17:21:24   v0.6.0`** at uptime 13 s |
+
+### `OBS/RUN` — the observations, verbatim
+
+```
+[AudioCapture] FFT: 512 bins, 43.07 Hz/bin, 23.2 ms/window, 11.6 ms hop (50% overlap)
+[AudioCapture] Block period: 4 results × 11.6 ms hop = 46.4 ms
+[Validation] Collection: 32 blocks (~1.5 s) + 20 settle blocks (~0.9 s)
+...
+[Main] --- 5s diagnostics (uptime 13s) ---
+[Main] Build: Sep 21 2026 17:21:24   v0.6.0
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 46.4 ms, delta -0.1 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 46.4 ms)
+[Main] Loop:         4875902 iterations/5s = ~975180/sec
+...
+[Main] Route: TS return, no injection
+```
+
+**The contradiction that held TODO-27 at 🟡 is gone.** The same boot previously printed
+`92.9 ms` at AudioCapture and `46.4 ms` at Main. Now **23.2 ms window, 11.6 ms hop and
+46.4 ms averaged result** are stated consistently, and Main **independently measures
+46.3 ms** against that expectation.
+
+**The `[Validation] Collection:` line came from `validation_init()` during ordinary
+startup. VALIDATION WAS NOT INVOKED** — no `v`, no `1`–`4`. It moved from the stale
+`~3.0 s / ~1.9 s` to `~1.5 s / ~0.9 s` with no test running.
+
+**No serial command was sent at any point.** `q`, `v`, `m` untouched. The boot command
+list contains no `q`. Route TS, `injection_active` false.
+
+### ⚠️ Startup identity vs periodic identity — do not conflate them
+
+> **The startup identity mechanism was not observed in this capture. The periodic
+> identity mechanism was observed and positively identified the running compile after
+> late host attachment.**
+
+The ring began partway through the SGTL register dump, so the top-of-boot banner and
+its `Build:` line had already been emitted before any host attached.
+`arduino-cli upload` returns only after the board reboots, and the port was opened
+after that, **so the 3 s bounded wait had already expired.**
+
+**Do not record the bounded host-wait or the startup banner as bench-proven.** Neither
+was observed. What *is* proven is the case the periodic line was designed for: a host
+attaching late still gets a positive, self-contained compile identity within one 5 s
+interval, **with no reset, power cycle or timing race** — the problem that four capture
+strategies failed to solve earlier today.
+
+### 🔍 Loop rate — second observation, still unexplained
+
+`~975 180/sec` on `44c4680`, following `~973 469/sec` on `399e54b`, against
+`≈ 950 000/sec` in every earlier capture.
+
+**Two separately compiled post-change binaries now reproduce the higher rate.** That
+makes it more interesting than the first isolated reading — **but it establishes
+neither a cause nor that the firmware changes caused it.** Recorded as an open
+observation, not a regression or improvement.
+
+### Status
+
+- **TODO-27 → 🟢 CLOSED.** Its Proof line has two clauses and both are met.
+  *"Diagnostics report a delta near zero on a healthy run"* — **delta −0.1 ms**, `OBS`.
+  *"No diagnostic anywhere in the firmware states the block period as 92.9 ms"* —
+  verified on the **flashed binary**, not inferred from source: no 92.88 ms float
+  constant, no literal `92.9` in any string, no stale format string; the source contains
+  zero `FFT_AVERAGE_COUNT * FFT_SIZE` expressions; and the previously offending
+  diagnostic was observed reporting 46.4 ms.
+- **TODO-48 stays 🟡.** Flashed and running; its proof is a runtime check of the harness
+  that has not been run.
+- **TODO-50 stays 🟡 — by explicit decision, not because the evidence is absent.** Its
+  Proof line: *"a fresh boot with no commands prints a route description matching the
+  router's selection, and the boot still shows no relay actuation and no ROUTE_CHANGED."*
+  **Today's capture was in fact a fresh boot with no commands** — the upload rebooted the
+  board, and the ring contains `signalRouter_init()`'s own output:
+  ```
+  [SignalRouter] Return source: TS (operator-selected; boot default)
+  [SignalRouter] Route: TS return, no injection
+  ...
+  [Main] Route: TS return, no injection
+  ```
+  The router's selection and the 5 s diagnostic agree, and **no `ROUTE_CHANGED` appears
+  in the capture.** That is the failure TODO-50 was opened for, now absent.
+  **The gap:** the capture began partway through boot (mid-SGTL register dump), so the
+  **complete** boot sequence was not observed. The missed region is the banner,
+  `presentation_init()` and DataSender init — none route-related, and it precedes
+  `signalRouter_init()` — but "the boot still shows no relay actuation" is a claim about
+  the whole boot, and part of it was not seen. **Whether that satisfies the Proof line is
+  left as a decision rather than resolved by reinterpreting it here.**
+
+**Next:** TODO-48's runtime check, then TODO-50's fresh-boot observation, then the Phase
+9 fixtures.
+
+---
+
 ## 2026-09-21 (2) — ✅ **TODO-53 CLOSED. The running firmware positively identifies itself.** The board is no longer an unidentified binary
 
 ### The evidence chain, link by link

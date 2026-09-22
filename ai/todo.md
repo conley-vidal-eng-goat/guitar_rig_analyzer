@@ -333,7 +333,16 @@ Both comparisons strictly greater-than, not ≥. `m` is the median of the 30 int
 **What:** strip both. **Keep the ability to re-enable RAWDUMP behind a compile-time flag** — it is the only tool that ever showed sample-level corruption directly, and it is the thing to reach for first if the fault ever returns.
 **Proof:** a clean 5 s diagnostic window with no `[RAWDUMP]` lines, and the build still compiles with the flag turned on.
 
-### TODO-27 — `EXPECTED_BLOCK_MS` is wrong by 2× — the FFT overlaps 50% 🟡 **FLASHED 2026-09-21 in `399e54b`; corrected constant OBSERVED LIVE — but a SECOND stale representation remains, see below**
+### TODO-27 — `EXPECTED_BLOCK_MS` is wrong by 2× — the FFT overlaps 50% 🟢 **CLOSED 2026-09-21 on hardware — `44c4680`, both proof clauses met (journal (3))**
+**✅ Clause 1 — met.** `[Main] Block: 108 in 5000ms = 46.3 ms/block (expected 46.4 ms, delta -0.1 ms)`, `OBS` on `44c4680`, positively identified as `Build: Sep 21 2026 17:21:24   v0.6.0` (hex md5 `65405de70fc778fdd8cf6a48e1cbe45e`, upload exit 0).
+**✅ Clause 2 — met, verified on the FLASHED BINARY, not inferred from source.** No 92.88 ms float constant, no literal `92.9` in any string, no stale `frames × %.1f ms` format. Source contains **zero** `FFT_AVERAGE_COUNT * FFT_SIZE` expressions. The previously offending diagnostic was observed reporting correctly:
+```
+[AudioCapture] FFT: 512 bins, 43.07 Hz/bin, 23.2 ms/window, 11.6 ms hop (50% overlap)
+[AudioCapture] Block period: 4 results × 11.6 ms hop = 46.4 ms
+[Validation] Collection: 32 blocks (~1.5 s) + 20 settle blocks (~0.9 s)
+```
+(The `[Validation]` line is from `validation_init()` at startup. **Validation was not invoked.**)
+**🔑 SCOPE GREW FROM ONE LINE TO TEN SITES ACROSS SEVEN FILES** — found by a read-only value-and-expression audit run *before* editing, after the identifier-scoped first fix proved too narrow. One **runtime** defect in the Phase 9 path (`collectFrames()` deadline, 4829 ms for a 2415 ms collection; now 4621 ms with the +50 % + 1000 ms margin policy unchanged), three diagnostic, four comment, two documentation. **Legitimate collisions were preserved:** the 4096-point `92.9 ms` window in `measurement_core.h:134`, and `~92.9 ms` for N=2 in `config.h:447`, which is correct. Full inventory in journal (3).
 
 > **🔻 PROVENANCE CORRECTED 2026-09-20.** This item previously cited branch `firmware/bench-safe-todos`. **That branch was an empty label** — zero commits, and the scratchpad worktree holding the uncommitted work was deleted. The work was **unrecoverable and was rewritten**, then committed as `b275852`. **A branch name is not provenance; a commit hash is.** Journal 2026-09-20 (1).
 
@@ -791,6 +800,8 @@ Serial reported XLR return, no injection. **Confirms the documented convention: 
 **Why:** `signalRouter_init()` deliberately does **not** call `audioEngine_setRoute()` — boot is not a route-change transition (ADR-004 Decision 2, and the property that makes TS-at-boot clean, with no relay actuation and no ROUTE_CHANGED). So `audio_engine` keeps the description from its own `init()` (`audio_engine.cpp:110–114`) and the 5 s diagnostic prints `Route: Default bench: SOURCE_NODE=L, RETURN_NODE=R` **on a board whose router is in TS.** Observed during the first valid TF run (journal 2026-09-19 (4)). The same string goes to the Pi in ROUTER_STATUS, so a UI would show it too.
 **Not a hardware or routing fault** — the router's state is authoritative and correct; this is stale *presentation* state.
 **What:** have `signalRouter_init()` set the route description without raising ROUTE_CHANGED (e.g. a description-only setter on `audio_engine`), **or** decide to leave it and document the behaviour where operators will read it. **Do not "fix" it by calling `audioEngine_setRoute()` at boot** — that reintroduces the boot transition ADR-004 removed on purpose.
+**📍 EVIDENCE 2026-09-21 on `44c4680` — status deliberately LEFT 🟡 (journal (3)).** The upload rebooted the board and no command was sent, so this **was** a fresh boot with no commands. The ring contains `signalRouter_init()`'s own output (`Return source: TS (operator-selected; boot default)`, `Route: TS return, no injection`), the first 5 s diagnostic agrees (`[Main] Route: TS return, no injection`), and **no `ROUTE_CHANGED` appears.** The stale `Default bench: ...` string this item was opened for is gone.
+**The gap:** the capture began partway through boot (mid-SGTL register dump). The missed region — banner, `presentation_init()`, DataSender init — is not route-related and precedes `signalRouter_init()`, but *"the boot still shows no relay actuation"* is a claim about the **whole** boot, and part of it was not observed. **Closing on this capture is a decision to be made explicitly, not a reinterpretation of the Proof line.** A capture of a complete boot from `Serial.begin()` onward would remove the question.
 **Proof:** a fresh boot with no commands prints a route description matching the router's selection, and the boot still shows no relay actuation and no ROUTE_CHANGED.
 
 ### TODO-51 — RELAY_SEND cannot be exercised from the running firmware 🟢 **[bench] BOTH CLAUSES OF THE PROOF CRITERION MET 2026-09-19 (journal (5), (6), (7))**
@@ -918,7 +929,7 @@ untouched:
 | Board runs an **identified build** | **TODO-53** | ✅ **CLEARED 2026-09-21** — board self-reports `Build: Sep 21 2026 17:09:03   v0.6.0`, bound to `399e54b` / hex md5 `55a45287ae39c5a5ffbc33f08e6801eb` by the build record (journal (2)) |
 | Rig Send tip feed count | **TODO-52** | ✅ **CLEARED `MEAS` 2026-09-21** — no second feed detected. This was the gate on trusting the Test 1 Y-split fixture, and it is met |
 | Fixture parts | this item | 🔴 6 dB resistive pad + RC low-pass, and an **external** broadband source, not confirmed on hand |
-| The three new firmware fixes on the board | TODO-27/48/50 | 🟡 **now FLASHED and running** (2026-09-21) — but *running* is not *bench-verified against their own proof criteria*. All three stay 🟡 |
+| The three new firmware fixes on the board | TODO-27/48/50 | **TODO-27 🟢** (bench-verified 2026-09-21, `44c4680`). **TODO-48 🟡** — harness runtime check not yet run. **TODO-50 🟡** — fresh-boot route observed but the capture missed early boot; closure is a pending decision (journal (3)) |
 
 **Results captured on an unidentified binary are not sign-off evidence** — journal 2026-09-19 (6) is exactly that
 lesson. Reflashing to `b275852` picks up all three fixes at once and gives the run a known build identity.
