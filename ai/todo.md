@@ -333,7 +333,7 @@ Both comparisons strictly greater-than, not ≥. `m` is the median of the 30 int
 **What:** strip both. **Keep the ability to re-enable RAWDUMP behind a compile-time flag** — it is the only tool that ever showed sample-level corruption directly, and it is the thing to reach for first if the fault ever returns.
 **Proof:** a clean 5 s diagnostic window with no `[RAWDUMP]` lines, and the build still compiles with the flag turned on.
 
-### TODO-27 — `EXPECTED_BLOCK_MS` is wrong by 2× — the FFT overlaps 50% 🟡 **[compiles] COMMITTED `b275852` 2026-09-20, NOT flashed — journal 2026-09-20 (1)**
+### TODO-27 — `EXPECTED_BLOCK_MS` is wrong by 2× — the FFT overlaps 50% 🟡 **FLASHED 2026-09-21 in `399e54b`; corrected constant OBSERVED LIVE — but a SECOND stale representation remains, see below**
 
 > **🔻 PROVENANCE CORRECTED 2026-09-20.** This item previously cited branch `firmware/bench-safe-todos`. **That branch was an empty label** — zero commits, and the scratchpad worktree holding the uncommitted work was deleted. The work was **unrecoverable and was rewritten**, then committed as `b275852`. **A branch name is not provenance; a commit hash is.** Journal 2026-09-20 (1).
 
@@ -341,7 +341,11 @@ Both comparisons strictly greater-than, not ≥. `m` is the median of the 30 int
 **Still 🟡 — "diagnostics report a delta near zero on a healthy run" has NOT been observed; compile-verified only.**
 **Why:** [guitar_rig_analyzer.ino:99](guitar_rig_analyzer.ino#L99) computes `1000 × FFT_AVERAGE_COUNT × FFT_SIZE / SAMPLE_RATE` = 92.9 ms, assuming `AudioAnalyzeFFT1024` consumes 1024 fresh samples per result. **It doesn't — it runs 50 % overlap.** Verified in the Audio library source (`analyze_fft1024.cpp`): after `outputflag = true` it resets `state = 4`, keeping the last 4 blocks (512 samples) and needing only 512 new ones. True period = `1000 × 4 × 512 / 44100` = **46.44 ms**; measured **46.3 ms**, agreeing to 0.3 %. The hardware is right and the constant is wrong.
 **What:** use the hop size — `FFT_SIZE / 2` — in the formula. Diagnostic-only (the printf at :186 and the delta at :555), so no behavioural change; but left alone, every diagnostic forever reports a phantom −46.6 ms anomaly, exactly the sort of false signal that has already cost this project days.
-**Proof:** diagnostics report a delta near zero on a healthy run.
+**✅ THIS ITEM'S OWN PROOF IS NOW OBSERVED** — `[Main] Block: 108 in 5000ms = 46.3 ms/block (expected 46.4 ms, delta -0.1 ms)`, `OBS` 2026-09-21 on `399e54b` (journal (2)). The phantom −46.6 ms anomaly is gone.
+**🔴 BUT THIS ITEM STAYS 🟡 — a SECOND representation of the same 2× error survives, in a different file.** `audio_capture.cpp` prints at init: `[AudioCapture] Block period: 4 frames × 23.2 ms = 92.9 ms`. It computes the value **inline** rather than using `EXPECTED_BLOCK_MS`, which is why grepping for the constant name did not find it. **The running firmware therefore reports 46.4 ms and 92.9 ms in the same boot sequence, disagreeing with itself by exactly 2×.** `OBS` 2026-09-21, journal (1) and (2).
+**Do not promote this item on the observation above.** The defect was *"every diagnostic forever reports a phantom anomaly"*; one diagnostic is fixed and another still teaches the wrong period. Same shape as the C1-01 four-representations lesson (journal 2026-09-20 (1)), now recurring in firmware rather than docs: **the correction was scoped by identifier, and the surviving instance does not use the identifier.**
+**What remains:** correct `audio_capture.cpp`'s inline arithmetic, then **audit for further instances** — by value (`92.9`, `23.2`, `4 frames`) as well as by name — before this closes. Diagnostic-only; no measured value depends on it.
+**Proof:** diagnostics report a delta near zero on a healthy run, **and no diagnostic anywhere in the firmware states the block period as 92.9 ms.**
 
 ### TODO-25 — `s_display_ok` guard in display_engine.cpp 🟢 **DONE — verified on hardware 2026-09-05, 47× recovery**
 **Result:** block period **2194.3 ms → 46.3 ms** (3 blocks/6583 ms → **108 blocks/5000 ms**), stable across consecutive diagnostic windows. The unguarded `waitPoll()` spin against the absent RA8875 was the entire bottleneck. Committed `8548c4c`. See journal.md 2026-09-05 (10). *(46.3 ms is the correct period — the "expected 92.9 ms" it is compared against is itself wrong; see TODO-27.)*
@@ -746,7 +750,7 @@ Serial reported XLR return, no injection. **Confirms the documented convention: 
 
 **Proof (ADR-004, run after (b)):** At boot, with no operator action, RELAY_RETURN is de-energised and the router reports TS. Selecting XLR energises RELAY_RETURN (contacts transfer by continuity), raises ROUTE_CHANGED, and changes the route description. Selecting TS reverses all three. The reported source follows the selection **whatever jacks are plugged in, including none**. A TS signal on Rig Return reaches line-in R when TS is selected. A power cycle returns to TS. *(Replaces "Full route matrix (4 jack combinations) produces correct route description on Serial", which presumed auto-detect. Runbook sign-off line 1702 carried that same criterion and was **corrected as part of the ADR-004 documentation change**. The old text is preserved in ADR-004 and git history.)*
 
-### TODO-48 — Validation harness: the "Press Enter" prompt accepts ANY byte, and single tests skip preflight 🟡 **[compiles] COMMITTED `b2cdb4f` 2026-09-20, NOT flashed — journal 2026-09-20 (1)**
+### TODO-48 — Validation harness: the "Press Enter" prompt accepts ANY byte, and single tests skip preflight 🟡 **FLASHED 2026-09-21 in `399e54b` — NOT bench-verified; its proof criterion is a runtime check that has not been run**
 
 > **🔻 PROVENANCE CORRECTED 2026-09-20.** This item previously cited branch `firmware/bench-safe-todos`. **That branch was an empty label** — zero commits, and the scratchpad worktree holding the uncommitted work was deleted. The work was **unrecoverable and was rewritten**, then committed as `b2cdb4f`. **A branch name is not provenance; a commit hash is.** Journal 2026-09-20 (1).
 
@@ -776,7 +780,7 @@ Serial reported XLR return, no injection. **Confirms the documented convention: 
 **Proof (revised, ADR-004):** the contact proof above, **plus** a real analog signal through XLR pin 2 reaching RETURN_NODE with a noise floor comparable to the TS path. *(Replaces "XLR + microswitch detect both work end-to-end", which presumed detection was required. **Runbook sign-off line 1703 still carries the old wording and is uncorrected** — same stale-checkbox trap as line 1702 was; correct it in the same pass as TODO-45's other runbook fixes.)*
 **Parts note:** intended connector is the Neutrik **NC3FAH2-0** combo (XLR + 1/4" TRS in one hole). Its TRS contacts are **deliberately unwired** — if they are ever used, they become a second path into `17a` and must be documented. **✅ The earlier "revisit the microswitch criterion before Phase 8" flag is now resolved** by the ADR-004 re-scope above: detection is optional UX, ADR-002 governs it if ever built.
 
-### TODO-50 — `[Main] Route:` misreports the route until the first `j`/`k` 🟡 **[compiles] COMMITTED `3fdde97` 2026-09-20, NOT flashed — journal 2026-09-20 (1)**
+### TODO-50 — `[Main] Route:` misreports the route until the first `j`/`k` 🟡 **FLASHED 2026-09-21 in `399e54b`; `Route: TS return, no injection` OBSERVED — but the proof criterion is a FRESH-BOOT observation, not yet made**
 
 > **🔻 PROVENANCE CORRECTED 2026-09-20.** This item previously cited branch `firmware/bench-safe-todos`. **That branch was an empty label** — zero commits, and the scratchpad worktree holding the uncommitted work was deleted. The work was **unrecoverable and was rewritten**, then committed as `3fdde97`. **A branch name is not provenance; a commit hash is.** Journal 2026-09-20 (1).
 
@@ -875,7 +879,21 @@ That is a **closed electro-acoustic loop around the codec** with roughly one aud
 **Proof:** the Rig Send tip is documented as having exactly one feed, and `docs/asbuilt/netlist.md` records `56a`/`57a`/`58a` and the tip's source explicitly.
 **Mitigating fact:** pin 14 was left **LOW** at the end of the 2026-09-19 session, which is the safe side.
 
-### TODO-53 — Remove the temporary `q` toggle and bring-up boot banner 🔴 **cleanup debt — the board is currently running this build, not `f1b13ed`**
+### TODO-53 — Remove the temporary `q` toggle and bring-up boot banner 🟢 **CLOSED 2026-09-21 — both proof clauses met (journal (2))**
+**Clause 1 — met. The board runs a build whose identity is recorded in the journal.**
+
+| Tier | Link | Value |
+|---|---|---|
+| `OBS/BUILD` | Clean revision | **`399e54b`**, tree verified CLEAN at build time |
+| `OBS/BUILD` | Artifact | HEX **MD5 `55a45287ae39c5a5ffbc33f08e6801eb`** |
+| `OBS/BUILD` | Embedded identity | **`Sep 21 2026 17:09:03   v0.6.0`** |
+| `OBS/UPLOAD` | First attempt | **EXIT 1 — FAILED, nothing written** (an open serial connection held the port) |
+| `OBS/UPLOAD` | Second attempt, same artifact, no rebuild | **EXIT 0** |
+| `OBS/RUN` | Board's own report, 11 s after attaching | **`[Main] Build: Sep 21 2026 17:09:03   v0.6.0`** |
+
+**Clause 2 — met. No temporary relay command remains in the active tree.** `q` is absent from `399e54b` and from the flashed artifact — verified by string and symbol search on the `.elf` before upload, and no `[BringUp]` line at runtime. The toggle is preserved on its own branch at `3ea3880`, unmerged.
+**⚠️ THE STAMP IDENTIFIES THE COMPILE, NOT THE COMMIT.** `Build:` is `__DATE__`/`__TIME__` + `FIRMWARE_VERSION`; the firmware contains no git hash. The revision→artifact association comes from the **controlled clean-tree build record above**, and only the two halves together bind this compile to `399e54b`. **Do not cite the stamp as though it independently asserts the commit.** Any future bench entry must record the observed `Build:` line **with** the revision and artifact hash.
+**➕ The standing recommendation in TODO-51 is now DONE** — the build stamp is permanent in the main boot banner **and** repeated every 5 s (`399e54b`). A once-at-boot banner proved uncapturable on this USB-CDC board; see journal (2) for why, and for the four capture strategies that failed.
 **Why:** journal (6)/(7). Branch `firmware/todo-51-send-relay-toggle` adds a `q` toggle that writes `RELAY_SEND_PIN` directly, plus a `[BringUp] SEND RELAY TEST BUILD` boot identifier. Both were explicitly temporary. **The flashed firmware on the Teensy is this build** — boot stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95` — **not** the main tree's `f1b13ed`.
 **⚠️ `q` is no longer electrically inert.** When `56a`/`57a`/`58a` were unwired it did nothing observable. **With the three Phase 7 jumpers fitted it routes a real signal.** Anyone using this board must know `q` is live.
 **🔄 UPDATED 2026-09-21 — the two-feed contention hazard is CLEARED (`MEAS`, TODO-52, journal (1)).** The clause that previously read *"while TODO-52 is open it can reach an output-contention state"* **no longer applies**: with no second TIP feed, energising pin 14 moves COM from NC to NO and `SOURCE_NODE` is disconnected from the TIP rather than fighting LINE OUT L. **This removes one hazard; it does not make `q` a sanctioned command.** This item's own conditions stand — the board runs an unidentified build, and the send path still has no decided owner. **Whether to press `q` remains a bench judgement.** Pin 14 was last left **LOW**.
@@ -897,10 +915,10 @@ untouched:
 
 | Gate | Item | State |
 |---|---|---|
-| Board runs an **identified build** | **TODO-53** | 🔴 board is on the temporary `q` build, stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95` — **not any commit** |
+| Board runs an **identified build** | **TODO-53** | ✅ **CLEARED 2026-09-21** — board self-reports `Build: Sep 21 2026 17:09:03   v0.6.0`, bound to `399e54b` / hex md5 `55a45287ae39c5a5ffbc33f08e6801eb` by the build record (journal (2)) |
 | Rig Send tip feed count | **TODO-52** | ✅ **CLEARED `MEAS` 2026-09-21** — no second feed detected. This was the gate on trusting the Test 1 Y-split fixture, and it is met |
 | Fixture parts | this item | 🔴 6 dB resistive pad + RC low-pass, and an **external** broadband source, not confirmed on hand |
-| The three new firmware fixes on the board | TODO-27/48/50 | 🔴 committed, **never flashed** |
+| The three new firmware fixes on the board | TODO-27/48/50 | 🟡 **now FLASHED and running** (2026-09-21) — but *running* is not *bench-verified against their own proof criteria*. All three stay 🟡 |
 
 **Results captured on an unidentified binary are not sign-off evidence** — journal 2026-09-19 (6) is exactly that
 lesson. Reflashing to `b275852` picks up all three fixes at once and gives the run a known build identity.

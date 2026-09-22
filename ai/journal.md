@@ -12,6 +12,131 @@ How to use this file:
 
 ---
 
+## 2026-09-21 (2) — ✅ **TODO-53 CLOSED. The running firmware positively identifies itself.** The board is no longer an unidentified binary
+
+### The evidence chain, link by link
+
+Every step below is `OBS`; **there is no inference between them.**
+
+| Tier | Link | Value |
+|---|---|---|
+| `OBS/BUILD` | Clean revision | **`399e54b`**, tree verified CLEAN at build time |
+| `OBS/BUILD` | Artifact it produced | HEX **MD5 `55a45287ae39c5a5ffbc33f08e6801eb`**, 674 074 B |
+| `OBS/BUILD` | Identity embedded in it | **`Sep 21 2026 17:09:03   v0.6.0`** |
+| `OBS/UPLOAD` | First attempt | **EXIT 1 — FAILED. Nothing was written.** |
+| `OBS/UPLOAD` | Second attempt, same artifact, no rebuild | **EXIT 0** |
+| `OBS/RUN` | Board's own report, 11 s after attaching | **`[Main] Build: Sep 21 2026 17:09:03   v0.6.0`** |
+
+```
+[Main] --- 5s diagnostics (uptime 11s) ---
+[Main] Build: Sep 21 2026 17:09:03   v0.6.0
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 46.4 ms, delta -0.1 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 46.4 ms)
+[Main] Loop:         4867344 iterations/5s = ~973469/sec
+[Main] SOURCE_NODE peak: -64.7 dBFS          |   RETURN_NODE peak: -62.7 dBFS
+[Main] TF confidence: 0%          (threshold 10%)   persistence: ACTIVE
+[Main] TF clamped bins: 0 of 512
+[Main] Route: TS return, no injection
+```
+
+### ⚠️ What the stamp does and does NOT assert — read before citing this
+
+**The firmware does not contain the git hash.** `Build:` is `__DATE__`/`__TIME__` plus
+`FIRMWARE_VERSION`; it **positively identifies the COMPILE and nothing more.**
+
+The revision→artifact association comes from the **controlled clean-tree build
+record above** — a build run from a verified-clean `399e54b`, whose artifact hash
+and embedded stamp were both recorded before the upload. **Taken together** the two
+halves bind this running compile to `399e54b`.
+
+> **Do not restate the stamp as though it independently asserts the commit.** It
+> does not. If this record is lost, the board can still tell you *which compile* is
+> running but not *which revision* produced it. Any future bench entry must record
+> the observed `Build:` line **together with** the revision and artifact hash.
+
+### `OBS/RUN`: what else the same interval established
+
+- **`q` / temporary relay-toggle functionality is ABSENT** from the active tree and
+  from the flashed artifact — verified by string and symbol search on the `.elf`
+  before upload, and no `[BringUp]` line at runtime.
+- **TODO-27's corrected constant is live:** `expected 46.4 ms`, delta **−0.1 ms**
+  (the old build reported 92.9 ms and a permanent phantom −46.6 ms anomaly).
+- **TODO-50's fix is live:** `Route: TS return, no injection` — the router's real
+  state, not audio_engine's stale init string.
+- Pin 14 **LOW**, route **TS**, idle floors ≈ −63 dBFS with nothing connected.
+- **No serial command was sent at any point.** `q`, `v`, `m` untouched; validation
+  not run.
+
+### 🔍 Unexplained observation, preserved rather than explained
+
+**Loop rate reads `~973 469/sec` (4 867 344 iterations / 5 s).** Every prior capture
+in this project reads **≈ 950 000/sec** — about **2.5 % higher now**.
+
+**No cause is offered and none should be assumed.** The bounded serial wait runs once
+in `setup()` and cannot affect the loop; one extra `printf` per 5 s interval is far
+too small. **This is not recorded as a regression, an improvement, or noise** — it is
+recorded as a difference nobody currently understands. If it persists, it is a fact
+about this build worth explaining; if it vanishes, that is also information.
+
+### 🔑 Process lessons — the durable output of today
+
+**1. Bench firmware identity must be observable AFTER attachment, not only during boot.**
+
+The first stamp (`57dcdc1`) printed once in `setup()` and **was never captured, across
+four independent strategies**: a late monitor open, a DTR/RTS pulse (Teensy 4.x ignores
+those lines — uptime ran straight through, proving no reset), a physical button press
+(the Teensy 4.1 button is *program mode*, not reset — it halts the sketch rather than
+restarting it), and a USB power cycle with a pre-armed catcher.
+
+**The root cause is structural, not procedural.** `Serial` here is USB CDC: Teensy
+**discards everything written before a host asserts DTR**, and enumeration takes
+≈1–2 s — longer than `setup()` takes to reach the banner. The identity was emitted
+into a void on every cold boot, and **no amount of host-side care could recover it.**
+
+> **A once-at-boot banner cannot establish identity on a USB-CDC board.** The fix
+> (`399e54b`) was to repeat the identity in the 5 s diagnostics, so **every captured
+> interval carries its own compile provenance** instead of needing correlation with a
+> boot event that may never have been captured. A bounded host-wait was added too, but
+> **the periodic line is the one that actually solves it.**
+
+**2. Upload success must come from the process RETURN STATUS, never from the absence of error text.**
+
+Today's first upload **exited 1** — `"Unable to open /dev/cu.usbmodem192895301 for
+reboot request"` — because an open serial connection held the port. **Nothing was
+written.**
+
+**This is the sharper half of the lesson:** the *earlier* upload in this session
+(2026-09-21, pre-`399e54b`) was reported as success **on the strength of normal-looking
+output alone, because the exit code was lost to a shell-construction error.** It
+happened to succeed only because no serial connection was open at that moment. **Had
+one been, it would have failed identically and the failure would have been invisible**
+— which is exactly the 2026-09-19 flash-identity incident rehearsing itself.
+
+Both lessons point the same way as journal 2026-09-20 (1)'s four-representations rule:
+**evidence that requires you to have been watching at the right instant is not
+evidence you can rely on.**
+
+### Status
+
+**TODO-53 → 🟢 CLOSED.** Its Proof line is exactly two clauses and both are now met:
+*"the board runs a build whose identity is recorded in the journal"* (this entry) and
+*"no temporary relay command remains in the active tree"* (`q` absent from `399e54b`
+and from the flashed artifact).
+
+**TODO-27 stays 🟡 and must NOT be promoted on this capture.** Its corrected constant
+being observed live is real, but journal 2026-09-21 (1) recorded a **second, stale
+representation of the same 2× error** — `audio_capture.cpp` prints
+`Block period: 4 frames × 23.2 ms = 92.9 ms` at init, so **this firmware now reports
+46.4 ms and 92.9 ms in the same boot sequence.** That reconciliation is outstanding and
+is deliberately untouched here.
+
+**Next:** the Phase 9 chain now stands at `q worktree preserved` ✅ → `TODO-52` ✅ →
+**`identified firmware on the board`** ✅ → bench-verify TODO-27/48/50 → build fixtures
+→ Phase 9. **TODO-27/48/50 remain 🟡** — they are now *running*, which is not the same
+as *bench-verified against their own proof criteria*.
+
+---
+
 ## 2026-09-21 (1) — ✅ **TODO-52's decisive test was run. No second Rig Send TIP feed was detected.** The output-contention hazard is cleared as `MEAS`; the netlist clause is not
 
 ### The measurements, exactly as observed
