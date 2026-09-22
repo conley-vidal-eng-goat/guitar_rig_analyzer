@@ -200,6 +200,23 @@ static float readSerialFloatWithAudioPump(float default_value) {
 
 
 // =============================================================================
+// BUILD IDENTITY — single formatter, two callers.
+//
+// Deliberately ONE format string. The startup banner and the periodic
+// diagnostics must never drift apart: two hand-written copies of an identity
+// line is how a log ends up asserting two different things about the same
+// binary.
+//
+// `prefix` is the only difference between the call sites — banner indentation
+// vs the "[Main] " tag the 5 s block uses.
+// =============================================================================
+static void printBuildIdentity(const char* prefix) {
+    Serial.printf("%sBuild: %s %s   v%s\n",
+                  prefix, __DATE__, __TIME__, FIRMWARE_VERSION);
+}
+
+
+// =============================================================================
 // SETUP
 // =============================================================================
 
@@ -208,6 +225,29 @@ void setup() {
 
 
     Serial.begin(115200);
+
+    // =====================================================================
+    // Bounded wait for a USB host to attach before anything is printed.
+    //
+    // WHY: on this board Serial is USB CDC. Teensy DISCARDS everything written
+    // before a host asserts DTR — and enumeration takes ~1–2 s, which is longer
+    // than it takes setup() to reach the banner. Without this wait the startup
+    // identity is emitted into a void on every cold boot, and no amount of
+    // care on the host side can recover it (established 2026-09-21: four
+    // different capture strategies all lost the first ~1.5 KB).
+    //
+    // The deadline is measured FROM THE MOMENT WE START WAITING, not from MCU
+    // boot — otherwise time already spent in earlier init silently shortens
+    // the window, and the wait gets less useful the more the firmware grows.
+    //
+    // Bounded, so an unattended board (no host, bench-only operation) still
+    // boots normally after 3 s rather than hanging forever.
+    // =====================================================================
+    const uint32_t serialWaitStart = millis();
+    while (!Serial && (millis() - serialWaitStart) < 3000) {
+        yield();
+    }
+
     delay(500);
 
 
@@ -240,7 +280,7 @@ void setup() {
     // =====================================================================
     Serial.println("================================================");
     Serial.println("     Guitar Rig Analyzer   v" FIRMWARE_VERSION);
-    Serial.printf ("     Build: %s %s\n", __DATE__, __TIME__);
+    printBuildIdentity("     ");
     Serial.println("================================================");
     // Record the renderer in the banner, not just at init: every serial log
     // pasted into ai/journal.md should state which display architecture the
@@ -747,6 +787,15 @@ MeasurementState::RESULT) {
 
           Serial.printf("\n[Main] --- 5s diagnostics (uptime %lus) ---\n", now /
 1000);
+
+
+          // CHANGED [todo-53]: repeat the build identity EVERY interval, not
+          // only at boot. A banner printed once is unrecoverable if the host
+          // attached late, and on USB CDC the host usually does. Emitting it
+          // here means any captured diagnostic interval carries its own
+          // compile provenance, instead of having to be correlated with a
+          // boot event that may never have been captured.
+          printBuildIdentity("[Main] ");
 
 
           // Timing: compare measured to expected.
