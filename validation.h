@@ -343,4 +343,17 @@ bool validation_waitForUser(const char* prompt);
 bool validation_preflightGate(bool return_is_attenuated);
 
 
+// -----------------------------------------------------------------------------
+// ADDED 2026-09-22 (journal (3)): Test 3's expected-offset entry, owned in one
+// place so both the 'v' suite and the standalone '3' command share one policy.
+//
+// Returns the operator's EXPECTED INSTALLED SOURCE->RETURN OFFSET in dB — the
+// offset of the whole path as validation_runKnownGainOffset() measures it, NOT
+// the unloaded divider ratio. THERE IS NO DEFAULT: empty, malformed, partially
+// numeric and overlength entries re-prompt; an explicit 0 is valid. Blocks until
+// a valid number is entered; declining happens earlier, at the consent prompt.
+// -----------------------------------------------------------------------------
+float validation_promptExpectedOffset();
+
+
 #endif // VALIDATION_H

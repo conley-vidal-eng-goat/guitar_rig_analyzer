@@ -12,6 +12,156 @@ How to use this file:
 
 ---
 
+## 2026-09-22 (3) — **Test 3's estimator consumes MORE than the 2026-09-21 decision specified**, and its `-6.0` default is hidden in the serial parser, not just in the prompt. Group A committed; Group C drafted
+
+### Why this entry exists
+
+Group C set out to delete a stale nominal from a prompt. Reading the estimator first turned up two
+things that change what the prompt must say and what the fix must touch. **Neither rewrites the
+2026-09-21 decision; both are findings that came after it.**
+
+### 🔺 Finding 1 — the decision and the estimator describe different quantities
+
+**`OBS`, code at `119a737`.** `validation_runKnownGainOffset()` (`validation.cpp:1023`) compares
+`expected_offset_db` against `band_mean`: the mean over 200 Hz–10 kHz of
+`20·log10(mean_return[k] / mean_source[k])`, where the two accumulations come from **two different
+ADC channels** — SOURCE on LINE-IN-L (ch0), RETURN on LINE-IN-R (ch1). Pass is
+`|band_mean − expected| < GAIN_OFFSET_TOLERANCE_DB` = **1.0 dB**.
+
+**So the entered value must be the complete installed SOURCE→RETURN transfer offset**, which
+contains at least three terms:
+
+1. the pad's **loaded** ratio, `(R2 ∥ Z_in) / (R1 + R2 ∥ Z_in)`;
+2. **any channel-to-channel gain mismatch** between the codec's two PGAs and the two input paths;
+3. losses in the send/return wiring, connectors and relay contacts between the two tap points.
+
+**The 2026-09-21 (6) decision specified** *"an independent in-circuit measurement (scope or DMM on
+the two jack tips, analyzer powered so the codec loads the pad)"*. **That characterises term 1.** It
+was right to insist on powered/in-circuit — that is what captures the loading — but **a jack-tip
+measurement does not by itself establish terms 2 and 3**, and the decision did not address them.
+**The decision is not withdrawn; this records what inspection of the implementation added to it.**
+
+**`ASSUMPTION`, considered and NOT adopted:** that the expectation could be composed as
+*scope-measured loaded pad ratio + Test 1's measured loop offset*. **This assumes the channel/path
+term measured through Test 1's direct loop transfers unchanged to Test 3's different source-impedance
+and loading condition. That has not been demonstrated**, and it is the same class of unsupported
+codec-input assumption withdrawn in entry (2). It is recorded as a **candidate decomposition only**
+and appears nowhere in the firmware.
+
+**Consequence for the prompt:** the harness asks for the **quantity**, not a procedure. It must not
+name a DMM, a scope, a Test-1 correction or any combination until one is validated.
+
+### 🔺 Finding 2 — the `-6.0` default is in the parser, not the prompt
+
+**`OBS`, code.** `readSerialFloatWithAudioPump(float default_value)` ends
+`return (len > 0) ? atof(buf) : default_value;` and **exists twice as identical static copies** —
+`validation.cpp:84` and `guitar_rig_analyzer.ino:166`. Behaviour:
+
+| Input | Result |
+|---|---|
+| **bare Enter** | returns `default_value` — **silently −6.0**, the forbidden nominal |
+| **malformed** (`abc`, `1.2.3`) | `atof` → **0.0**, no error, no echo |
+| **partially numeric** (`6dB`) | parses the leading number, ignores the tail → `6.0` |
+| explicit `0` | `0.0` — **indistinguishable from a parse failure** |
+| proper negative | parsed correctly |
+| over 23 chars | silently truncated, then parsed |
+| timeout | **none exists** — the wait loop spins while pumping audio |
+
+**Deleting the printed "(default -6.0)" would have left the fallback fully intact**, and fixing only
+`validation.cpp` would have left the standalone `3` path calling the `.ino`'s own copy with
+`-6.0f`. **Recorded because it is exactly the kind of defect a text-only pass hides.**
+
+### `DECISION` — Group C scope, and an admitted boundary change
+
+1. **One authority:** `validation_promptExpectedOffset()` in the harness owns Test 3's numeric entry;
+   both the `v` suite and the standalone `3` path call it. **No default exists.** Bare Enter,
+   malformed, partially numeric and overlength input all **re-prompt**; explicit `0` parses as a real
+   value and is **not** used as the failure sentinel.
+2. **No new abort convention.** Consent/preflight stays the way to decline, *before* numeric entry.
+   No timeout, no `q`, no Escape added here.
+3. **`readSerialFloatWithAudioPump()` is untouched** — Test 4 still uses it, and its default is a
+   Group B decision.
+4. **⚠️ GROUP C IS NO LONGER TEXT-ONLY.** It changes serial-input behaviour, deliberately, to remove
+   the hidden default. Group A was provably token-identical; **this is not**, and the commit must say
+   so. Whether it compiles now or waits for the single planned compile/flash/identify cycle is a
+   separate decision.
+5. **Prompt wording:** the pad's position becomes **Rig Send → pad → Rig Return TS**, consistent with
+   Group A; the required input is the **expected installed SOURCE→RETURN offset for this powered
+   configuration, in the same route and PGA state as the test.**
+
+### 🔺 Finding 3 — the harness has NO post-consent operator cancellation, anywhere
+
+**`OBS`, code at `119a737`, from a read-only inventory of the harness's cancellation semantics:**
+
+- **`validation_waitForUser()` (`validation.cpp:471`) is the harness's ONLY operator-facing
+  cancellation mechanism, and it exists ONLY as a pre-test consent gate.** It prints
+  *"Press Enter (or 'y') to continue — any other key cancels"*, reads **one byte**, and returns a
+  `bool`: consent is `\r`, `\n`, `y`, `Y`; **any other byte declines.** All **nine** call sites —
+  five in `runAll()`, four in the `.ino` — are gates *before* a test starts.
+- **There is no established post-consent cancellation gesture anywhere in the validation harness.**
+  Not for parameter entry, not during collection. No `q`, no Escape, no timeout, no `validation_abort()`
+  — **no function of that or any similar name exists** in `validation.h`/`validation.cpp`.
+- **Collections are non-interruptible by the operator once started.** `collectFrames()` contains
+  **zero** `Serial.read`/`Serial.available` calls (counted, not estimated), and validation invocations
+  deliberately block the main loop (`guitar_rig_analyzer.ino:459`). Every "ABORT" string in the
+  harness is a **machine-detected** condition — collection timeout, `ROUTE_CHANGED` mid-collection
+  (5 sites), "no audio blocks in 2 s" — never an operator gesture.
+- **⚠️ The new Test 3 numeric-entry loop differs MATERIALLY from that existing behaviour, and is not
+  to be dismissed as equivalent.** Existing non-interruptible windows are **bounded** — a collection
+  runs ~3 s and ends. `validation_promptExpectedOffset()` **waits indefinitely** for a valid line. An
+  operator who consents and then finds they have no characterised value must send a syntactically
+  valid number or reset the session.
+- **Both Test 3 paths disclose the requirement BEFORE the consent gate**, so the operator has the
+  established opportunity to decline: the suite prompt states *"There is NO default and no nominal
+  fallback — an explicit value is required, so decline HERE if you do not have one"*, and the
+  standalone `3` prompt says the same. **Sequence, suite:** prompt → consent verdict → (decline ⇒
+  `suiteDeclined()`) → numeric entry. **Standalone `3`:** prompt → consent verdict → (decline ⇒
+  `break`) → `validation_preflightGate(true)`, several seconds of collection → numeric entry. **In the
+  standalone path the decision point is separated from the loop by the preflight**, which itself
+  offers no operator exit.
+
+### `DECISION` — post-consent cancellation DEFERRED to step 3, deliberately
+
+**Considered and NOT adopted for Group C:**
+
+1. **`bool validation_promptExpectedOffset(float* out_offset)`**, writing `*out` only on `true`, with
+   callers branching exactly as they already do for `validation_waitForUser()`. This is the correct
+   *representation* — it makes a cancellation structurally incapable of becoming a numeric
+   expectation, and a bare-`float` return cannot express cancellation without a sentinel the
+   estimator could consume. **It is recorded here as the preferred shape for whenever cancellation is
+   designed.**
+2. **Re-gating through `validation_waitForUser()` on invalid input.** It invents no new key, but it
+   **gives that function a second semantic role** — error recovery and cancellation *inside parameter
+   acquisition* — where today it is purely the pre-test consent gate.
+
+**Why deferred, not solved here:** either option would establish a **Test-3-specific post-consent
+cancellation behaviour** immediately before the harness-wide consent semantics are reconciled in
+**step 3 with TODO-48**, whose Proof line is already known to disagree with the implemented
+immediate-decline. **A local parser convenience must not set a harness-wide UX rule by accident.**
+
+**Deferred work, owned by step 3:** design post-consent operator cancellation **once, at harness
+level** — covering parameter entry and, if it is to exist at all, collection — rather than per test.
+**This finding is the reason Test 3's numeric loop ships non-abortable; it is a known, recorded gap,
+not an oversight.**
+
+### `OBS` — corrected Group C inventory: 7 locations, was 4
+
+`validation.cpp:1337` (fixture position) · `validation.cpp:1338–1341` (the −6.02 example **and** the
+prescribed DMM) · `validation.cpp:1347–1349` (the `-6.0f` default and its printed description) ·
+`guitar_rig_analyzer.ino:506–512` (duplicate prompt and default) · **newly found:**
+`validation.cpp:1019–1021` (implementation comment defining attenuation as the **unloaded**
+`20·log10(R2/(R1+R2))`) · `validation.cpp:1027` (prints the expectation at **0.1 dB** while
+`band_mean` prints at 0.01 dB) · `docs/breadboard_bringup_v3.md:1946, 1955` (runbook naming the
+nominal "6 dB" as the expectation).
+
+### Not done here
+
+**TODO-55/TODO-9 not updated. Groups B and D untouched. TODO-48's Proof line remains step 3.** Not
+compiled, not flashed. The board still runs `44c4680`, and Group A's prompts are already not on it.
+No bench action, no serial traffic.
+
+---
+
 ## 2026-09-22 (2) — **The 40 kΩ codec-input figure has NO source in this repository, and the 20 kΩ–∞ loading range is WITHDRAWN.** Test 4 fixture **topology frozen** at 1 kΩ + 100 nF film — **its operating corner is NOT frozen and is not 1591.5 Hz by default**
 
 ### Why this entry exists

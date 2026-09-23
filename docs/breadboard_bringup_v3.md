@@ -1943,7 +1943,7 @@ The current firmware in `signal_router.cpp` does both of these correctly; you've
 
 Just the firmware's existing `validation_runAll()`. Optional helpers:
 - A 1/4" TS loopback cable, Rig Send to Rig Return TS — for Tests 1 and 2.
-- A simple resistive pad (2× equal resistors, e.g., 10 kΩ series + 10 kΩ shunt = 6 dB) — for Test 3.
+- A resistive pad (2× 1% metal film, e.g. 10 kΩ series + 10 kΩ shunt), fitted externally: Rig Send → pad → Rig Return TS — for Test 3. Its **nominal** ratio is not the expected value; see below.
 - An RC filter (e.g., 10 kΩ + 10 nF — you have both — = 1.6 kHz corner) — for Test 4.
 
 ## Steps
@@ -1956,7 +1956,7 @@ Just the firmware's existing `validation_runAll()`. Optional helpers:
 |---|---|---|---|
 | `1` | Flat loopback | Source into J4 Instrument In; direct TS loopback from Rig Send to Rig Return TS. Never connect the source to SOURCE_NODE or any internal node | `tf_db[]` flat within tolerance, 200 Hz – 10 kHz |
 | `2` | Channel-swap symmetry | Same physical loopback; firmware re-binds channels mid-test | Asymmetry within tolerance |
-| `3` | Known gain offset | Insert a 6 dB resistive pad on the return path | Measured offset = expected ± tolerance |
+| `3` | Known gain offset | Fit the pad externally: Rig Send → pad → Rig Return TS. Enter the **expected installed SOURCE→RETURN offset**, characterised powered in this route/PGA state — **never** the unloaded 10k/10k nominal | Measured offset = expected ± tolerance |
 | `4` | Known RC filter | Insert RC low-pass on the return path | Slope + `tf_at_2fc` match expected |
 
 **3. Or run them all at once with `v`** — the firmware does a preflight level check first, then steps through all four.

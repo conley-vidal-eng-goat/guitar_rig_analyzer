@@ -1007,24 +1007,133 @@ addCriterion(&result, "Pass A peak-to-peak (< tol)",
 }
 
 
+// -----------------------------------------------------------------------------
+// validation_promptExpectedOffset() — Test 3's single entry authority.
+//
+// ADDED 2026-09-22 (journal (3)). Test 3 previously read its expectation with
+// readSerialFloatWithAudioPump(-6.0f) from TWO call sites, each carrying its own
+// -6.0 default. Bare Enter returned that default silently, and atof() turned
+// malformed input into 0.0 with no error — so the forbidden nominal could reach
+// the estimator without the operator typing it. This function is the only way
+// Test 3 obtains its expectation, and it has NO DEFAULT.
+//
+// Invalid input RE-PROMPTS: empty, malformed, partially numeric ("6dB"), or
+// longer than the buffer. An explicit "0" is a VALID entry — 0 is never used as
+// a parse-failure sentinel. Proper negatives are accepted.
+//
+// It deliberately adds NO abort convention: no timeout, no 'q', no Escape.
+// validation_waitForUser()'s consent prompt, which runs BEFORE this, remains the
+// place to decline. Audio is pumped while waiting, as the generic reader does.
+//
+// readSerialFloatWithAudioPump() is intentionally left unchanged — Test 4 still
+// uses it, and its default is a separate (Group B) decision.
+// -----------------------------------------------------------------------------
+float validation_promptExpectedOffset() {
+    char buf[32];
+
+    for (;;) {
+        Serial.print("[Validation] Expected installed SOURCE->RETURN offset, dB "
+                     "(no default, explicit value required): ");
+
+        uint8_t len       = 0;
+        bool    overlong  = false;
+        bool    done      = false;
+        AudioFrame discard;
+
+        while (!done) {
+            if (Serial.available()) {
+                char c = (char)Serial.read();
+                if (c == '\r') continue;
+                if (c == '\n') {
+                    done = true;
+                } else if (len < sizeof(buf) - 1) {
+                    buf[len++] = c;
+                } else {
+                    // Keep consuming to end-of-line so the overlong tail does not
+                    // become the next prompt's input, but reject the entry.
+                    overlong = true;
+                }
+            } else {
+                audioCap_update();
+                if (audioCap_isBlockFresh(AudioConsumer::LIVE)) {
+                    audioEngine_update(&discard);
+                }
+                delay(5);
+            }
+        }
+        buf[len] = '\0';
+
+        if (overlong) {
+            Serial.println("[Validation] INVALID: entry too long. Re-enter.");
+            continue;
+        }
+
+        // Trim surrounding whitespace before validating.
+        char*  start = buf;
+        while (*start == ' ' || *start == '\t') start++;
+        char*  end   = start + strlen(start);
+        while (end > start && (end[-1] == ' ' || end[-1] == '\t')) end--;
+        *end = '\0';
+
+        if (*start == '\0') {
+            Serial.println("[Validation] INVALID: no value entered. Test 3 has no "
+                           "default — an explicit expectation is required.");
+            continue;
+        }
+
+        // strtof reports where parsing stopped, which atof() cannot: this is what
+        // separates a real "0" from a malformed entry, and rejects "6dB".
+        char* parse_end = nullptr;
+        float value     = strtof(start, &parse_end);
+        if (parse_end != end) {
+            Serial.printf("[Validation] INVALID: '%s' is not a plain number. "
+                          "Re-enter.\n", start);
+            continue;
+        }
+        if (!isfinite(value)) {
+            Serial.println("[Validation] INVALID: value is not finite. Re-enter.");
+            continue;
+        }
+
+        Serial.printf("[Validation] Using expected offset: %+.2f dB\n", value);
+        return value;
+    }
+}
+
+
 // =============================================================================
 // TEST 3: KNOWN GAIN OFFSET
 // =============================================================================
-// Setup: fixed resistive voltage divider (1% metal film resistors) inserted
-// between the signal source and RETURN_NODE input. Use fixed resistors, NOT a
+// Setup: fixed resistive voltage divider (1% metal film resistors) fitted
+// EXTERNALLY in the return path: Rig Send -> pad -> Rig Return TS. Use fixed resistors, NOT a
 // potentiometer — a pot's source impedance varies with setting and produces
 // frequency-dependent loading that causes the flatness criterion to fail even
 // when everything is working correctly.
 //
-// Calculate attenuation: Att_dB = 20 * log10(R2 / (R1 + R2))
-// Example: R1=10kΩ, R2=10kΩ → –6.02 dB. Keep both resistors below 10kΩ
-// to keep source impedance low enough to avoid cable capacitance rolloff.
+// WHAT THIS TEST ACTUALLY COMPARES (corrected 2026-09-22, journal (3)):
+// expected_offset_db is checked against band_mean -- the mean over
+// VALIDATION_FREQ_MIN..MAX of 20*log10(mean_return[k] / mean_source[k]).
+// SOURCE and RETURN are TWO DIFFERENT ADC CHANNELS (LINE-IN-L ch0 and
+// LINE-IN-R ch1), so band_mean is the COMPLETE INSTALLED SOURCE->RETURN
+// TRANSFER OFFSET. It contains at least three terms:
+//   1. the pad's LOADED ratio, (R2 || Z_in) / (R1 + R2 || Z_in);
+//   2. any channel-to-channel gain mismatch between the two PGAs/paths;
+//   3. losses in the send/return wiring, connectors and relay contacts.
+//
+// The unloaded ideal 20*log10(R2 / (R1 + R2)) -- -6.02 dB for 10k/10k -- is
+// therefore NOT the quantity this test consumes, and must never be entered as
+// the expectation. Z_in is unverified (journal 2026-09-22 (2)); no value for it
+// is assumed here. How the operator characterises the offset is deliberately
+// NOT prescribed: no validated procedure exists yet.
+//
+// Keep both resistors below 10kΩ to keep source impedance low enough to avoid
+// cable capacitance rolloff.
 // =============================================================================
 ValidationResult validation_runKnownGainOffset(float expected_offset_db) {
 ValidationResult result;
 initResult(&result, "Known Gain Offset");
 Serial.println("\n[Validation] Test 3: Known Gain Offset");
-Serial.printf ("[Validation] Expected TF: %+.1f dB flat\n", expected_offset_db);
+Serial.printf ("[Validation] Expected TF: %+.2f dB flat\n", expected_offset_db);
 presentation_status("VALIDATION 3: Gain offset — collecting...");
 
 
@@ -1045,7 +1154,7 @@ float band_mean, band_pp, band_min, band_max;
 computeBandStats(stats.mean_tf, &band_mean, &band_pp, &band_min, &band_max);
 
 
-Serial.printf("[Validation] Measured mean: %+.2f dB       expected: %+.1f dB   "
+Serial.printf("[Validation] Measured mean: %+.2f dB       expected: %+.2f dB   "
                  "error: %+.2f dB\n",
                  band_mean, expected_offset_db, band_mean - expected_offset_db);
 
@@ -1334,20 +1443,21 @@ if (validation_runChannelSwapSymmetry().all_passed) passed++;
 // --- Test 3: Known Gain Offset ---
 if (!validation_waitForUser(
     "TEST 3: Known Gain Offset\n"
-    "Insert a fixed resistive voltage divider in the RETURN_NODE path.\n"
+    "Fit the resistive divider EXTERNALLY: Rig Send → pad → Rig Return TS.\n"
     "Use 1% metal film resistors — NOT a potentiometer.\n"
-    "Example: R1=10kΩ, R2=10kΩ → attenuation = –6.02 dB\n"
-    "Verify the attenuation with a DMM (measure Vout/Vin ratio).\n"
     "Keep both resistors ≤10kΩ to avoid HF rolloff from cable capacitance.\n"
-    "Enter the expected offset in dB, then press Enter.")) {
+    "\n"
+    "You will be asked for the EXPECTED INSTALLED SOURCE→RETURN OFFSET:\n"
+    "the offset of the whole path as this test measures it, characterised\n"
+    "with the analyzer POWERED and in THIS route and PGA state.\n"
+    "It is NOT the unloaded divider ratio (10k/10k is NOT –6.02 dB here).\n"
+    "There is NO default and no nominal fallback — an explicit value is\n"
+    "required, so decline HERE if you do not have one.")) {
     return suiteDeclined();
 }
 
 
-float expected_offset = -6.0f;
-Serial.print("[Validation] Enter expected offset dB (default -6.0): ");
-expected_offset = readSerialFloatWithAudioPump(expected_offset);
-Serial.printf("[Validation] Using: %+.1f dB\n", expected_offset);
+float expected_offset = validation_promptExpectedOffset();
 
 
 if (validation_runKnownGainOffset(expected_offset).all_passed) passed++;

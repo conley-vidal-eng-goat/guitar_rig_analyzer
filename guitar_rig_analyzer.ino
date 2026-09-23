@@ -505,12 +505,16 @@ void loop() {
                    validation_runChannelSwapSymmetry();
                    break;
                case '3': {
-                   if (!validation_waitForUser("Test 3: Insert resistive pad in" " " "RETURN_NODE path.\n"
-                                               "Enter expected attenuation (e.g. -6.0)" " " "then press Enter.")) break;
+                   if (!validation_waitForUser("Test 3: fit the pad EXTERNALLY," " "
+                                               "Rig Send -> pad -> Rig Return TS.\n"
+                                               "You will be asked for the expected" " "
+                                               "installed SOURCE->RETURN offset,\n"
+                                               "characterised powered in THIS route" " "
+                                               "and PGA state. No default exists,\n"
+                                               "so decline here if you do not have" " "
+                                               "one.")) break;
                    if (!validation_preflightGate(true)) break;
-                   Serial.print("Expected offset dB: ");
-                   float off = readSerialFloatWithAudioPump(-6.0f);
-                   validation_runKnownGainOffset(off);
+                   validation_runKnownGainOffset(validation_promptExpectedOffset());
                    break;
                }
                case '4': {
