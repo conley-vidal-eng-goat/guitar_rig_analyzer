@@ -12,6 +12,74 @@ How to use this file:
 
 ---
 
+## 2026-09-22 (5) — Step-2 records reconciliation. **Three implementation defects closed; every validation gate still open.** Documentation and compile evidence is NOT hardware evidence
+
+### What this entry closes, and what it deliberately does not
+
+**Records only** — `ai/todo.md` and this file. No firmware, no runbook, no source. Phase 9 step 2 is
+**partly** done: Groups A, C and D are committed; **Group B (Test 4) is untouched and still blocks
+Phase 9.**
+
+| Group | Commit | What it fixed |
+|---|---|---|
+| **A** | `119a737` | The external-generator/`SOURCE_NODE` contention hazard. Text only, token-identical |
+| **C** | `8878bb4` | Test 3's nominal −6.02 dB and the `-6.0` default hidden in the serial parser |
+| **D** | `cec814a` | Acceptance-run-driven tolerance-tightening advice |
+
+**⚠️ The line this pass exists to hold: none of that is validation evidence.** Three commits of
+corrected text and compiled behaviour, **none flashed, none run.** **Tests 1 and 2 have never been
+run on hardware through the validation harness; no retained output constitutes a valid Test 1 or
+Test 2 acceptance run.** Logs from 2026-09-05/07/13/19 exist and remain useful for what they
+actually recorded — they are simply not acceptance runs. **Preparatory work must not be converted
+into evidence by the act of recording it.**
+
+### `DECISION` — status after reconciliation
+
+- **TODO-55 → 🛑 Phase 9 instructions STILL BLOCKED**, not downgraded to 🟡. The header now separates
+  **RESOLVED** (the contention hazard, `119a737`) from **STILL BLOCKED** (Test 4's text, its
+  `1989.0f` default, its defective criterion 1, and the TODO-48 reconciliation that follows).
+  **Status communicates operational readiness, not the severity of the original defect** — an
+  operator following the Test 4 text today would still build the abandoned fixture.
+- **TODO-9 → 🔴 blocked, unchanged.** Its Proof still requires `1`, `2`, `3`, `4` to actually PASS.
+  Stale gate language is corrected: the fixture instructions are no longer "electrically unsafe",
+  the parts row records Test 3 decided and Test 4's topology frozen, and **`b275852` is no longer the
+  flash target** — the accumulated set runs through `cec814a`, plus Group B.
+- **TODO-16 → 🔴 open. Goal preserved, mechanism reversed.** It may no longer say "after Phase 9
+  passes, tighten based on observed headroom". A revision is now a **separate, justified design
+  decision, journalled and frozen before the next acceptance run**, with evidence from
+  characterisation runs. **`cec814a` did not close it:** Group D removed the bad mechanism; it did
+  not do the characterisation.
+- **TODO-48** — scope/state note only; the Proof reconciliation is **not** done. Records that newer
+  unflashed commits sit above `399e54b`, and that step 3 now also owns **harness-level post-consent
+  cancellation**.
+- **TODO-52** — its Y-split reference is **preserved and marked HISTORICAL**, with a note that the
+  cleared finding still applies to the loop, which uses the same tip.
+
+### 🔑 The inventory-discovery pattern — worth carrying forward
+
+**Every one of the three groups was undercounted when inventoried by reading, and corrected by an
+exhaustive mechanical search before editing:**
+
+| Group | Inventoried by reading | Found by exhaustive search | What the extra locations were |
+|---|---|---|---|
+| **A** | 8 | **15** | implementation comments, the `validation.h` preflight-gate contract, a README step, the runbook's Test 2 row |
+| **C** | 4 | **7** | the `20·log10(R2/(R1+R2))` definition comment, a 0.1 dB print precision, a second runbook site |
+| **D** | 2 | **8 + 1** | the `validation.h` "NOTE ON TIGHTENING" recipe, three comment sites, README, and a dangling `measurement_core.h` reference |
+
+**The counts are recorded as discovery history, not retconned.** The pattern is the finding:
+**reading found the conceptual defects; only mechanical search revealed how far each assumption had
+propagated.** In every case the extra locations were *developer-facing* — comments, contracts,
+README — which is exactly where a stale assumption survives a prompt-only fix and re-infects the
+next change. **Group D's extra locations included a concrete retuning recipe (≈2× the measured
+values) that the two known sites would have left in place.**
+
+### Not done here
+
+**Group B not drafted. TODO-48's Proof not reconciled. Nothing compiled, flashed or run.** The board
+still runs `44c4680`. No bench action, no serial traffic.
+
+---
+
 ## 2026-09-22 (4) — **audit-9's "tighten the tolerances" advisory REMOVED.** It let an acceptance run recommend moving the boundary it had just been judged against. Group D drafted
 
 ### Why this entry exists — and why the reversal is worth keeping visible
