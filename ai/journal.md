@@ -12,6 +12,110 @@ How to use this file:
 
 ---
 
+## 2026-09-22 (6) — **The "finish Group B, then flash once" plan is CIRCULAR and is abandoned.** New sequence: an **evidence-enabling intermediate build**, not acceptance firmware. The 100 nF film capacitor is a **validation-fixture** dependency, NOT a breadboard blocker. Critical path re-prioritised to the Pi/UI end-to-end demonstration
+
+### Why the old sequence became impossible
+
+The handoff sequence was: reconcile all Phase 9 text → **one** compile/flash/identify → TODO-48
+runtime check → build and measure fixtures → Phase 9. That assumed the text could be finished before
+flashing. **For Test 4 it cannot:**
+
+```
+Group B (Test 4 text/default/criterion)
+    needs the frozen operating corner and tolerance
+        needs Test 4 characterisation collections
+            needs the fixture built AND a flashed, identified build
+        the corner also needs the measured passband loss L
+            needs a Test 1 collection to compare against
+                needs a flashed, identified build
+```
+
+**Waiting for Group B before flashing prevents collecting the evidence Group B requires.** The
+dependency is inverted for Test 4 and only for Test 4; Groups A, C and D were genuinely finishable
+first, and they are (`119a737`, `8878bb4`, `cec814a`).
+
+### 🔺 The first flash is NOT the Phase 9 acceptance firmware
+
+**Recorded explicitly so the history cannot be misread later.** The build that goes on the board next
+is an **EVIDENCE-ENABLING INTERMEDIATE STATE**: it contains A/C/D and **knowingly still contains
+Group B's defects** — the `1989.0f` default, the 10 k/10 n prompt text, and criterion 1's one-sided
+rule that cannot reject a corner that is too low.
+
+- **⚠️ Test 4's PASS/FAIL banner is METHODOLOGICALLY INVALID in this state and counts for nothing.**
+  Its criterion is known defective. **What IS usable is its reported raw quantities** — passband
+  mean, TF at 2·fc, delta — because those are measurements, not verdicts. **Never record a Test 4
+  PASS from this build as acceptance evidence.**
+- **Characterisation data and acceptance data must stay separately labelled**, per the
+  frozen-before-acceptance invariant (entry (2), decision 5).
+
+### The revised sequence
+
+1. **Acquire the 100 nF film capacitor; measure R and C independently** when the fixture stage is
+   reached.
+2. **Compile HEAD as one integrated state** before flashing. C and D were compile-verified
+   individually; the accumulated state has not been built as a whole.
+3. **Flash and IMMEDIATELY identify** — record commit, build stamp and hex MD5, and establish that
+   the board is no longer running `44c4680`.
+4. **TODO-48 runtime/preflight work BEFORE using the harness for characterisation.** Group C's
+   `validation_promptExpectedOffset()` has **never been runtime-tested** — compiling is not
+   evidence that it rejects `6dB`, accepts `0`, or handles overlength input. **Do not go from
+   "it compiled" to trusting the harness.**
+5. **Bring up Test 1** on the corrected external loopback. **This is evidence collection, not
+   permission to declare Phase 9 passed.**
+6. **Build and independently characterise the Test 4 fixture** — measured R and C, installed and
+   powered, and whatever is needed to validate **or reject** the proposed passband-loss method.
+7. **Run characterisation collections, NOT Test 4 acceptance:** establish the operational corner from
+   fixture/chain evidence, and collect repeated delta values for run-to-run spread.
+8. **Freeze and journal the Test 4 design** — operational corner, model-derived expected delta,
+   tolerance, slope correction. **This is where ±1.00 dB survives or changes**, on pre-freeze
+   evidence.
+9. **Draft Group B from those frozen values.**
+10. **Compile, commit, flash, verify.** **Only then** can step 2 / TODO-55 close and real Phase 9
+    acceptance proceed.
+
+**🔑 On Test 1 at step 5:** it does **not** have to PASS to serve as characterisation evidence. What
+must be established is that its **collection is technically valid** and what it actually measures. **A
+legitimate Test 1 failure may reveal a real hardware or system problem that must be fixed before
+Test 4 characterisation. Test 1 is NOT to be tuned until it passes** — that is precisely the
+acceptance-boundary defect removed in `cec814a`.
+
+### `DECISION` — the 100 nF film capacitor is a VALIDATION-FIXTURE dependency, not a build blocker
+
+**The capacitor belongs to an external reference fixture used to prove measurement accuracy. It is
+not part of the permanent analyzer signal path.** Therefore:
+
+- **Breadboard construction continues to completion with the permanent hardware.** **Do NOT fit a
+  substitute capacitor** to satisfy Test 4 — a wrong dielectric is exactly the defect the fixture
+  design exists to avoid.
+- **Test 4 / Group B → DEFERRED, pending an external characterisation-fixture component.**
+- **Phase 9 overall remains incomplete**, and **breadboard SIGN-OFF (TODO-10) still requires it.**
+  **Construction complete ≠ signed off ≠ validated.** Those three are now tracked separately and must
+  not be collapsed.
+
+### `DECISION` — critical path re-prioritised for the 2026-11-01 Maker Portfolio deadline
+
+**The temporary calibration fixture must not sit on the critical path to the instrument.** New order:
+
+**finish the permanent breadboard → stable firmware/runtime → Teensy↔Pi protocol → Pi production UI
+→ real end-to-end measurement demonstration → enclosure/presentation**, with **Test 4 characterisation
+running as a PARALLEL validation track.**
+
+- **The Pi UI is to be driven by REAL Teensy measurements — not canned data.** Nothing in the Pi path
+  depends on the Test 4 fixture.
+- **The distinction to preserve everywhere, including the portfolio: a working prototype is not a
+  fully characterised measurement instrument.** The honest version is the stronger story — a
+  weakness was found in the original validation methodology, a convenient PASS was refused, the
+  reference fixture was redesigned, and final quantitative characterisation is gated on the correct
+  component and the right evidence.
+
+### Not done here
+
+**Records only.** No firmware, no runbook, no compile, no flash, no serial traffic, no bench action.
+**Group B not drafted.** The board still runs `44c4680`. *(Runbook note, not edited: the Phase 9
+parts tray still lists the 1 nF C0G as "optional — RC filter calibration", which Group B supersedes.)*
+
+---
+
 ## 2026-09-22 (5) — Step-2 records reconciliation. **Three implementation defects closed; every validation gate still open.** Documentation and compile evidence is NOT hardware evidence
 
 ### What this entry closes, and what it deliberately does not
