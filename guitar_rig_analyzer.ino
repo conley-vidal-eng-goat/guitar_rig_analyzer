@@ -493,12 +493,14 @@ void loop() {
                // filter), and gating those on preflight's RETURN level window
                // would fail a correct fixture. See validation.h.
                case '1':
-                   if (!validation_waitForUser("Test 1: Connect Y-split loopback, then" " " "press Enter.")) break;
+                   if (!validation_waitForUser("Test 1: Source to J4 Instrument In;" " "
+                                               "fit the Rig Send to Rig Return TS" " "
+                                               "loopback, then press Enter.")) break;
                    if (!validation_preflightGate(false)) break;
                    validation_runFlatLoopback();
                    break;
                case '2':
-                   if (!validation_waitForUser("Test 2: Keep Y-split loopback, press" " " "Enter.")) break;
+                   if (!validation_waitForUser("Test 2: Keep the Rig Send to Rig Return TS" " " "loopback, press Enter.")) break;
                    if (!validation_preflightGate(false)) break;
                    validation_runChannelSwapSymmetry();
                    break;

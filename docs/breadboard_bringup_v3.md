@@ -1942,7 +1942,7 @@ The current firmware in `signal_router.cpp` does both of these correctly; you've
 ## Parts tray
 
 Just the firmware's existing `validation_runAll()`. Optional helpers:
-- A Y-split 1/4" TS cable (or two 1/4" plugs + a short wire) — for Test 1.
+- A 1/4" TS loopback cable, Rig Send to Rig Return TS — for Tests 1 and 2.
 - A simple resistive pad (2× equal resistors, e.g., 10 kΩ series + 10 kΩ shunt = 6 dB) — for Test 3.
 - An RC filter (e.g., 10 kΩ + 10 nF — you have both — = 1.6 kHz corner) — for Test 4.
 
@@ -1954,8 +1954,8 @@ Just the firmware's existing `validation_runAll()`. Optional helpers:
 
 | Key | Test | Setup | Pass criterion |
 |---|---|---|---|
-| `1` | Flat loopback | Y-split so Instrument In + Rig Send are joined, and Rig Return TS receives the same node | `tf_db[]` flat within tolerance, 200 Hz – 10 kHz |
-| `2` | Channel-swap symmetry | Same physical Y-split; firmware re-binds channels mid-test | Asymmetry within tolerance |
+| `1` | Flat loopback | Source into J4 Instrument In; direct TS loopback from Rig Send to Rig Return TS. Never connect the source to SOURCE_NODE or any internal node | `tf_db[]` flat within tolerance, 200 Hz – 10 kHz |
+| `2` | Channel-swap symmetry | Same physical loopback; firmware re-binds channels mid-test | Asymmetry within tolerance |
 | `3` | Known gain offset | Insert a 6 dB resistive pad on the return path | Measured offset = expected ± tolerance |
 | `4` | Known RC filter | Insert RC low-pass on the return path | Slope + `tf_at_2fc` match expected |
 

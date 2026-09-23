@@ -330,8 +330,9 @@ bool validation_waitForUser(const char* prompt);
 // Every entry point now gates on this function.
 //
 // return_is_attenuated:
-//   false — plain Y-split fixture (preflight, test 1, test 2). SOURCE and
-//           RETURN carry the same signal, so the FULL preflight applies.
+//   false — plain loopback fixture, Rig Send -> Rig Return TS (preflight,
+//           test 1, test 2). SOURCE and RETURN carry the same signal, so
+//           the FULL preflight applies.
 //   true  — test 3 (resistive pad) and test 4 (RC low-pass). These fixtures
 //           attenuate RETURN BY DESIGN, and preflight requires RETURN inside a
 //           6 dB-wide window. Gating on the RETURN criteria would fail a

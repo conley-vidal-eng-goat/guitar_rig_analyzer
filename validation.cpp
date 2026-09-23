@@ -673,10 +673,10 @@ addCriterion(&result, "Source-to-gate gap (> min)",
 // same check.
 //
 // THE FIXTURE PROBLEM, and why this gate takes a parameter:
-// runAll() runs preflight ONCE, against the plain Y-split, where SOURCE and
-// RETURN carry the SAME signal. Tests 3 and 4 then DELIBERATELY attenuate
-// RETURN (a 6 dB pad; an RC low-pass). Preflight requires RETURN to sit inside
-// a 6 dB-wide window (VALIDATION_TARGET_LEVEL_MIN/MAX_DBFS = -12 .. -6 dBFS)
+// runAll() runs preflight ONCE, against the plain Rig Send -> Rig Return TS
+// loopback, where SOURCE and RETURN carry the SAME signal. Tests 3 and 4
+// then DELIBERATELY attenuate RETURN (a 6 dB pad; an RC low-pass).
+// Preflight requires RETURN to sit inside a 6 dB-wide window (VALIDATION_TARGET_LEVEL_MIN/MAX_DBFS = -12 .. -6 dBFS)
 // and to clear TF_SOURCE_GATE by VALIDATION_GATE_GAP_MIN_DB.
 //
 // So running the FULL preflight before a single test 3 or 4 would FAIL on a
@@ -741,8 +741,11 @@ bool validation_preflightGate(bool return_is_attenuated) {
 // =============================================================================
 // TEST 1: FLAT LOOPBACK
 // =============================================================================
-// Setup: same broadband bench signal (pink noise or white noise from a signal
-// generator or DAW output) Y-split to both SOURCE_NODE and RETURN_NODE inputs.
+// Setup: broadband bench signal (pink noise or white noise from a signal
+// generator or DAW output) into J4 Instrument In, through the existing input
+// buffer, out of Rig Send, and back through a direct loopback cable into
+// Rig Return TS. The external source is NEVER connected to SOURCE_NODE,
+// RETURN_NODE or any other internal node.
 // Guitar signal is NOT acceptable — it is narrowband and varies between runs.
 //
 // Expected result: TF ≈ 0 dB flat across the analysis band.
@@ -836,7 +839,8 @@ Serial.printf("[Validation] Confidence: %.1f%%     NaN bins: %d/%d\n",
 // =============================================================================
 // TEST 2: CHANNEL SWAP SYMMETRY
 // =============================================================================
-// Setup: same Y-split loopback as Test 1. Same broadband bench stimulus.
+// Setup: same Rig Send -> Rig Return TS loopback as Test 1. Same broadband
+// bench stimulus.
 // This test runs two independent collections: Pass A (default route) and
 // Pass B (nodes swapped). The symmetry test does NOT read from Test 1's
 // result — it collects its own data so that the comparison is self-contained
@@ -1283,12 +1287,14 @@ bool validation_runAll() {
 if (!validation_waitForUser(
     "PREFLIGHT: Signal Level Check\n"
     "Connect your broadband signal source (signal generator set to\n"
-    "pink noise or white noise, ~0.3 Vrms / –10 dBV) to SOURCE_NODE.\n"
-    "Connect the same source to RETURN_NODE (Y-split).\n"
+    "pink noise or white noise, ~0.3 Vrms / –10 dBV) to J4 INSTRUMENT IN.\n"
+    "Fit a direct loopback cable from RIG SEND to RIG RETURN TS.\n"
+    "Do NOT connect the source to SOURCE_NODE, RETURN_NODE or any other\n"
+    "internal breadboard node.\n"
     "Press Enter to check that levels are in the –6 to –12 dBFS window.")) {
     return suiteDeclined();
 }
-// Y-split fixture: SOURCE and RETURN carry the same signal, so the full
+// Loopback fixture: SOURCE and RETURN carry the same signal, so the full
 // preflight applies (return_is_attenuated = false).
 if (validation_preflightGate(false)) {
     passed++;
@@ -1304,9 +1310,10 @@ if (validation_preflightGate(false)) {
 // CHANGED [audit-7]: "play guitar" removed. Broadband bench source required.
 if (!validation_waitForUser(
     "TEST 1: Flat Loopback\n"
-    "Keep the Y-split connection from the preflight check.\n"
+    "Keep the Instrument In feed and the Rig Send to Rig Return TS\n"
+    "loopback from the preflight check.\n"
     "Stimulus: pink noise or white noise from signal generator or DAW.\n"
-    "Both SOURCE_NODE and RETURN_NODE receive the SAME signal.\n"
+    "SOURCE (ch0) and RETURN (ch1) then measure the SAME signal.\n"
     "Press Enter to begin collection.")) {
     return suiteDeclined();
 }
@@ -1316,7 +1323,7 @@ if (validation_runFlatLoopback().all_passed) passed++;
 // --- Test 2: Channel Swap Symmetry ---
 if (!validation_waitForUser(
     "TEST 2: Channel Swap Symmetry\n"
-    "Keep the same Y-split loopback connection and same stimulus.\n"
+    "Keep the same Rig Send to Rig Return TS loopback and same stimulus.\n"
     "The firmware will automatically swap and restore the route.\n"
     "Press Enter to begin.")) {
     return suiteDeclined();

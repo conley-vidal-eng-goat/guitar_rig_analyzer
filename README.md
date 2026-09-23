@@ -154,7 +154,7 @@ Verified by `arduino-cli compile -v`: the Adafruit RA8875 / GFX / BusIO librarie
 - **microSD card** in the Teensy 4.1's SDIO slot.
 - **Arduino IDE 2.x** with **Teensyduino** installed, or **`arduino-cli`** with the Teensy core.
 - USB cable to the Teensy.
-- Optional but recommended for validation: a Y-split TS loopback cable and a resistive pad / RC filter known reference (see `validation_runAll()` test list).
+- Optional but recommended for validation: a TS loopback cable (Rig Send to Rig Return TS) and a resistive pad / RC filter known reference (see `validation_runAll()` test list).
 
 ## Setup
 
@@ -231,7 +231,7 @@ Single-key commands do not require a newline; numeric follow-up prompts do ([gui
 | Key | Action |
 |---|---|
 | `v` / `V` | Run full validation suite (`validation_runAll()`). |
-| `1` | Test 1 — flat loopback (Y-split). |
+| `1` | Test 1 — flat loopback (Rig Send to Rig Return TS). |
 | `2` | Test 2 — channel-swap symmetry. |
 | `3` | Test 3 — known gain offset (prompts for expected dB). |
 | `4` | Test 4 — known RC filter (prompts for corner Hz). |
@@ -249,7 +249,7 @@ Single-key commands do not require a newline; numeric follow-up prompts do ([gui
 
 There is no host-side test framework. Verification is done **on hardware** via the validation harness in [validation.cpp](validation.cpp):
 
-1. **Test 1 — Flat loopback.** Connect a Y-split TS loopback so SOURCE_NODE feeds back into RETURN_NODE. Expect `tf_db[]` flat within tolerance over 200 Hz – 10 kHz.
+1. **Test 1 — Flat loopback.** Feed the broadband source into J4 Instrument In and fit a direct TS loopback from Rig Send to Rig Return TS; the external source is never connected to an internal node. Expect `tf_db[]` flat within tolerance over 200 Hz – 10 kHz.
 2. **Test 2 — Channel-swap symmetry.** Same physical setup; firmware swaps the channel binding via `audioEngine_setRoute()` and re-measures. Asymmetry indicates a per-channel gain error.
 3. **Test 3 — Known gain offset.** Insert a resistive pad of known attenuation in the RETURN_NODE path; firmware compares measured offset against the user-supplied expected value.
 4. **Test 4 — Known RC filter.** Insert an RC low-pass of known corner frequency; firmware checks slope and `tf_at_2fc`.
