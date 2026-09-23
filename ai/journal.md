@@ -12,6 +12,110 @@ How to use this file:
 
 ---
 
+## 2026-09-22 (1) — Test 4's attenuation criterion is **one-sided: it cannot reject a corner that is too LOW.** Model-derived replacement proposed. Fixture candidate 1 kΩ + 100 nF film — **candidate, NOT a specification. No code changed**
+
+### Observed — `OBS (code)`, read from the tree at `e88f6a4`
+
+- Test 4 applies four criteria ([`validation.cpp:1097–1237`](../validation.cpp#L1097-L1237)): **delta at 2·fc**
+  versus the 200 Hz–fc passband mean must be `< -4.0 dB`; **slope** over [fc, 10 kHz] must be within
+  `2.0 dB/oct` of an expected value; **confidence**; and **≤ 5 monotonicity bumps** over 0.5 dB
+  (`validation.h:191–194`).
+- **The expected slope is hardcoded `-6.0f`** at both call sites — `guitar_rig_analyzer.ino:520` and
+  `validation.cpp:1377`. **The operator enters only the corner.**
+- Bin spacing is **43.0664 Hz** (44100 / 1024); `audioEngine_hzToBin()` rounds to the nearest bin.
+- **Criterion 1 is an inequality, not a window.** Criterion 2 compares the fit against an asymptote
+  that its own window never reaches, because the window starts *at* the corner.
+
+### Modelled — `MODEL`, ideal first-order response evaluated through the code's own bin selection
+
+Model: `TF(f) = -10·log10(1 + (f/fc_true)²)` sampled at `k·43.0664 Hz`, with the passband mean taken
+over exactly the bins `200 Hz ≤ f < fc_entered` and the 2·fc value read from `hzToBin(2·fc_entered)`
+— the same selection the implementation uses. Entered corner 1591.5 Hz.
+
+| fc_true / fc_entered | true fc | passband mean | TF at 2·fc | **delta** | slope | slope err vs −6 |
+|---|---|---|---|---|---|---|
+| **0.10** | 159.2 Hz | — | — | **−11.953** | −6.010 | **0.010** |
+| 0.25 | 397.9 Hz | −7.285 | −18.140 | **−10.855** | −5.954 | 0.046 |
+| 0.50 | 795.8 Hz | −3.483 | −12.315 | **−8.831** | −5.770 | 0.230 |
+| 0.75 | 1193.6 Hz | −2.001 | −9.100 | **−7.099** | −5.502 | 0.498 |
+| **1.00** | 1591.5 Hz | −1.278 | −6.998 | **−5.718** | −5.184 | 0.816 |
+| 1.25 | 1989.4 Hz | −0.878 | −5.522 | **−4.644** | −4.847 | 1.153 |
+| 1.50 | 2387.2 Hz | −0.637 | −4.444 | **−3.807** | −4.509 | 1.491 |
+| 2.00 | 3183.0 Hz | −0.375 | −3.016 | **−2.640** | −3.872 | 2.128 |
+
+- **For a correct fixture the expected delta is −5.72 dB, not −6.99 dB.** The theoretical −6.99 is
+  referenced to DC; the code's reference is a passband mean that is itself **−1.278 dB** down.
+- **The expected delta is not a constant** — **−5.507 dB** at fc 796 Hz, **−5.718** at 1592,
+  **−5.754** at 2341 — because the fixed 200 Hz passband floor sits differently against each corner.
+- **A corner that is too LOW is never rejected.** At **0.5×** every criterion passes (delta −8.83,
+  comfortably `< -4`; slope error 0.230). **The extended sweep continues to accept every ratio down
+  to 0.10×**, the lowest modelled: delta **−11.953** (passes `< -4`), slope **−6.010** — an error of
+  **0.010 dB/oct**, i.e. a wildly wrong corner scores a *better* slope than the correct one — and
+  **0** monotonicity bumps. The 0.10×, 0.15× and 0.25× rows were computed in the same extended sweep
+  as the table above; the 0.10× row is included here so the claim rests on displayed evidence.
+- A corner that is too **high** is rejected only at about **1.4×** and above.
+- **Sensitivity near the correct corner: 0.049 dB per 1 % of corner error**, near symmetric.
+- **The slope criterion discriminates weakly.** Re-centred on its own model value (−5.184), the error
+  is **0.337** dB/oct at a 25 % corner error and **1.313** at 2× — far weaker than criterion 1.
+- **Bin quantization is not a factor:** 2·fc lands at 3186.91 Hz against 3183.0 requested, ≈ 0.004 dB.
+- **Fixture candidate behaviour.** 1 kΩ + 100 nF moves the corner **5.0 %** across Z_in 20 kΩ→∞
+  (1591.5 → 1671 Hz), against **50 %** for the old 10 kΩ + 10 nF (1592 → 2387 Hz). Passband insertion
+  loss −0.42 dB at Z_in 20 kΩ. Peak monotonicity step **0.117 dB**, well inside the 0.5 dB limit.
+  32 passband bins, 196 fit bins.
+
+**Two-sided window candidates**, centred on the model value:
+
+| Window | Accepts fc_true / fc_entered | Rejects |
+|---|---|---|
+| ±0.50 dB | 0.902 – 1.108 | > 10 % low, > 11 % high |
+| **±1.00 dB** | **0.813 – 1.230** | **> 19 % low, > 23 % high** |
+| ±1.50 dB | 0.731 – 1.369 | > 27 % low, > 37 % high |
+
+### Decisions — `DECISION`
+
+1. **Fix criterion 1.** A PASS must support the claim that *the analyzer identified the known
+   response*. A criterion that accepts a 0.5× — or 0.1× — corner cannot support it. Independent
+   capacitance measurement characterises the **fixture**; it is not a substitute for a validation
+   rule that can reject a wrong **measurement**.
+2. **The expected delta is computed, never a constant** — derived from the entered corner over the
+   same bins and the same passband averaging the measurement itself uses. A hardcoded number would be
+   wrong at every corner but one (−5.507 vs −5.754 across the candidate range).
+3. **Two-sided tolerance, provisionally ±1.00 dB — ⚠️ NOT FROZEN.** The model establishes that
+   ±1.00 dB has the discrimination wanted (rejects > 19 % low / > 23 % high, with the fixture's own
+   ~6 % corner uncertainty spending only ~0.3 dB). **The model cannot establish that the real
+   measurement chain has the remaining ~0.7 dB of headroom.** Freezing it now would promote an
+   engineering assumption to an acceptance criterion. **Next step is to examine the EXISTING
+   Tests 1–2 evidence for real bin-to-bin spread. Tests 1–2 are NOT to be rerun to obtain it** unless
+   the existing evidence is proven insufficient *and* a test is separately authorised. Fallback if
+   the spread is worse than assumed: ±1.50 dB, accepting that it tolerates a 27 % corner error.
+4. **Slope stays a shape/sanity criterion** and is **not** promoted to a quantitative corner check:
+   no noise-survivable tolerance on it beats criterion 1. It should be **re-centred on the
+   model-derived expectation** so a correct fixture does not begin 0.816 dB/oct into its own
+   tolerance. Its job is catching a non-first-order fixture, a wiring error or a dead HF band.
+5. **Fixture candidate: 1 kΩ 1 % metal film + 100 nF film, ±5 % or better** — nominal 1591.5 Hz
+   unloaded, 1631–1671 Hz loaded. **Candidate, NOT a specification.** The corner will be computed
+   from the **measured** R and C with the MM420's stated accuracy recorded. The specification cannot
+   close until measured R/C, meter uncertainty, codec loading and the final harness tolerance are all
+   closed.
+
+### Implementation plan — `DECISION`, not yet executed
+
+**The criterion-1 change and the Phase 9 operator-facing text reconciliation are to be prepared
+together and land in ONE compile / flash / identify cycle.** Shipping the criterion change alone
+would create an intermediate build whose Test 4 semantics and operator instructions disagree — the
+same class of defect TODO-55 exists to remove. **The two remain logically distinguishable** in the
+commit and diff (criterion/threshold logic separate from prompt and default text), so either can be
+reviewed or reverted on its own. Sequence is unchanged: freeze the tolerance → write both changes →
+compile, flash, positively identify → TODO-48 runtime check → build and independently measure the
+fixtures → only then Phase 9.
+
+### Not done here
+
+**No code changed. TODO-55 not updated.** No fixture built, nothing purchased, no bench action, no
+serial traffic. The board still runs `44c4680`.
+
+---
+
 ## 2026-09-21 (8) — Canonical repository **moved out of iCloud** to `~/Developer/guitar_rig_analyzer`. Old Desktop repository **FROZEN as evidence**. Environment verified before any new commit
 
 ### Why this entry exists
