@@ -61,11 +61,15 @@
 //   explains the calculation.
 //
 // CHANGED [audit-9]: Added post-pass tolerance advisory to printResult.
-//   After the initial validation suite passes with conservative tolerances,
-//   the procedure calls for tightening the tolerances to reflect demonstrated
-//   hardware capability. printResult() now emits an advisory when a criterion
-//   passes with significant headroom (measured value < 50% of tolerance),
-//   prompting the user to consider tightening the constant in validation.h.
+//   REVERSED 2026-09-22 (journal (4)) — the advisory is REMOVED, and the
+//   reasoning is kept here because the reversal is the point. audit-9 tried to
+//   make the harness self-improving: after a pass with large headroom it told
+//   the operator to tighten the constant in validation.h to "reflect
+//   demonstrated hardware capability". But it derived that recommendation from
+//   the SAME ValidationResult that had just been judged against those constants,
+//   and it fired after a SINGLE run. That lets acceptance data move the
+//   acceptance boundary. Criteria are frozen before an acceptance run; see the
+//   invariant above the tolerance constants below.
 //
 // CHANGED [audit-10]: MAX_CRITERIA increased from 8 to 10.
 //   The preflight check adds up to 3 criteria; the test suite was already
@@ -157,13 +161,20 @@
 
 // Test 1 / Test 2 — Flat loopback tolerances.
 //
-// NOTE ON TIGHTENING:
-// These are intentionally conservative first-pass values suitable for
-// initial bench bring-up. After the suite passes with real hardware,
-// record the actual measured values (printed in the test report) and
-// tighten these constants to ≈2× the measured values. A validation suite
-// that passes with large headroom provides less assurance than one tuned
-// to the demonstrated hardware capability. See audit-9 advisory in printResult.
+// INVARIANT — HOW THESE CONSTANTS MAY CHANGE (set 2026-09-22, journal (4)):
+//   1. Every validation criterion is a DESIGN DECISION, not a measurement.
+//   2. It is FROZEN AND JOURNALLED BEFORE the acceptance run it will judge.
+//   3. An acceptance run REPORTS its measured values against those criteria.
+//      The measured-vs-tolerance table in printResult() is that evidence.
+//   4. Headroom observed IN an acceptance run MUST NOT be used to tune the
+//      criteria that run was judged against — that makes the boundary depend on
+//      the article under test.
+//   5. A future revision needs separately justified characterisation/design
+//      evidence, established and journalled BEFORE the next acceptance run.
+// These values remain deliberately conservative first-pass figures. That is a
+// known weakness — a suite passing with large headroom gives less assurance —
+// but the remedy is rule 5, never a post-hoc adjustment.
+// This replaces the audit-9 "tighten to ≈2× the measured values" note.
 #define LOOPBACK_MEAN_TOLERANCE_DB      0.5f         // |mean TF| across band must be < this
 #define LOOPBACK_PP_TOLERANCE_DB        2.0f         // Peak-to-peak TF swing must be < this
 #define LOOPBACK_CONFIDENCE_MIN         0.50f        // Fraction of bins energised must be > this
@@ -284,10 +295,10 @@ ValidationResult validation_runKnownFilter(float corner_freq_hz,
 
 // -----------------------------------------------------------------------------
 // validation_printResult(result)
-// CHANGED [audit-9]: Now emits a tighten-tolerances advisory when a criterion
-// passes with measured value < 50% of tolerance. This prompts the user to
-// update the constants in validation.h after initial bring-up, so that future
-// runs catch regressions that would still pass the conservative first-pass values.
+// CHANGED 2026-09-22 (journal (4)): the audit-9 tighten-tolerances advisory is
+// REMOVED. This function prints each criterion's measured value against its
+// tolerance and the pass/fail verdict — and makes no recommendation about the
+// constants. See the invariant above the tolerance constants.
 // -----------------------------------------------------------------------------
 void validation_printResult(const ValidationResult& result);
 

@@ -12,6 +12,98 @@ How to use this file:
 
 ---
 
+## 2026-09-22 (4) — **audit-9's "tighten the tolerances" advisory REMOVED.** It let an acceptance run recommend moving the boundary it had just been judged against. Group D drafted
+
+### Why this entry exists — and why the reversal is worth keeping visible
+
+`audit-9` tried to make the harness **self-improving**: when a criterion passed with large headroom,
+it told the operator to tighten that constant to *"reflect demonstrated hardware capability"*. **The
+intent was sound** — a suite that passes with huge margins gives weak assurance, and that remains
+true. **The mechanism was not.** This entry records the reversal rather than quietly deleting the
+advisory, because *why* the earlier approach is methodologically weaker is the useful engineering
+content. **The correct policy did not exist from day one; it was earned by the Test 3 and Test 4
+work above.**
+
+### `OBS` — exhaustive inventory: 8 live locations, plus a dangling reference
+
+| # | Location | What |
+|---|---|---|
+| D1 | `validation.cpp:375–400` | `any_headroom` detection loop in `printResult` |
+| D2 | `validation.cpp:406–412` | the per-result ADVISORY print |
+| D3 | `validation.cpp:1501–1507` | the suite-level "NEXT STEP … tighten" block |
+| D4 | `validation.cpp:360–361` | `printResult` banner comment |
+| D5 | `validation.h:63–68` | audit-9 changelog entry |
+| D6 | `validation.h:160–166` | **"NOTE ON TIGHTENING" — a concrete rule: tighten to ≈2× the measured values** |
+| D7 | `validation.h:287–290` | `printResult` declaration comment |
+| D8 | `README.md:259` | advertises the advisory as a feature |
+| + | `measurement_core.h:235` | *"Adjust after real hardware characterisation (see validation advisory)"* — **a dangling pointer once D1–D8 go** |
+
+**The earlier working assumption of "two occurrences" was wrong. D6 is the most consequential and was
+not on that list:** it sits directly above `LOOPBACK_MEAN_TOLERANCE_DB`, `LOOPBACK_PP_TOLERANCE_DB`
+and `LOOPBACK_CONFIDENCE_MIN` and prescribes an actual retuning recipe, so the policy reached Tests
+1 and 2, not only 3 and 4.
+
+### `OBS` — what the advisory actually did
+
+- **Trigger, per criterion:** `c.passed && c.tolerance > 0.0f && !isnan(c.measured) &&
+  fabsf(c.measured) < 0.5f * c.tolerance`; the advisory then printed if
+  `r.all_passed && any_headroom`.
+- **It derives its recommendation from the SAME `ValidationResult`** whose pass/fail had just been
+  computed against those constants.
+- **It can fire after a single passing run**, and **repeatedly within one suite** — `printResult()`
+  runs per test, so a clean `v` printed it up to five times, plus the suite-level block.
+- **It never changed any constant automatically.** Purely emitted text.
+- `tolerance > 0.0f` currently exempts the negative `FILTER_2FC_MAX_DELTA_DB` — **note that the
+  planned two-sided Test 4 criterion would have a positive tolerance and would therefore have become
+  eligible.**
+
+### `DECISION` — Remedy A: remove, do not reword
+
+Measured against the frozen-before-acceptance rule (entry (2), decision 5), three things must be kept
+apart:
+
+| | Verdict |
+|---|---|
+| Pre-acceptance characterisation establishing a criterion | **Legitimate** — this is the ±1.00 dB work |
+| Observing headroom as a reported result | **Legitimate** — it is the evidence |
+| **Using acceptance-run headroom to recommend changing the criterion** | **This is what D2/D3/D6 did** |
+
+**Remedy A (remove) was chosen over Remedy B (scope/reword)** because the resulting invariant —
+*report against frozen criteria; never recommend changing them from the acceptance run* — is
+**mechanically checkable**, while qualified advisory language would leave every future reader judging
+whether their case counts, and would leave D6's ≈2× recipe needing a caveat contradicting its own
+specificity. **Nothing is lost:** the measured-vs-tolerance table survives untouched, and "should
+these constants be tighter?" becomes a journalled pre-run decision.
+
+### `OBS` — blast radius: measurement and pass/fail preserved, serial output intentionally changed
+
+`any_headroom` was a **local `bool`** guarding a print. `ValidationCriterion` and `ValidationResult`
+carry no headroom field; nothing was stored, returned, transmitted or displayed. `printResult()`
+returns `void`; `runAll()` returns `passed == total`, unaffected.
+
+**⚠️ Stated precisely, and NOT as token identity:** removing executable `Serial.print` branches
+**necessarily changes the token stream and the compiled firmware**. **The claim is narrower and
+exact: measurement and pass/fail behaviour are unchanged; serial output is intentionally changed.**
+Unlike Group A, this cannot be verified by token comparison — the later single compile/flash cycle
+remains necessary, and Group D must be inside it.
+
+### Deferred — TODO-16 carries the same older policy
+
+`ai/todo.md` TODO-16 still says to tighten the tolerance/threshold constants "after Phase 9 passes
+repeatedly, based on observed headroom". **Deliberately NOT edited here.** It is a project-policy
+record, and it is reconciled with TODO-55/TODO-9 when step 2 closes. **It must not simply be
+deleted then:** its intent — provisional tolerances tightened once hardware evidence exists — was
+reasonable, and only its *mechanism* conflicts with the frozen-before-acceptance rule. **That
+evolution is evidence and is to be preserved.**
+
+### Not done here
+
+Not compiled, not staged, not committed. **No tolerance constant, threshold, criterion, measurement
+calculation, result structure, status propagation or pass/fail expression changed.** TODO files
+untouched. The board still runs `44c4680`. No bench action, no serial traffic.
+
+---
+
 ## 2026-09-22 (3) — **Test 3's estimator consumes MORE than the 2026-09-21 decision specified**, and its `-6.0` default is hidden in the serial parser, not just in the prompt. Group A committed; Group C drafted
 
 ### Why this entry exists

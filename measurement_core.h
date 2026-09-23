@@ -232,7 +232,11 @@ enum class ResultQuality : uint8_t {
 
 
 // FIX [threshold-ownership]: Defined here, not in config.h.
-// Adjust after real hardware characterisation (see validation advisory).
+// These grading thresholds are provisional, set before real hardware
+// characterisation. Revising them needs characterisation evidence established
+// and journalled beforehand — never a value read back from the run being graded.
+// (The validation advisory this line used to cite was removed 2026-09-22,
+// journal (4).)
 
 
 // Analysis band for quality grading and valid_bin_fraction.

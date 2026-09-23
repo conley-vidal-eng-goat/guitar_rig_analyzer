@@ -357,8 +357,12 @@ void validation_init() {
 
 // =============================================================================
 // PUBLIC: validation_printResult()
-// CHANGED [audit-9]: Tighten-tolerances advisory added for passing criteria
-// with large headroom (measured < 50% of tolerance).
+// CHANGED 2026-09-22 (journal (4)): the audit-9 tighten-tolerances advisory was
+// REMOVED. It derived a recommendation to change the acceptance constants from
+// the same ValidationResult that had just been judged against them. Criteria are
+// frozen before an acceptance run; this function reports measured values against
+// them and never recommends changing them. The measured-vs-tolerance table below
+// is the evidence and is unchanged.
 // =============================================================================
 void validation_printResult(const ValidationResult& r) {
     Serial.println();
@@ -372,7 +376,6 @@ void validation_printResult(const ValidationResult& r) {
     Serial.println("├──────────────────────────────────────┼──────────┤");
 
 
-    bool any_headroom = false;
     for (int i = 0; i < r.criterion_count; i++) {
         const ValidationCriterion& c = r.criteria[i];
         char meas_str[16];
@@ -386,31 +389,9 @@ void validation_printResult(const ValidationResult& r) {
                          c.name, meas_str, c.units,
                          c.passed ? "   PASS" : "   FAIL");
 
-
-        // CHANGED [audit-9]: Flag criteria with large pass headroom.
-        // "Large headroom" = measured value < 50% of tolerance AND the
-        // criterion passed. This prompts the user to tighten the tolerance
-        // constant after initial bring-up so future runs catch regressions
-        // that would still pass the conservative first-pass value.
-        // We only flag positive tolerances (absolute comparisons); skip
-        // negative-valued thresholds (FILTER_2FC_MAX_DELTA_DB) and
-        // informational criteria (tolerance == measured).
-        if (c.passed && c.tolerance > 0.0f && !isnan(c.measured)
-               && fabsf(c.measured) < 0.5f * c.tolerance) {
-               any_headroom = true;
-        }
     }
     Serial.println("└──────────────────────────────────────┴──────────┘");
 
-
-    // CHANGED [audit-9]: Post-pass advisory for tolerance tightening.
-    if (r.all_passed && any_headroom) {
-        Serial.println("[Validation] ADVISORY: One or more criteria passed with");
-        Serial.println("[Validation] >50% headroom. Consider tightening the");
-        Serial.println("[Validation] corresponding constants in validation.h to");
-        Serial.println("[Validation] reflect demonstrated hardware capability.");
-        Serial.println("[Validation] A tighter tolerance catches future regressions.");
-    }
     Serial.println();
 }
 
@@ -1498,14 +1479,9 @@ if (validation_runKnownFilter(corner, -6.0f).all_passed) passed++;
 Serial.println("\n================================================");
 Serial.printf ("   SUITE COMPLETE: %d / %d passed\n", passed, total);
 Serial.println("================================================");
-// CHANGED [audit-9]: Remind user to tighten tolerances after full pass.
-if (passed == total) {
-    Serial.println("[Validation] All tests passed. NEXT STEP: review the");
-    Serial.println("[Validation] measured values in each test report above.");
-    Serial.println("[Validation] Where measured << tolerance, tighten the");
-        Serial.println("[Validation] corresponding constant in validation.h to");
-        Serial.println("[Validation] reflect actual hardware capability.");
-    }
+// CHANGED 2026-09-22 (journal (4)): the audit-9 "tighten the constants" reminder
+// was REMOVED here too. A passing suite is evidence measured against criteria
+// that were frozen before it ran; it is not grounds for revising them.
 
 
     presentation_status(

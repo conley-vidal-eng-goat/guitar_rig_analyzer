@@ -256,7 +256,7 @@ There is no host-side test framework. Verification is done **on hardware** via t
 
 Each test runs a preflight level check first (target peak in `[TARGET_LEVEL_DBFS_MIN, TARGET_LEVEL_DBFS_MAX]`) and aborts the suite if levels are wrong before any criterion is evaluated.
 
-Tolerances are intentionally conservative on first pass. `printResult()` emits a "consider tightening" advisory when a criterion passes with > 50 % headroom — see CHANGED [audit-9] in [validation.h](validation.h).
+Tolerances are intentionally conservative on first pass, and they are **design decisions frozen before the run they judge**. `printResult()` reports each criterion's measured value against its tolerance; it does **not** recommend changing them, and headroom seen in an acceptance run is never grounds for retuning that run's criteria. Revisions need separately justified evidence established beforehand — see the invariant above the tolerance constants in [validation.h](validation.h).
 
 ## Operational notes
 
