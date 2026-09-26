@@ -240,6 +240,24 @@ Either select DISPLAY_TARGET_PI/_NONE, or move RA8875_CS_PIN to a free pin and \
 set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 #endif
 
+// -----------------------------------------------------------------------------
+// EEPROM ALLOCATION  —  board-level resource, reserved here even when unused
+// -----------------------------------------------------------------------------
+// The Teensy 4.1 emulates 4284 bytes of EEPROM in flash. This firmware uses
+// exactly one location, and it is declared HERE rather than inside
+// data_sender.h so the reservation is visible in every build.
+//
+// data_sender.cpp is compiled only for DISPLAY_TARGET_PI, so a _NONE or
+// _RA8875 build never touches EEPROM at all. That is precisely why the address
+// must be reserved globally: without this declaration, a future EEPROM user
+// added under a different DISPLAY_TARGET would silently collide with the link
+// session counter, and the symptom would be a Pi that believes the Teensy
+// rebooted whenever some unrelated subsystem wrote its own state.
+//
+// EEPROM_ADDR_LINK_SESSION — uint16_t, the Pi-link boot/session counter.
+// See TODO-56 and data_sender.cpp nextSessionId().
+#define EEPROM_ADDR_LINK_SESSION   0   // uint16_t — occupies bytes 0..1
+
 #define RELAY_SEND_PIN      14
 #define RELAY_RETURN_PIN    15
 

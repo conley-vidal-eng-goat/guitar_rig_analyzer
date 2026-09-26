@@ -45,6 +45,7 @@
 #include "measurement_engine.h"   // measurementEngine_getState()
 #include "signal_router.h"
 #include <math.h>
+#include <EEPROM.h>               // session id — see nextSessionId()
 
 // =============================================================================
 // STATE
@@ -52,6 +53,13 @@
 
 static DataSenderStats s_stats;
 static uint32_t s_live_drop_streak = 0;
+
+// Session identity and re-announcement cadence. Deliberately NOT part of
+// DataSenderStats: resetStats() is called at the start of every T1 measurement
+// window, and neither the session id nor the announcement phase may be
+// disturbed by an operator pressing 't'.
+static uint16_t s_session_id    = 0;
+static uint32_t s_last_hello_ms = 0;
 
 // Extended UART TX buffer. Without this the default Serial1 TX buffer is far
 // smaller than one live frame, availableForWrite() could never report room, and
@@ -214,22 +222,91 @@ static void decimateTf(const AudioFrame* frame, float* dst, uint8_t* coverage) {
 }
 
 // =============================================================================
-// PUBLIC API
+// SESSION IDENTITY
 // =============================================================================
+// nextSessionId()
+//
+// Requirement (TODO-56): a value that is CONSTANT for one Teensy boot/session
+// and CHANGES across a reboot, so a Pi receiving repeated HELLOs can tell a
+// routine re-announcement from a new Teensy session. Explicitly NOT security,
+// NOT measurement identity.
+//
+// *** WHY A FLASH-BACKED COUNTER, AND NOT SOMETHING FREE ***
+//
+// Four platform facilities were checked against that requirement before this
+// was written, and the reason for rejecting each is recorded so nobody
+// "simplifies" this back into a broken one:
+//
+//   SNVS_LPGPR0..3   Always-on general-purpose registers. Survive a WARM reset
+//                    while VDD_SNVS holds, so a counter here increments across
+//                    a reset-button or software reset. But Teensy 4.1 has no
+//                    coin cell fitted here, so a POWER CYCLE clears them — and
+//                    then two consecutive cold boots both report the same
+//                    value. That is exactly the case the Pi must not miss.
+//   rtc_get()        Same power domain, same weakness: without a VBAT cell the
+//                    RTC does not survive power loss.
+//   ARM_DWT_CYCCNT / micros() at init
+//                    Read at a fixed point in a fixed boot sequence, so these
+//                    are very nearly deterministic. Using them would be the
+//                    "weak random mechanism" this design was told to avoid;
+//                    worse, it would LOOK random while colliding often.
+//   HW_OCOTP_MAC0    The chip's unique serial. Constant across reboots by
+//                    definition — it identifies the BOARD, not the session, so
+//                    it cannot discriminate a reboot at all.
+//
+// A monotonic counter in the Teensy 4.1's flash-emulated EEPROM is the only
+// candidate that satisfies the contract in EVERY reboot mode, including a cold
+// power cycle. It is also deterministic, which is what makes runbook Phase 10
+// step 10 a real test rather than an observation: the value is predictable and
+// can be read back.
+//
+// Cost and placement: this is PERSISTENT STATE, WRITTEN EXACTLY ONCE PER _PI
+// INITIALISATION — one 2-byte EEPROM write, never in the loop, never per
+// measurement. dataSender_init() is called from presentation_init() at
+// .ino:311, BEFORE audioCap_init() at :323, so no audio is running and no
+// acquisition timing exists to perturb. It is the firmware's only flash write.
+//
+// Endurance is therefore a non-issue at this write rate and NO wear-levelling
+// scheme is implemented or relied upon here. If this ever stops being a
+// once-per-boot write — a re-key on reconnect, say, or an id bumped per
+// session rather than per boot — endurance becomes a real design constraint
+// and must be reconsidered before that change lands, not after.
+//
+// *** DOCUMENTED LIMITATIONS — read before relying on this for anything else ***
+//
+//   • 16-bit, so it wraps after 65535 boots. The receiver contract is
+//     "changed => stale", not "ordered", so a wrap is harmless. Do not build
+//     anything that treats the value as monotonic forever.
+//   • NOT unique across devices. Two Teensys can both be at boot 42. Device
+//     identity would be HW_OCOTP_MAC0 in a NEW field, not this one.
+//   • Predictable by design. Never use it as a security nonce or a token.
+//   • It counts boots of THIS build target only. data_sender.cpp compiles
+//     solely for DISPLAY_TARGET_PI, so _NONE and _RA8875 boots do not
+//     increment it. That is correct — they have no link and no session — but
+//     it means the counter is not a boot count for the instrument as a whole.
+//   • A first-ever boot on a blank EEPROM reads 0xFFFF and becomes 0. No
+//     special case is needed: the value only has to CHANGE, and it does.
+// -----------------------------------------------------------------------------
+static uint16_t nextSessionId() {
+    uint16_t stored = 0;
+    EEPROM.get(EEPROM_ADDR_LINK_SESSION, stored);
+    const uint16_t next = (uint16_t)(stored + 1);   // 0xFFFF -> 0 is fine
+    EEPROM.put(EEPROM_ADDR_LINK_SESSION, next);
+    return next;
+}
 
-bool dataSender_init() {
-    DS_UART_PORT.begin(DS_BAUD_RATE);
-
-    // Install the extended TX buffer BEFORE any write. This is what makes the
-    // non-blocking policy possible at all — see the s_tx_buffer comment.
-    DS_UART_PORT.addMemoryForWrite(s_tx_buffer, sizeof(s_tx_buffer));
-
-    dataSender_resetStats();
-    s_result_len = s_result_sent = 0;
-
-    delay(10);   // let the UART settle before the first frame
-
-    // HELLO — structured, not a string the receiver has to parse (audit T2).
+// -----------------------------------------------------------------------------
+// sendHello()
+// Builds and emits one HELLO. Shared by init() and the periodic re-announce so
+// the two can never describe the instrument differently — a re-announcement
+// that disagreed with the original would be worse than no re-announcement.
+//
+// Best effort, like every other event packet: if the whole 47-byte frame does
+// not fit, it is dropped and counted. It is NEVER partially written and never
+// waits for room. Under sustained backpressure (T1 run 3) this is expected to
+// drop repeatedly — hence the dedicated counter.
+// -----------------------------------------------------------------------------
+static void sendHello() {
     uint8_t p[40];
     memset(p, 0, sizeof(p));
     uint16_t u16;
@@ -242,7 +319,7 @@ bool dataSender_init() {
     u32 = (uint32_t)DS_BAUD_RATE;        memcpy(&p[8],  &u32, 4);
     u32 = (uint32_t)SAMPLE_RATE;         memcpy(&p[12], &u32, 4);
     u16 = (uint16_t)INSIGHTS_MAX_COUNT;  memcpy(&p[16], &u16, 2);
-    // [18-19] reserved, already zero
+    u16 = s_session_id;                  memcpy(&p[18], &u16, 2);
 
     // Capability bitmap: lets the Pi distinguish "feature off" from "feature not
     // compiled in", which v1's ROUTER_STATUS could not express (audit T4). A
@@ -260,13 +337,45 @@ bool dataSender_init() {
 
     writeFixedString(&p[24], 16, FIRMWARE_VERSION);
 
-    if (!timedBestEffort(DS_PACKET_HELLO, p, sizeof(p))) s_stats.events_dropped++;
-    else                                                 s_stats.events_sent++;
+    if (timedBestEffort(DS_PACKET_HELLO, p, sizeof(p))) s_stats.hello_sent++;
+    else                                                s_stats.hello_dropped++;
+
+    s_last_hello_ms = millis();
+}
+
+// =============================================================================
+// PUBLIC API
+// =============================================================================
+
+bool dataSender_init() {
+    DS_UART_PORT.begin(DS_BAUD_RATE);
+
+    // Install the extended TX buffer BEFORE any write. This is what makes the
+    // non-blocking policy possible at all — see the s_tx_buffer comment.
+    DS_UART_PORT.addMemoryForWrite(s_tx_buffer, sizeof(s_tx_buffer));
+
+    dataSender_resetStats();
+    s_result_len = s_result_sent = 0;
+
+    delay(10);   // let the UART settle before the first frame
+
+    // Establish session identity BEFORE the first HELLO — the first
+    // announcement must carry the same id as every re-announcement after it.
+    s_session_id = nextSessionId();
+
+    // First HELLO. It is no longer the only one: dataSender_service()
+    // re-announces, so a Pi that is absent, late or unlucky here is not
+    // permanently locked out of decoding results (TODO-56).
+    sendHello();
 
     Serial.printf("[DataSender] Protocol v%d | %ld baud | %d live bins "
                   "(%d:1) | TX buffer %d B | firmware %s\n",
                   PI_PROTOCOL_VERSION, (long)DS_BAUD_RATE, DS_LIVE_BINS,
                   DS_DECIM_RATIO, DS_TX_BUFFER_BYTES, FIRMWARE_VERSION);
+    // Printed so a bench operator can confirm the id the Pi reports is the id
+    // this boot actually issued, without inferring it from Pi-side output.
+    Serial.printf("[DataSender] Session id %u | HELLO re-announced every %d ms\n",
+                  (unsigned)s_session_id, DS_HELLO_REANNOUNCE_MS);
     Serial.printf("[DataSender] Live frame %d B framed; RESULT up to %d B "
                   "(reliable, drained across loop iterations)\n",
                   DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES,
@@ -283,6 +392,25 @@ void dataSender_service() {
     if (s_result_len == 0) {
         s_stats.result_pending = false;
         s_stats.result_pending_bytes = 0;
+
+        // ---------------------------------------------------------------
+        // HELLO re-announcement (TODO-56).
+        //
+        // Reached only when NO RESULT is staged, which is the whole of the
+        // gate: the reliable path is never made to compete with an
+        // announcement. Deliberately NOT gated on measurement state — HELLO
+        // describes the instrument and protocol session, not the measurement.
+        // A Pi reconnecting during ARMED, CAPTURE, PROCESSING, RESULT,
+        // EXPORTING or a sticky ABORTED must be able to obtain geometry and
+        // reconstruct that state rather than sit blind until IDLE.
+        //
+        // sendHello() is best-effort and cannot block: under backpressure it
+        // drops and counts. Subtraction is wrap-safe on uint32_t, so a
+        // millis() rollover at ~49.7 days does not stall announcements.
+        // ---------------------------------------------------------------
+        if ((uint32_t)(millis() - s_last_hello_ms) >= DS_HELLO_REANNOUNCE_MS) {
+            sendHello();
+        }
         return;
     }
 
@@ -644,6 +772,11 @@ void dataSender_printDiagnostics() {
     const float mean_us  = s.send_calls ? ((float)s.send_us_total / s.send_calls) : 0.0f;
 
     Serial.println("[Link] --- Pi link transport (measured) ---");
+    Serial.printf("[Link] Session id:  %u (constant for this boot) | HELLO "
+                  "%lu sent, %lu dropped, every %d ms\n",
+                  (unsigned)s_session_id,
+                  (unsigned long)s.hello_sent, (unsigned long)s.hello_dropped,
+                  DS_HELLO_REANNOUNCE_MS);
     Serial.printf("[Link] Live frames:  %lu sent, %lu dropped (%.1f%%), "
                   "longest drop streak %lu\n",
                   (unsigned long)s.live_sent, (unsigned long)s.live_dropped,

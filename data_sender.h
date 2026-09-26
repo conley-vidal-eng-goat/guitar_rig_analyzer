@@ -182,6 +182,14 @@
 #define DS_TX_BUFFER_BYTES    4096
 #endif
 
+// HELLO re-announcement period. HELLO is 47 B framed — about 1.02 ms of wire
+// time at 460800 baud, so at 1 Hz it costs ~0.1 % of the link against the
+// ~40 % the live frames already occupy. Cheap enough that a shorter reconnect
+// wait is not worth buying with more traffic.
+#ifndef DS_HELLO_REANNOUNCE_MS
+#define DS_HELLO_REANNOUNCE_MS  1000
+#endif
+
 // =============================================================================
 // DERIVED SIZES  —  compile-time checked
 // =============================================================================
@@ -339,7 +347,7 @@ static_assert(DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES < DS_TX_BUFFER_BYTES,
 //   [8-11]    uint32  baud_rate
 //   [12-15]   uint32  sample_rate
 //   [16-17]   uint16  insights_max       (INSIGHTS_MAX_COUNT)
-//   [18-19]   uint16  reserved (0)
+//   [18-19]   uint16  session_id         <-- was "reserved (0)" before v2.1
 //   [20-23]   uint32  capability_bits:
 //                       bit0 DUT injection compiled in (ENABLE_DUT_INJECTION)
 //                       bit1 monitor mode compiled in  (ENABLE_MONITOR_MODE)
@@ -352,6 +360,48 @@ static_assert(DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES < DS_TX_BUFFER_BYTES,
 // bitmap also lets the Pi distinguish "monitor mode is off" from "monitor mode
 // does not exist in this build", which v1's ROUTER_STATUS could not (T4) — so a
 // receiver does not render a control for a capability that cannot respond.
+//
+// *** HELLO IS RE-ANNOUNCED PERIODICALLY. IT IS NOT A ONE-TIME GREETING. ***
+//
+// HELLO is the ONLY carrier of fft_bins, and a RESULT's four float[FFT_BINS]
+// arrays cannot be located without it — the insight_count that would let a
+// receiver solve for the length sits AFTER the arrays. So a receiver that
+// never saw HELLO can never decode a RESULT.
+//
+// Until 2026-09-26 HELLO was sent exactly once, from dataSender_init(), on the
+// best-effort path — so it could also simply be DROPPED into a full TX buffer.
+// A Pi that attached late, restarted, or lost that one frame was permanently
+// unable to decode a result until the Teensy rebooted (TODO-56).
+//
+// It is now re-announced every DS_HELLO_REANNOUNCE_MS from dataSender_service(),
+// gated only on no RESULT being staged. Deliberately NOT gated on measurement
+// state: HELLO describes the instrument and protocol session, not the
+// measurement. A Pi reconnecting during ARMED, CAPTURE, PROCESSING, RESULT,
+// EXPORTING — or during a sticky ABORTED — must be able to obtain geometry and
+// reconstruct that state, not sit geometry-blind waiting for IDLE.
+//
+// *** session_id — WHAT IT IS AND WHAT IT IS NOT ***
+//
+// Periodic announcement alone creates an ambiguity it does not solve: a
+// receiver seeing repeated HELLOs cannot tell a routine re-announcement from a
+// NEW Teensy session. session_id resolves it.
+//
+//   Contract:  constant for the whole of one Teensy boot/session, and changes
+//              across a Teensy restart.
+//   Receiver:  a CHANGED session_id is authoritative evidence that prior
+//              session state is stale. Invalidate it and rebuild from current
+//              telemetry — do not assume continuity.
+//
+// It is NOT a security nonce (it is deliberately predictable), NOT a
+// measurement or result identifier, and NOT a device identity — two different
+// Teensy boards can both be at boot 42. If device identity is ever needed,
+// HW_OCOTP_MAC0 is the chip serial and would be a NEW field, not this one.
+//
+// The block counter cannot substitute for this: output_block_number is 16 bits
+// and wraps roughly every 50 minutes on its own, so "it went backwards" is not
+// sound evidence of a reboot.
+//
+// Generation, and why: see nextSessionId() in data_sender.cpp.
 // =============================================================================
 
 // =============================================================================
@@ -390,6 +440,15 @@ struct DataSenderStats {
     uint32_t events_sent;
     uint32_t events_dropped;
 
+    // HELLO announcement path — best effort, and COUNTED SEPARATELY ON PURPOSE.
+    // Re-announcement is expected to be dropped under sustained backpressure;
+    // that is the policy working, not a fault. Folding those drops into
+    // events_dropped would make it impossible to read T1 run 3, where a
+    // suspended reader keeps the UART full by design — every second would add
+    // a HELLO drop and the event figure would stop meaning anything.
+    uint32_t hello_sent;
+    uint32_t hello_dropped;
+
     // Timing of the calls themselves: this is the number that matters for T1.
     uint32_t send_calls;
     uint32_t send_us_max;             // worst single presentation-facing call
@@ -410,9 +469,11 @@ struct DataSenderStats {
 
 // -----------------------------------------------------------------------------
 // dataSender_init()
-// Configures the UART, installs the extended TX buffer, and sends HELLO.
+// Configures the UART, installs the extended TX buffer, establishes the session
+// id, and sends the first HELLO.
 // Returns true; UART init cannot fail. A Pi that is absent or not listening is
-// indistinguishable from one that is, and is equally harmless.
+// indistinguishable from one that is, and is equally harmless — which is
+// exactly why HELLO must not depend on anyone having been there to hear it.
 // -----------------------------------------------------------------------------
 bool dataSender_init();
 
@@ -421,6 +482,11 @@ bool dataSender_init();
 // *** MUST be called every loop iteration. *** Drains any pending RESULT onto
 // the UART as room appears. Without it the reliable path never completes.
 // Cheap and non-blocking when nothing is pending.
+//
+// Also re-announces HELLO every DS_HELLO_REANNOUNCE_MS, but ONLY while no
+// RESULT is staged — the reliable path is never made to compete with an
+// announcement. Both remain best-effort and non-blocking; neither may ever
+// become a blocking write.
 // -----------------------------------------------------------------------------
 void dataSender_service();
 

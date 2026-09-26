@@ -2032,11 +2032,21 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 
 **2. Wire GND, then TX, then RX.** In that order. *Verify:* continuity Teensy GND ↔ Pi GND.
 
+> **[STOP] Disable the Pi's serial console on this UART before connecting RX.** Raspberry Pi OS ships a login console (`getty`) on the primary UART by default. If it is left enabled, the **Pi transmits** login-prompt and kernel bytes down the wire at the Teensy continuously. Use `raspi-config` → *Interface Options* → *Serial Port*: **login shell over serial = NO**, **serial hardware = YES**. Confirm `console=serial0,115200` is absent from `/boot/firmware/cmdline.txt`.
+>
+> **Why this is a [STOP] even though nothing reads RX today.** `Serial1.begin()` enables the Teensy's receiver, and **no code in the firmware ever drains it** — so today those bytes accumulate in a ring buffer and are silently discarded. Harmless, and therefore invisible. It stops being harmless the moment a Pi→Teensy control channel exists (deferred; see TODO-56's decision record): a command parser would be reading a stream of console garbage as input. Configure it now, while the consequence is zero, rather than discovering it as an intermittent command-injection bug later.
+>
+> A console left enabled at a *different* baud than 460800 also makes the line look like a physical-layer fault in exactly the way the ground-continuity stop sign below describes — two plausible causes for one symptom.
+
 **3. Build the firmware with `DISPLAY_TARGET_PI`.** One line in `config.h`. The boot banner prints `[Main] Display target: Pi 5 (UART)` — confirm that on USB Serial before looking at the Pi. If it says anything else you are testing the wrong binary.
 
 **4. Observe raw bytes on the Pi before writing any parser.** `stty -F /dev/serial0 460800 raw` then `xxd /dev/serial0 | head`. *Verify:* you can see the `55 AA` sync word recurring at roughly 11 Hz. **Stop here and fix the link if you cannot** — every later problem is easier to diagnose than a physical-layer fault.
 
-**5. Read HELLO before anything else.** On connect the Teensy sends a structured HELLO packet (type `0x06`) carrying `protocol_version`, `live_bins`, `fft_bins`, `decim_ratio`, baud, sample rate, a capability bitmap and the firmware version. *Verify:* `protocol_version == 2`. A receiver that does not check this will eventually misparse a future layout silently.
+**5. Read HELLO before anything else.** The Teensy sends a structured HELLO packet (type `0x06`) carrying `protocol_version`, `live_bins`, `fft_bins`, `decim_ratio`, baud, sample rate, `session_id`, a capability bitmap and the firmware version. *Verify:* `protocol_version == 2`. A receiver that does not check this will eventually misparse a future layout silently.
+
+> **Corrected 2026-09-26 (TODO-56).** This step used to read *"On connect the Teensy sends…"*, which was wrong in a way that mattered: HELLO was sent **once**, from `dataSender_init()`, on the best-effort path — nothing happened "on connect", because the Teensy has no way to know a Pi connected. A Pi that attached late, restarted, or simply lost that one frame to a full TX buffer could **never decode a RESULT** until the Teensy was rebooted, because HELLO is the only carrier of `fft_bins`. HELLO is now **re-announced every 1 s** while no RESULT is staged, so the correct operator expectation is: *plug the Pi in whenever you like and wait at most a second.*
+
+> **`session_id` (bytes 18–19) — what it is for.** Constant for one Teensy boot, different after a reboot. It is how the Pi tells a routine re-announcement from a new Teensy session. **Its only contract is "changed ⇒ prior state is stale."** It is not a security nonce, not a measurement id, and **not unique between two Teensy boards** — both can be at boot 42. The Teensy prints the id it issued on USB Serial at boot (`[DataSender] Session id N`), so you can confirm the Pi is reporting the same number rather than inferring it.
 
 **6. Bring up the receiver against known data.** Per TODO-36. Acceptance is a **synthetic or recorded** packet stream rendering correctly — not "the analyzer looks right". Real analyzer data as the first test conflates a protocol bug with a measurement bug.
 
@@ -2046,7 +2056,16 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 
 **9. Demonstrate unknown-packet tolerance.** Inject a synthetic packet with type `0xFE` and a valid length/CRC. *Verify:* the receiver skips `payload_length` bytes and carries on. This is what lets a future packet type be added without a version break.
 
-**10. Demonstrate reboot recovery.** Reset the Teensy while the Pi is receiving. *Verify:* the Pi recovers without being restarted, and re-reads HELLO.
+**10. Demonstrate reboot recovery — BOTH directions.** *Verify:* the Pi recovers without being restarted, and re-reads HELLO.
+
+| Direction | Action | Expected |
+|---|---|---|
+| **Teensy reboots** | Reset the Teensy while the Pi is receiving | The Pi sees a HELLO with a **different `session_id`**, discards its prior session state and rebuilds from current telemetry. Compare against the `[DataSender] Session id N` line on USB Serial |
+| **Pi restarts, Teensy keeps running** | Restart the Pi receiver; **do not touch the Teensy** | The Pi obtains geometry within ~1 s from a re-announced HELLO and decodes the next RESULT. The `session_id` is **unchanged**, which is how the Pi knows the instrument did not restart |
+
+> **The second row is new, and it is the one that used to be impossible.** Before TODO-56 a Pi restart left the receiver permanently unable to decode a RESULT — the Teensy had already made its only announcement. The runbook never tested this direction, so the defect survived the protocol audit.
+
+> **Do not use `output_block_number` as a reboot discriminator.** It is 16 bits and wraps on its own roughly every 50 minutes, so "it went backwards" is not evidence of a restart. `session_id` is the only sound signal.
 
 **11. [STOP] Run the T1 acceptance matrix. This is the decisive step of the phase.**
 
@@ -2088,7 +2107,7 @@ Procedure per run: flash → let it settle → press `t` → leave it for the sa
 
 *If block timing degrades in any run:* **stop.** The non-blocking policy has been violated somewhere, and no amount of Pi-side work will fix it. Find the blocking path first — acceptance test B in [the protocol audit](pi_link_protocol_audit.md) is the place to start.
 
-**12. Freeze the transport and record the milestone.** Once runs 2–4 match run 1 on the acquisition metrics with `blocks_skipped = 0` throughout, T1 closes, protocol v2 goes from *schema-frozen, transport-unproven* to fully proven, and the milestone is **v0.6.0 — Pi presentation architecture validated**. Only then start the Pi parser/renderer (TODO-36): at that point it is being built on a transport demonstrated to be physically incapable of stealing timing from the instrument, rather than on a speculative one.
+**12. Freeze the transport and record the milestone.** Once runs 2–4 match run 1 on the acquisition metrics with `blocks_skipped = 0` throughout, T1 closes, protocol v2 goes from *schema-frozen, transport-unproven* to fully proven, and the milestone is **v0.6.0 — Pi presentation architecture validated**. Only then start the Pi **renderer** (TODO-36): at that point it is being built on a transport demonstrated to be physically incapable of stealing timing from the instrument, rather than on a speculative one. *(Corrected 2026-09-26: this clause read "parser/renderer", which contradicted **step 6** of this same phase — step 6 brings the receiver up against known data, and it comes before T1, not after. The parser is safe to write now because the schema is frozen; only the renderer embeds the frame-rate and latency assumptions T1 could invalidate. TODO-36 states the rule.)*
 
 ## End-of-phase verify
 
@@ -2102,7 +2121,9 @@ Procedure per run: flash → let it settle → press `t` → leave it for the sa
 | **Clamp contract** | railed bins marked saturated, **not** drawn as −24 dB data | **[STOP]** |
 | CRC rejection | corrupted packet discarded, stream resyncs | **[STOP]** |
 | Unknown packet type | skipped by length, receiver continues | |
-| Reboot recovery | Pi recovers from a Teensy reset unaided | |
+| Reboot recovery — Teensy resets | Pi recovers unaided; `session_id` **changed** | |
+| Reconnect — Pi restarts, Teensy untouched | Pi re-obtains geometry within ~1 s; `session_id` **unchanged** | **[STOP]** |
+| Pi serial console | `getty` disabled on the UART before RX was connected | **[STOP]** |
 | Loop blocking | max call time in **microseconds**, measured | **[STOP]** |
 | Block timing with Pi consuming | indistinguishable from `DISPLAY_TARGET_NONE` | **[STOP]** |
 | Dead / stalled / yanked Pi | block timing unchanged in all three cases | **[STOP]** |

@@ -12,6 +12,106 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (2) — **TODO-56 fixed in source: HELLO is now re-announced at 1 Hz and carries a session id.** Option B rejected on evidence, not preference. The generation mechanism was chosen by elimination and the rejects are recorded. **Compile-verified only — not flashed, no bench action**
+
+**Decision, and why it was not the obvious one.** Two mechanisms could fix a HELLO that only exists at startup: periodic announcement, or an explicit Pi→Teensy request. The request option produces cleaner reconnect semantics *and* lays groundwork the touch UI will need anyway, so it was not dismissed — it was evidence-checked and deferred.
+
+What the evidence said: **there is no inbound path in this firmware at all.** No `Serial1.read()`, no `.available()`, nothing. And [presentation.h:44](../presentation.h#L44) explicitly refuses to host one — *"IF Pi → TEENSY INPUT IS EVER ADDED, IT DOES NOT COME THROUGH HERE"* — because control crosses a trust boundary presentation deliberately does not have. So Option B is not "add a handler"; it is "build the firmware's first externally-controlled input surface, with its own boundary, its own validation and its own ADR." Option A is ~15 lines inside a function that already runs every loop iteration and is already non-blocking by contract.
+
+**Two hazards found while costing Option B, worth keeping even though we deferred it.** `Serial1.begin()` enables the Teensy's receiver and **nothing ever drains it** — today those bytes accumulate in a ring buffer and are silently discarded, which is why nobody has noticed. And **Raspberry Pi OS ships a login console on that UART by default**; the runbook never said to disable it. Harmless while nothing reads RX; the moment a command parser exists, it would be reading kernel and getty output as input. That is now a **[STOP] in Phase 10 step 2**, to be configured while the consequence is still zero rather than diagnosed later as intermittent command injection. A console at the wrong baud also mimics a physical-layer fault, giving one symptom two plausible causes.
+
+**🔑 The part that was not in the original defect: periodic HELLO alone is ambiguous.** A receiver seeing repeated HELLOs cannot tell a routine re-announcement from a **new Teensy session**. Without resolving that, the fix would trade "Pi can never decode a RESULT" for "Pi silently carries stale state across a reboot" — a quieter bug, not a smaller one.
+
+The obvious substitute does not work. `output_block_number` is **16 bits** and wraps on its own roughly every 50 minutes (65536 × 46.3 ms ≈ 3034 s), so "it went backwards" is not sound evidence of a restart. HELLO's bytes `[18-19]`, documented as `reserved (0)`, now carry a **session id**: constant for one boot, different after a restart, and a *changed* value is authoritative evidence that prior state is stale. Size-preserving, no version bump.
+
+**Generation mechanism — chosen by elimination, because "nonce" invites a bad reflex.** The instruction was explicit: do not invent something weak just because we used that word. Four facilities were checked in the Teensy 1.62.0 core before anything was written.
+
+| Facility | Verdict |
+|---|---|
+| `SNVS_LPGPR0..3` | Survives a **warm** reset. But Teensy 4.1 has no coin cell on that domain, so a **power cycle clears it** — two consecutive cold boots report the same value. **Rejected** |
+| `rtc_get()` / `Teensy3Clock` | Same power domain, same weakness without a VBAT cell. **Rejected** |
+| `ARM_DWT_CYCCNT` / `micros()` at init | Read at a fixed point in a fixed boot sequence, so **very nearly deterministic**. This is precisely the weak-random trap — and worse, it would *look* random while colliding often. **Rejected** |
+| `HW_OCOTP_MAC0` | The chip serial. Constant by definition: it identifies the **board**, not the session, so it cannot discriminate a reboot at all. **Rejected** — though it is the right field for device identity, which HELLO does not carry |
+
+**Selected: a monotonic `uint16_t` boot counter in flash-emulated EEPROM.** The only candidate that satisfies the contract in *every* reboot mode including a cold power cycle — and deterministic, which is what makes runbook step 10 a **test** rather than an observation: the value is predictable and can be read back against the `[DataSender] Session id N` line the Teensy now prints at boot.
+
+The placement objection resolved itself on inspection: `dataSender_init()` runs at [.ino:311](../guitar_rig_analyzer.ino#L311), **before** `audioCap_init()` at :323. No audio is running, so the firmware's only flash write has no acquisition timing to perturb.
+
+**Limitations documented in the source rather than discovered later:** 16-bit, wraps after 65535 boots (harmless — the contract is "changed ⇒ stale", not "ordered"); **not unique across devices**; predictable by design; counts `_PI` boots only, so it is not an instrument-wide boot count; and a blank EEPROM's first boot reads `0xFFFF` and becomes **0**, which is a legitimate value a receiver must not read as "absent". A test pins that last one, because treating 0 as missing is the natural mistake.
+
+**The EEPROM address is reserved in `config.h`, not in `data_sender.h`.** `data_sender.cpp` compiles only for `DISPLAY_TARGET_PI`, so a `_NONE` or `_RA8875` build never touches EEPROM — which is exactly why the reservation has to be global. A future EEPROM user added under a different target would collide, and the symptom would be a Pi convinced the Teensy rebooted whenever some unrelated subsystem wrote its state. A drift test asserts the reservation exists.
+
+**Gating — the one choice that was argued rather than assumed.** Re-announce is gated on `s_result_len == 0` only, so the reliable RESULT path is never made to compete with an announcement. It is **deliberately not** gated on `MeasurementState::IDLE`: HELLO describes the instrument and protocol session, not the measurement. A Pi reconnecting during ARMED, CAPTURE, PROCESSING, RESULT, EXPORTING — or during a **sticky ABORTED**, which stays latched until `measurementEngine_acknowledgeAbort()` — must be able to obtain geometry and reconstruct that state, not sit blind waiting for IDLE. Gating on IDLE would have made the worst reconnect case the one where reconnecting matters most.
+
+**Separate HELLO counters, and why that is not bookkeeping fussiness.** Re-announcement is *expected* to be dropped under sustained backpressure — that is the non-blocking policy working. T1 run 3 suspends the reader deliberately to keep the UART full, so folding HELLO drops into `events_dropped` would add one per second for the whole window and destroy the meaning of a figure the acceptance matrix already depends on. `hello_sent` / `hello_dropped` are therefore their own fields. **Consequence recorded against TODO-34: the T1 report's content has changed, so all four runs must be captured against this build and no earlier report may serve as a control.** Run 1 is unaffected — `data_sender.cpp` is compiled out for `_NONE`.
+
+**⚠️ A method defect found while trying to prove the control run was untouched.** I attempted to show `_NONE` is binary-identical before and after the change by comparing hex md5. The hashes differed. The correct control — **building HEAD twice** — also produced two different hashes, because [.ino:215](../guitar_rig_analyzer.ino#L215) stamps `__DATE__`/`__TIME__` into the firmware. That is TODO-52/53's build-identity feature working as designed, and it means **the build is not reproducible and hash comparison cannot answer questions about source equivalence.**
+
+What was actually established for `_NONE`: section sizes are **byte-identical** (`code:152448 data:72200 headers:8820`), `data_sender.cpp` is entirely `#if`'d out for that target, and the `config.h` addition is a `#define` emitting no code. **Carry this forward: "rebuild the commit and check the md5 matches" is not a valid identity procedure.** The md5 recorded for `44c4680` identifies the flashed *artifact* — which is still sound, because it was compared against the artifact that was flashed, not against a rebuild.
+
+**Evidence.** `_PI` and `_NONE` compile clean with **zero warnings**. `_RA8875` still stops on its **pre-existing** `AUDIO_SHIELD_STACKED` `#error` — verified untouched by this change, not a regression. 79 Pi tests pass (70 → 79): six `session_id` tests including wire-position and the `0`-is-valid case, plus drift checks for `DS_HELLO_REANNOUNCE_MS` and for the `[18-19]` field no longer being documented as reserved. Both new guards verified by negative control — drifting the firmware period to 2000 ms fails the sync test, and making the Pi stop decoding the field fails three session tests.
+
+**🔺 EVIDENCE BOUND, unchanged from slice 1 and worth restating because the work got more convincing, not more proven.** The parser and the firmware still share one author's reading of `data_sender.h`. Offline tests do **not** prove agreement with the compiled firmware on the wire; only a captured real Teensy stream does. **Nothing was flashed. No serial session was opened. T1 remains required, and no Phase 10 step is passed.**
+
+**Bench state untouched.** The board still runs `44c4680`. No relay actuated, no generator or injection enabled, no validation routine run. Phase 9 remains exactly where 2026-09-22 (6) left it — and the Test 4 corner is still uncharacterised; the `1989.0f` figure in the tree is a nominal unloaded reference, not behaviour.
+
+**Portfolio note.** The reusable lesson is about the shape of the original audit. Protocol v2's audit asked *"is every verdict on the wire?"* and found 17 findings. It did not ask *"can a receiver that arrives late ever decode this?"* — and so a defect that makes every RESULT permanently undecodable to a late-attaching Pi sat in the tree, through an audit, until somebody tried to be the receiver. The second lesson is smaller and sharper: the fix that looked complete (announce periodically) was still wrong until the ambiguity it introduced — repeat versus restart — was closed in the same slice.
+
+---
+
+## 2026-09-26 (1) — **Pi receiver slice 1: bytes → typed packets.** 70 offline tests pass; a drift guard now fails if the Python mirror leaves the firmware headers. **Two defects found by writing it — one firmware, one runbook.** No firmware change, no bench action, no Phase 10 step passed
+
+**Problem being solved.** ADR-001 made the Pi 5 the production renderer and TODO-35 raised the Pi/UI path to the critical path on 2026-09-22 (6) for the 2026-11-01 portfolio deadline. The Teensy half of that link has existed since 2026-09-11 — presentation boundary, protocol v2, transport instrumentation. **The Pi half was zero files.** A repository audit at the start of this session confirmed it: the only Python in the tree was `tools/gen_schematic.py` and `tools/analyze_corruption.py`, both unrelated bench tools.
+
+**Was this allowed to proceed while Phase 9 is open?** Checked rather than assumed. TODO-36: *"schema is frozen — write the parser; start the renderer only after T1 passes."* TODO-35: *"Nothing here depends on the Test 4 fixture or its capacitor."* Runbook Phase 10 **step 6** requires a receiver brought up against known data, and step 6 precedes T1 at step 11. So: parser yes, renderer no.
+
+**🔺 DEFECT 1 — the runbook contradicted itself on exactly that question.** Phase 10 **step 12** read *"Only then start the Pi parser/renderer (TODO-36)"* — placing the parser **after** T1 — while **step 6** of the same phase places the receiver **before** it. Both clauses were written on 2026-09-11. TODO-36's status line is the specific rule and resolves it; step 12's wording was the stale half. **Corrected in this pass**, with the reasoning inline so it cannot re-rot. This is the same stale-clause failure mode as TODO-45 and TODO-18, in a section nobody had re-read since it was written.
+
+**🔴 DEFECT 2 — HELLO is sent once, best-effort, and never retransmitted. Opened as TODO-56.** Found by asking a parser-author's question that had not been asked before: *where does the receiver get the array length for RESULT?*
+
+`dataSender_init()` sends HELLO exactly once ([data_sender.cpp:263](../data_sender.cpp#L263)), through `timedBestEffort()` — which **drops the packet if the TX buffer is full** and increments a counter. There is no retransmission, no periodic re-announce, and no request path: `Serial1` RX is reserved but unused, so the Pi cannot ask.
+
+That matters because **HELLO is the only carrier of `fft_bins`, and a RESULT's four `float[fft_bins]` arrays cannot be located without it.** This is not a parser limitation — it is a property of the wire format. The `insight_count` that would let a receiver solve for the array length sits *after* the arrays, so the geometry is genuinely unrecoverable from the packet alone. LIVE_FRAME is self-describing from its payload length; RESULT is not.
+
+Consequence (`INFER` from source — **not observed on hardware**): a Pi that starts *after* the Teensy, or that loses that one frame to a full buffer at boot, decodes live frames fine and **cannot decode a single RESULT, indefinitely, until the Teensy reboots.** Runbook step 10 does not catch this — it resets the *Teensy*, which re-runs `init()` and resends HELLO. **Teensy-reboot recovery works. Pi-restart recovery is untested and unprovable against the current firmware.**
+
+**Not fixed here, deliberately.** The fix is firmware-visible behaviour and sits behind the TODO-9 flash/identify sequence. It also has a trap worth stating before anyone writes it: a re-announce must stay on the non-blocking best-effort path — **this must not become the first blocking write in the super-loop**, which is the precise failure T1 exists to rule out. The Pi side contains the symptom instead: `decode_result()` raises `GeometryUnknown` rather than guessing a length, so it fails loudly instead of mis-slicing an array into a plausible-looking curve.
+
+**Architecture decision — what the parser is forbidden to do.** ADR-001's invariant is *the Teensy determines truth; the renderer presents truth*. `result_valid`, `result_quality`, `mean_coherence`, `tf_confidence` and the per-bin coverage nibbles are read off the wire and carried through unchanged; none is recomputed or inferred. The one derived object is `BinCoverage`, and the distinction was drawn explicitly: the Teensy states *"3 of 4 source bins were clamped"*; the receiver decides that means a saturation marker. It never decides a clamped bin was really fine. A test enforces the checkable half by failing if any receiver module imports an FFT library — a receiver that imports numpy is one commit from recomputing a transfer function the Teensy already authored.
+
+**Implementation.** `pi/analyzer_link/` — `crc.py` (CRC-16/CCITT-FALSE, mirroring `crc16_block`), `framing.py` (`FrameScanner`), `packets.py` (all seven v2 types plus `UnknownPacket`), `protocol.py` (constants, enums, `Geometry`). Standard library only — **pytest is not installed on this machine and no dependency was added**, so the suite is `unittest`. `sh pi/run_tests.sh`.
+
+Two framing decisions are about not trusting a corrupted header, and both are recorded in the source rather than left as folklore:
+
+- **Resync at `start + 1`, not past the declared payload.** A packet that failed CRC has a length field that failed CRC too; skipping by it means trusting the corruption to describe its own size. Proven by test: a STATUS packet with a deliberately inflated length no longer swallows the frames behind it.
+- **Bounded length.** `0x55 0xAA` occurs inside float payload data routinely, so false syncs are *normal*. A declared length above `max_payload_bytes()` is rejected immediately. Without that, two noise bytes make the receiver wait on 64 KB that will never arrive.
+
+**Honest limitation, found by a test that initially failed for the wrong reason.** A corrupted length field does cause a **head-of-line stall** — a length cannot be disproved without checking the CRC, and the CRC cannot be checked until that many bytes have arrived. The stall is bounded by `max_payload_bytes()` (~10 kB, ~217 ms at 460 800 baud) and self-heals as traffic continues. It is now covered by a test that documents it rather than by a comment claiming it does not happen. My first version of that test asserted recovery without supplying enough bytes for recovery to be *possible*; the failure was the test's, not the scanner's.
+
+**Drift guard — the Pi-side half of the protocol audit's acceptance Test C.** `tests/test_firmware_header_sync.py` parses the real Teensy headers and fails if any mirrored constant, packet id or enum has moved. The firmware protects its own layout with `static_assert`; **nothing protected the Python mirror**, and a renumbered enum is the quietest possible break — the packet still parses, the CRC still passes, and the Pi displays the wrong verdict.
+
+It caught a real mismatch on its first run: the firmware `#define` is `DS_PACKET_ROUTER` while the header's own packet table and function name say `ROUTER_STATUS`. Rather than paper over it with string munging, the mapping is now an explicit table, with a second test asserting the table covers every packet type in **both** directions.
+
+**Proof that the guard can actually fail** — a test that cannot fail proves nothing, so three mutations were run as negative controls and each produced a failing run before being reverted:
+
+| Mutation | Result |
+|---|---|
+| `MeasurementState.ABORTED` 6 → 5 | `FAIL test_every_mirrored_enum_matches` |
+| `RESULT_FIXED_BYTES` 156 → 152 | 1 failure |
+| coverage nibbles transposed (`clamped`/`valid` swapped) | 3 failures, incl. `test_nibbles_are_not_transposed` |
+
+The third is the important one: transposing those nibbles turns every railed bin into a plottable one, which **is** the 2026-09-07 defect — `1kHz=-24.0dB` reported in 33 of 33 consecutive windows as though the saturation rail were data. Protocol v2 exists largely to prevent the Pi repeating it, so the contract now has a test per branch.
+
+**🔺 EVIDENCE TIER — the bound on all of the above.** The vectors are **synthesised from this repository's reading of `data_sender.h`**. Encoder and decoder share one author and one interpretation, so a misreading of the header would be reproduced identically on both sides and all 70 tests would still pass. **Proven:** the parser is self-consistent with the header, and its CRC-rejection, resync, bounded-length and unknown-type behaviour are correct. **NOT proven:** agreement with the **compiled firmware on the wire.** That needs a captured real Teensy byte stream — runbook Phase 10 step 4 onward, hardware required. The bound is stated in `pi/README.md`, in `tests/vectors.py`, and in TODO-36, because it is exactly the kind of claim that inflates in retelling.
+
+**No Phase 10 step is passed by this work.** Steps 8 (CRC rejection) and 9 (unknown-packet tolerance) now have offline coverage; the steps themselves are bench steps against a real stream.
+
+**State of the bench — unchanged and untouched.** No firmware was compiled or flashed. The board still runs `44c4680` (`Build: Sep 21 2026 17:21:24 v0.6.0`, hex md5 `65405de70fc778fdd8cf6a48e1cbe45e`). No serial port was opened — `list_ports` enumerated the Teensy at `/dev/cu.usbmodem192895301` and nothing else was done. No relay was actuated, no generator enabled, no validation routine run. **Phase 9 remains blocked exactly where 2026-09-22 (6) left it.**
+
+**Portfolio note.** The two defects are the material worth keeping, and they are the same lesson from two directions: *writing the consumer is what audits the producer*. The protocol had been audited once already — 17 findings, five severe — and the HELLO retransmission gap survived that audit because the audit asked *"is every verdict on the wire?"* and not *"can a receiver that arrives late ever decode this?"* Nobody had tried to be the receiver. Photograph-equivalent for this entry: the negative-control table above, and the `DS_PACKET_ROUTER` / `ROUTER_STATUS` mismatch the drift guard caught within seconds of first existing.
+
+---
+
 ## 2026-09-22 (6) — **The "finish Group B, then flash once" plan is CIRCULAR and is abandoned.** New sequence: an **evidence-enabling intermediate build**, not acceptance firmware. The 100 nF film capacitor is a **validation-fixture** dependency, NOT a breadboard blocker. Critical path re-prioritised to the Pi/UI end-to-end demonstration
 
 ### Why the old sequence became impossible
