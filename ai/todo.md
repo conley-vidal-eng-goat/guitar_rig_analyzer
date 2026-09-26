@@ -1125,6 +1125,8 @@ Safety net: `measurement_state` rides in every live frame, so a dropped ABORTED 
 
 **Instrumentation shipped for that measurement:** `dataSender_getStats()` / `dataSender_printDiagnostics()`, surfaced as the `u` serial command and printed inside the existing 5 s diagnostic window so transport figures sit directly beneath block timing — the question is never "how many frames dropped" alone, it is "did transmission perturb acquisition".
 
+**📌 `results_sent` IS NOT DELIVERY EVIDENCE (clarified 2026-09-26, TODO-59).** It counts bytes accepted into the UART, not results received. The protocol has no return path and no acknowledgement, so the Teensy cannot know what arrived. **Do not close T1, or any Phase 10 step, on a Teensy-side result count** — before TODO-59 a RESULT could be corrupted on the wire by an interleaved packet and still be counted as sent. Result delivery is proven at the Pi or not at all.
+
 **🔺 THE T1 REPORT CHANGED 2026-09-26 (TODO-56) — capture all four runs against the NEW build.** `dataSender_service()` now re-announces HELLO at 1 Hz whenever no RESULT is staged, and the report carries a new line: session id plus `hello_sent` / `hello_dropped`. Two consequences for the acceptance matrix, neither optional:
 - **HELLO drops are counted separately and are EXPECTED in run 3.** A suspended reader keeps the UART full by design, so roughly one HELLO drop per second of the window is the policy working — it is *not* a defect and *not* a reason to fail the run. They were deliberately kept out of `events_dropped` precisely so that figure stays readable.
 - **The re-announce is a new periodic call on the presentation path**, so it contributes to `send_calls` and can contribute to `send_us_max`. It is ~1.02 ms of *wire* time and microseconds of *call* time, but **that is a prediction, not a measurement** — it is exactly what T1 exists to check. **Do not reuse any earlier report as a control.** Run 1 (`_NONE`) is unaffected: `data_sender.cpp` is compiled out entirely for that target.
@@ -1294,6 +1296,40 @@ reboot recovers without a restart.
 
 </details>
 
+### TODO-59 — A best-effort packet written during a RESULT drain lands INSIDE the result and destroys it 🟡 **FIXED IN SOURCE 2026-09-26 — transport atomicity invariant enforced centrally. Compile-verified `_PI` and `_NONE`, NOT FLASHED, NOT BENCH-VERIFIED**
+> **⬆️ Found during the TODO-57 design pass and fixed FIRST, as an isolated change.** It is independently discovered, independently testable, and it protects every future packet producer — including TODO-57's STATE packet and TODO-58's ROUTER_STATUS, neither of which could safely ship without it.
+
+**The defect (`OBS` for mechanism, `INFER` for reachability — not observed on hardware).**
+`dataSender_service()` drains a staged RESULT in chunks across loop iterations, writing straight into the UART ring. `trySendBestEffort()` wrote to the same ring with **no result-pending interlock** — only a `txRoom()` check. Anything emitted between two drain passes therefore landed **inside** the RESULT's byte stream. The receiver reads the interleaved packet as RESULT payload, fails the CRC, and **the whole result is lost — while `results_sent` still counts it as sent.** Silent data loss on the path that exists precisely to be reliable, presenting as a transport fault.
+
+`dataSender_sendResult()` already knew the hazard and guarded only RESULT-vs-RESULT ([data_sender.cpp:539-545](../data_sender.cpp#L539)): *"interleaving two packets would corrupt both."* The same reasoning was never applied to event packets.
+
+**Every RESULT is exposed.** Minimum framed RESULT is 8356 B against a 4096 B TX buffer, so every result needs ≥3 drain passes; worst case 10012 B ≈ 217 ms.
+
+**🔺 THE SMALL PACKET IS THE DANGEROUS ONE — this is counter-intuitive and is why it survived review.** After `dataSender_service()` returns, the loop has exited with *either* the result complete *or* `txRoom() == 0`, so a large packet is refused by the room check. But the UART keeps draining at ~46 B/ms, so a few dozen bytes are free by the time another producer runs. A **12-byte STATUS (`"Ready"`) fits; a 1689-byte live frame does not.** Size is not protection.
+**Most reachable path:** the clip-status messages at [guitar_rig_analyzer.ino:759-771](../guitar_rig_analyzer.ino#L759) sit **outside** the live-display gate, so `presentation_status()` fires during a RESULT drain whenever the player is still making noise — which is exactly when a measurement has just completed.
+
+**✅ Fix — enforced CENTRALLY, as a transport invariant, not per producer:**
+> **While a staged RESULT is draining, no independently framed best-effort packet may write bytes to the stream.**
+
+Implemented in `trySendBestEffort()`, which **all six** best-effort packet types pass through — LIVE_FRAME included, via its own call at [data_sender.cpp:510](../data_sender.cpp#L510). Gating individual producers would have worked until the next packet type was added by someone who did not know to do it; **an invariant that can be forgotten is not an invariant.**
+
+**Caller audit performed before the central guard was written — no exceptions found.** All six are best-effort by documented contract: HELLO (self-heals in ≤1 s since TODO-56), LIVE_FRAME (droppable/latest-wins, and blocked from RESULT state by the display gate anyway), STATUS (display text), VIEW (*"a dropped view packet is recoverable"*), ABORTED, ROUTER_STATUS (no callers, TODO-58). **Nuance recorded:** ABORTED and VIEW justify their droppability with the claim TODO-57 proved false, so their *policy* is best-effort while their *safety net* does not exist yet. Dropping them still strictly beats corrupting the RESULT, which loses both the result and the event.
+
+**The drain cannot stall**, so the refusal window is bounded: the UART transmits whether or not a Pi is listening, so a staged result always drains in ≤~217 ms.
+
+**The HELLO gate in `dataSender_service()` is RETAINED, and is no longer a duplicate safety guard.** Its documented purpose changed: it avoids building a 40-byte payload and its CRC only to have them refused, and it keeps `hello_dropped` meaning *backpressure* rather than accumulating a drop every second of every RESULT drain — a structural condition, not a link problem. The safety now comes from the central invariant. Comment updated to say so.
+
+**New counter `blocked_by_result`, reported by `u`.** A non-zero value **is the invariant working, not a fault**; expect it to rise whenever a result is delivered while the signal is live.
+
+**📌 `results_sent` semantics made explicit — it was quietly implying something it cannot know.** It means *"every byte of the framed RESULT was accepted into the UART over time."* There is no return path and no acknowledgement in this protocol, so the Teensy cannot know whether a receiver got it or whether it passed CRC. **It is a transmitter statistic and must never be cited as end-to-end delivery evidence** — before this fix, a RESULT could be corrupted on the wire and still counted here as sent. Documented at the field.
+
+**🔺 EVIDENCE — compile and offline only.** `_PI` and `_NONE` compile with **zero warnings**. 123 Pi tests pass (113 → 123). Ten new tests in two tiers, and the tiers are not interchangeable:
+- **Consumer regression tests (`OBS`)** — the discovered stream shape is constructed and replayed: the corrupted RESULT is rejected rather than rendered, the spliced packet itself still arrives (which is how the defect would present on a bench — status text updating normally while measurements silently fail to appear), and the stream recovers. A clean-result control prevents these passing for the wrong reason.
+- **Source structural guards (`OBS` of source, NOT of execution)** — the invariant is present in `trySendBestEffort()`, precedes any UART write, is counted, and **exactly two functions in the file write to the UART**. That last one is the coverage check: a future direct writer would bypass the choke point entirely.
+**NOT proven: that the firmware guard executes correctly.** That needs a captured Teensy stream with a RESULT delivered while the signal is live — bench work. **NOT FLASHED.**
+**Proof:** a RESULT delivered while clip-status transitions are firing arrives intact at the Pi and passes CRC; `blocked_by_result` is non-zero for that run.
+
 ### TODO-57 — Measurement state is not observable to a reconnecting Pi, and the documented safety net for a dropped ABORTED is FALSE 🔴 **producer-side contract defect found 2026-09-26 during the receiver state-model design pass. HIGHER PRIORITY THAN TODO-58 — it concerns a safety-relevant state**
 > **⬆️ This should be the next producer-side slice, ahead of the renderer.** Building UI on a state channel that cannot represent a sticky ABORTED after reconnect means the defect becomes invisible at exactly the moment it matters.
 
@@ -1311,6 +1347,8 @@ reboot recovers without a restart.
 - a dropped ABORTED event;
 - **sticky ABORTED**, which is latched until `measurementEngine_acknowledgeAbort()` ([measurement_engine.h:167](../measurement_engine.h#L167)) and must survive a reconnect as a fact about the instrument;
 - an unambiguous distinction between **link silence** and **measurement state**.
+
+**✅ A transport precondition for this item is now met (TODO-59).** The design gate identified that any new state packet must not interleave with a draining RESULT. That is no longer TODO-57's problem to remember: the invariant is enforced centrally in `trySendBestEffort()`, so the STATE packet inherits it by construction.
 
 **Consumer-side containment already in place (slice 3, not a fix):** the Pi receiver models `UNKNOWN` as a first-class state and never maps silence, HELLO, connection or session establishment to IDLE. That represents the gap honestly; it does not close it.
 **Proof:** a Pi receiver attached at an arbitrary moment — including mid-CAPTURE and during a sticky ABORTED — obtains the current measurement state without the Teensy being reset and without inferring it from the absence of packets; and a deliberately dropped ABORTED still leaves the Pi able to establish that the instrument is in ABORTED.

@@ -431,6 +431,14 @@ struct DataSenderStats {
 
     // Reliable path
     uint32_t results_queued;
+
+    // *** TRANSMITTER-SIDE ONLY. NOT A DELIVERY RECEIPT. ***
+    // results_sent means every byte of the framed RESULT was accepted into the
+    // UART over time. It says nothing about whether a receiver got it, or
+    // whether what arrived passed CRC: this protocol has no return path and no
+    // acknowledgement, so the Teensy cannot know. Do not cite it as end-to-end
+    // delivery evidence — before TODO-59 a RESULT could be corrupted on the
+    // wire by an interleaved packet and still be counted here as sent.
     uint32_t results_sent;            // fully drained onto the wire
     uint32_t results_superseded;      // replaced mid-drain by a newer result
     uint32_t result_bytes_abandoned;  // bytes of superseded results never sent
@@ -448,6 +456,12 @@ struct DataSenderStats {
     // a HELLO drop and the event figure would stop meaning anything.
     uint32_t hello_sent;
     uint32_t hello_dropped;
+
+    // Transport atomicity (TODO-59). Best-effort packets refused because a
+    // staged RESULT was draining and interleaving would have corrupted it.
+    // A NON-ZERO VALUE HERE IS THE INVARIANT WORKING, NOT A FAULT — expect it
+    // to rise whenever a result is delivered while the signal is still live.
+    uint32_t blocked_by_result;
 
     // Timing of the calls themselves: this is the number that matters for T1.
     uint32_t send_calls;

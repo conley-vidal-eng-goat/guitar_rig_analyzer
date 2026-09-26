@@ -30,6 +30,14 @@
 //
 // *** THE CENTRAL RULE OF THIS FILE: NO BLOCKING WRITES. ***
 //
+// *** AND ITS COMPANION (TODO-59): TRANSPORT ATOMICITY. ***
+//   While a staged RESULT is draining, no independently framed best-effort
+//   packet may write bytes to this stream.
+// Enforced centrally in trySendBestEffort(), which every best-effort packet
+// type passes through. See the comment there for why the SMALL packets are the
+// dangerous ones, and why this is not left to individual producers to
+// remember.
+//
 // Presentation transport must be lossy before measurement becomes lossy. A dead,
 // slow or disconnected Pi must never perturb acquisition timing. Every byte
 // written here is gated on availableForWrite(); a packet that does not fit is
@@ -54,6 +62,11 @@
 static DataSenderStats s_stats;
 static uint32_t s_live_drop_streak = 0;
 
+// DEFINED HERE, ahead of its siblings, because the transport atomicity
+// invariant (TODO-59) inside trySendBestEffort() reads it and that function is
+// declared above the rest of the reliable path's state.
+static uint32_t s_result_len = 0;   // total framed bytes staged
+
 // Session identity and re-announcement cadence. Deliberately NOT part of
 // DataSenderStats: resetStats() is called at the start of every T1 measurement
 // window, and neither the session id nor the announcement phase may be
@@ -71,7 +84,7 @@ DMAMEM static uint8_t s_tx_buffer[DS_TX_BUFFER_BYTES];
 // Staging buffer for the reliable RESULT path, holding one fully framed packet
 // (header + payload + CRC) drained across loop iterations.
 DMAMEM static uint8_t s_result_stage[DS_RESULT_STAGE_BYTES];
-static uint32_t s_result_len  = 0;   // total framed bytes staged
+// s_result_len is defined near the top of this file — see the note there.
 static uint32_t s_result_sent = 0;   // bytes already on the wire
 static uint32_t s_result_queued_ms = 0;
 
@@ -134,6 +147,52 @@ static inline uint32_t txRoom() {
 // -----------------------------------------------------------------------------
 static bool trySendBestEffort(uint8_t packet_type,
                               const uint8_t* payload, uint16_t len) {
+    // -------------------------------------------------------------------------
+    // TRANSPORT ATOMICITY INVARIANT (TODO-59)
+    //
+    //   While a staged RESULT is draining, NO independently framed best-effort
+    //   packet may write bytes to this stream.
+    //
+    // dataSender_service() drains the staged RESULT in chunks across loop
+    // iterations, writing straight into the UART ring. Anything else written
+    // between two of those chunks lands INSIDE the RESULT's byte stream. The
+    // receiver then reads the interleaved packet as RESULT payload, fails the
+    // CRC, and the whole result is lost — while s_stats.results_sent still
+    // counts it as sent. A silent data-loss defect on the path that exists
+    // precisely to be reliable.
+    //
+    // *** THE DANGEROUS PACKET IS THE SMALL ONE — this is counter-intuitive. ***
+    // After service() returns, either the result is complete or txRoom() is 0,
+    // so a big packet is refused by the room check below. But the UART keeps
+    // draining (~46 B/ms at 460800), so by the time the loop reaches another
+    // producer a few dozen bytes are free. A 12-byte STATUS ("Ready") fits; a
+    // 1689-byte live frame does not. Size is not the protection.
+    //
+    // Reachability is not theoretical: the clip-status messages at
+    // guitar_rig_analyzer.ino:759-771 sit OUTSIDE the live-display gate, so
+    // presentation_status() fires during a RESULT drain whenever the player is
+    // still making noise.
+    //
+    // *** ENFORCED HERE, CENTRALLY, ON PURPOSE. ***
+    // Every best-effort packet type — LIVE_FRAME, STATUS, ABORTED, VIEW,
+    // ROUTER_STATUS, HELLO — reaches the wire through this one function.
+    // Gating the individual producers instead would work until the next packet
+    // type is added by someone who does not know to do it, and that packet
+    // would rediscover this bug. An invariant that can be forgotten is not an
+    // invariant.
+    //
+    // Dropping here is CORRECT, not a compromise: every caller is best-effort
+    // by documented contract, and the drain is bounded (~217 ms worst case, and
+    // the UART drains whether or not a Pi is listening, so it cannot stall).
+    // The reliable path stays reliable; the lossy path stays lossy. That is the
+    // architecture's stated ordering — presentation transport must be lossy
+    // before measurement becomes lossy.
+    // -------------------------------------------------------------------------
+    if (s_result_len != 0) {
+        s_stats.blocked_by_result++;
+        return false;
+    }
+
     const uint32_t total = (uint32_t)len + DS_FRAMING_BYTES;
     if (txRoom() < total) return false;
 
@@ -407,6 +466,15 @@ void dataSender_service() {
         // sendHello() is best-effort and cannot block: under backpressure it
         // drops and counts. Subtraction is wrap-safe on uint32_t, so a
         // millis() rollover at ~49.7 days does not stall announcements.
+        //
+        // NOTE (TODO-59): this placement is no longer what makes the
+        // announcement SAFE — the transport atomicity invariant inside
+        // trySendBestEffort() is. It is kept here for two documented reasons,
+        // not as a duplicate guard: it avoids building a 40-byte payload and
+        // its CRC only to have them refused, and it keeps hello_dropped
+        // meaning "backpressure" rather than accumulating a drop every second
+        // of every RESULT drain, which is a structural condition and not a
+        // link problem.
         // ---------------------------------------------------------------
         if ((uint32_t)(millis() - s_last_hello_ms) >= DS_HELLO_REANNOUNCE_MS) {
             sendHello();
@@ -772,6 +840,9 @@ void dataSender_printDiagnostics() {
     const float mean_us  = s.send_calls ? ((float)s.send_us_total / s.send_calls) : 0.0f;
 
     Serial.println("[Link] --- Pi link transport (measured) ---");
+    Serial.printf("[Link] Atomicity:   %lu best-effort packets refused while a "
+                  "RESULT was draining (expected, not a fault)\n",
+                  (unsigned long)s.blocked_by_result);
     Serial.printf("[Link] Session id:  %u (constant for this boot) | HELLO "
                   "%lu sent, %lu dropped, every %d ms\n",
                   (unsigned)s_session_id,

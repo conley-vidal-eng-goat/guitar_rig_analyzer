@@ -12,6 +12,48 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (4) — **TODO-59: a best-effort packet written during a RESULT drain lands INSIDE the result and destroys it — while the Teensy counts it as sent.** Fixed as a central transport invariant, not a per-producer gate. **Compile-verified only; TODO-57 deferred behind it**
+
+**How it was found, which matters more than the bug.** It surfaced while answering a routine design question for TODO-57: *does a new STATE packet need sequence numbers?* Working out whether packets could be reordered meant tracing how bytes actually reach the UART — and that showed two independent writers to the same stream with nothing arbitrating between them. The defect was not in the code being designed; it was in the code that design would have sat on top of. **Asking "what could reorder this?" found something that reorders nothing and corrupts everything.**
+
+**The defect.** `dataSender_service()` drains a staged RESULT in chunks across loop iterations, writing straight into the UART ring. `trySendBestEffort()` wrote to that same ring with **no result-pending interlock** — only a `txRoom()` check. Anything emitted between two drain passes therefore landed **inside** the RESULT's byte stream. The receiver consumes the interleaved packet as RESULT payload, fails the CRC, and **the whole result is lost.**
+
+`dataSender_sendResult()` already knew this hazard and guarded RESULT-vs-RESULT ([data_sender.cpp:539-545](../data_sender.cpp#L539)) with the words *"interleaving two packets would corrupt both."* **The same reasoning was simply never applied to event packets.** The knowledge was in the file; its scope was too narrow.
+
+**The part that explains why it survived review: the SMALL packet is the dangerous one.** After `dataSender_service()` returns, the loop has exited with *either* the result complete *or* `txRoom() == 0` — so a big packet is refused by the room check and looks safe. But the UART keeps draining at ~46 B/ms, so by the time another producer runs a few dozen bytes are free. A **12-byte STATUS (`"Ready"`) fits. A 1689-byte live frame does not.** Every intuition that says "watch the big packets" points the wrong way here.
+
+Most reachable path: clip-status messages at [.ino:759-771](../guitar_rig_analyzer.ino#L759) are **outside** the live-display gate, so `presentation_status()` fires during a RESULT drain whenever the player is still making noise — precisely when a measurement has just completed. Every RESULT is exposed: minimum framed size is 8356 B against a 4096 B buffer, so every result takes ≥3 drain passes.
+
+**🔺 The worst property is not the loss — it is that the loss is invisible from the Teensy.** `results_sent` increments regardless: it counts bytes accepted into the UART. So the firmware reports success for a result the Pi never received, and the symptom presents as a Pi-side CRC problem. **A defect that blames the other end is the expensive kind.** `results_sent`'s meaning is now documented at the field: there is no return path and no acknowledgement in this protocol, so it is a transmitter statistic and cannot be cited as delivery evidence. TODO-34 carries the same warning, because T1 is where someone would be tempted to use it.
+
+**The fix, and the argument for where it lives.** Stated as a transport invariant rather than a rule producers must remember:
+
+> While a staged RESULT is draining, no independently framed best-effort packet may write bytes to the stream.
+
+Enforced in `trySendBestEffort()` — the single choke point that **all six** best-effort packet types pass through, LIVE_FRAME included via its own call at [:510](../data_sender.cpp#L510). The alternative was gating each producer, which would have worked until the next packet type was added by someone who did not know to do it. **An invariant that can be forgotten is not an invariant**, and this codebase had just demonstrated that with TODO-58's never-called publisher.
+
+**The caller audit ran before the guard was written, not after.** The instruction was explicit — do not assume a central guard is safe merely because it looks obviously right. All six callers are best-effort by documented contract, so no exception was found. One nuance is worth keeping: **ABORTED and VIEW justify their droppability with the claim TODO-57 proved false.** Their policy is best-effort; their safety net does not exist yet. Dropping them during a drain is still strictly better than corrupting the RESULT, which loses the result *and* the event — but it is a reason to keep TODO-57 next in line rather than a reason to relax.
+
+**The HELLO gate is kept, and its purpose was rewritten rather than left to imply something untrue.** It is no longer what makes the announcement safe — the central invariant is. It stays for two stated reasons: it avoids building 40 bytes and a CRC only to have them refused, and it keeps `hello_dropped` meaning *backpressure* rather than accumulating a drop every second of every RESULT drain. **I originally justified that gate as "don't compete for bandwidth." That was under-described: it was preventing stream corruption and I did not know it.** Worth recording — the gate was right for a reason I had not identified, which is luck, not design.
+
+**Evidence, in two tiers that are not interchangeable.** 123 tests pass (113 → 123).
+
+*Consumer regression (`OBS`):* the discovered stream shape is constructed and replayed — the corrupted RESULT is rejected rather than rendered, the spliced packet itself **still arrives**, and the stream recovers. That middle one is how the defect would present on a bench: **status text updating normally while measurements silently fail to appear.** A clean-result control stops the others passing for the wrong reason.
+
+*Source structural (`OBS` of source, NOT of execution):* the guard exists in `trySendBestEffort()`, precedes any UART write, is counted, and **exactly two functions in the file write to the UART**. The last is the coverage check — a future direct writer would bypass the choke point entirely, and nothing else would notice.
+
+Two negative controls, each reverted: removing the invariant fails two tests; adding a third direct UART writer fails the coverage test.
+
+**Two test-writing mistakes, both mine, both instructive.** The UART-writer scan first matched `while (...)` inside the drain loop — fixed by anchoring function definitions to column 0. Then it matched `DS_UART_PORT.write` inside this file's **own banner comment**, which warns future authors about exactly this hazard. A structural test that reads prose as code is a structural test that lies; comments are now stripped, preserving line offsets.
+
+**🔺 NOT PROVEN: that the firmware guard executes correctly.** The source tests prove it is present, not that it runs. That needs a captured Teensy stream with a RESULT delivered while clip transitions fire — bench work, and it is now part of TODO-59's proof line. `_PI` and `_NONE` compile with zero warnings. **Nothing flashed, no serial session, no relay, generator, injection or validation. Phase 9 untouched.**
+
+**Sequencing.** TODO-59 first and isolated, exactly as directed — it protects every future producer, so TODO-57's STATE packet and TODO-58's ROUTER_STATUS now inherit the invariant by construction rather than each having to remember it. TODO-57's approved design stands: packet `0x08`, periodic-only at 500 ms, authoritative state + abort reason + reserved + canonical audio block counter.
+
+**Portfolio note.** Four slices, four defects, and the pattern has sharpened. TODO-56, 57 and 58 were all *"the producer never says this."* TODO-59 is different: **the producer says it, correctly, and then destroys it on the way out.** All four were invisible to a protocol audit that examined packet *contents* — because contents are what an audit naturally examines, and none of these are content defects. They are lifecycle and concurrency defects, and the only thing that surfaced them was building the consumer and asking, at each step, *"what would I need in order to actually use this?"*
+
+---
+
 ## 2026-09-26 (3) — **Receiver state model built offline. The design pass that preceded it found TWO more producer-side defects — including a documented safety net that is simply false.** UNKNOWN is a first-class state because the firmware cannot currently say otherwise. **No firmware change, no bench action, not committed**
 
 **What the design pass was for, and why it ran before any code.** The rule for this slice was: inspect, propose the lifecycle, stop at the decision gate. That gate is what produced the two findings below. Had the model been written first, both would have been absorbed into Python as "the way it is" and become invisible — which is exactly the failure this project keeps catching one layer too late.
