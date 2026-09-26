@@ -253,7 +253,7 @@ class TestBoundaryInvariant(unittest.TestCase):
     def test_receiver_does_no_dsp(self):
         # Not a style check. A receiver that imports an FFT is one commit away
         # from recomputing a transfer function the Teensy already authored.
-        for module in ("protocol", "framing", "packets", "crc"):
+        for module in ("protocol", "framing", "packets", "crc", "state"):
             src = (REPO / "pi" / "analyzer_link" / f"{module}.py").read_text()
             for banned in self.FORBIDDEN:
                 self.assertNotIn(

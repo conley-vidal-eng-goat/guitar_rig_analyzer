@@ -16,11 +16,13 @@ analyzer_link/
   protocol.py   constants, enums, Geometry — a MIRROR of the firmware headers
   framing.py    FrameScanner: sync, resync, CRC verification, bounded lengths
   packets.py    decoders for 0x01–0x07 + UnknownPacket, and the clamp contract
+  state.py      ReceiverState: packets -> renderable instrument state
 tests/
   vectors.py    synthetic protocol v2 packet builder (the test stimulus)
   test_crc.py
   test_framing.py
   test_packets.py
+  test_state.py
   test_firmware_header_sync.py   drift guard — parses the real Teensy headers
 ```
 
@@ -84,7 +86,6 @@ directory.
 
 ## Not yet built
 
-- Receiver state model (measurement state, sticky `ABORTED`, HELLO lifecycle)
 - Serial transport (`/dev/serial0`) and capture/replay tooling
 - Renderer / UI — **blocked on T1** per TODO-36, and the framework choice needs
   its own ADR rather than being buried in a code change
@@ -120,6 +121,55 @@ evidence of a restart.
 
 Acting on a session change is the receiver state model's job and is **not built
 yet**. This layer only surfaces the field.
+
+## Receiver state model (`state.py`)
+
+`ReceiverState` turns packets into the Pi's belief about the instrument. Feed
+it CRC-verified frames with `on_frame(frame, now_ms=...)`; it owns geometry, so
+it does its own decoding. It never raises on bad input — a receiver that dies
+on a malformed packet is a receiver that stops rendering.
+
+Four rules govern it, and they exist to stop the UI filling gaps with
+assumptions:
+
+| | Rule |
+|---|---|
+| **UNKNOWN is a state** | Silence, HELLO, connection and session establishment are **never** mapped to IDLE. `UNKNOWN` means the Teensy has not said |
+| **Sticky ABORTED** | Cleared only by an authoritative observation of `IDLE`, or by the session ending. Never by silence, reconnect, status text, or a view change |
+| **Session rollover** | A changed `session_id` ends the previous session: its state is invalidated, the new session starts `UNKNOWN` |
+| **No promotion pre-HELLO** | Telemetry is decoded and counted, but not promoted into instrument state, until a valid HELLO identifies the session |
+
+**Why `VIEW(LIVE)` does not clear an abort.** `presentation_restoreLive()` is
+called from two places in the firmware — after `acknowledgeAbort()`
+([.ino:590](../guitar_rig_analyzer.ino#L590)) *and* after `returnToLive()` from
+a RESULT view ([:600](../guitar_rig_analyzer.ino#L600)) — and `presentation.h`
+documents it as a **view** transition. "Show the live view" is not "the engine
+is no longer ABORTED". The protocol does not make the first imply the second,
+so the model moves the view and leaves the latch alone.
+
+**Why an `IDLE` observation does clear it.** The firmware leaves `ABORTED` only
+through `measurementEngine_acknowledgeAbort() → IDLE`
+([measurement_engine.h:167](../measurement_engine.h#L167)). So an authoritative
+`IDLE` is evidence of acknowledgement — a Teensy-authored fact, not a Pi
+decision. The rule is written against *any* packet carrying a measurement
+state, not against `LIVE_FRAME`, so TODO-57's state packet plugs in unchanged.
+
+**Local time is used for one thing only:** deciding the link has gone quiet.
+`is_stale()` is a fact about the link and never alters measurement state. The
+canonical measurement timebase is the Teensy's audio block counter, which
+arrives as `output_block_number`.
+
+### What you will see against current firmware (TODO-57)
+
+`measurement_state` can only ever be `IDLE`, `ARMED`, `ABORTED` or `UNKNOWN`.
+`LIVE_FRAME` — the only packet carrying a state byte — is sent **only in IDLE
+or ARMED** ([.ino:748](../guitar_rig_analyzer.ino#L748)), so CAPTURE,
+PROCESSING, RESULT and EXPORTING are never observed. A receiver attaching
+during a sticky ABORTED gets HELLO and then silence, and stays `UNKNOWN`.
+
+That is a producer-side gap, not a modelling choice. `router` will likewise stay
+`None` forever: `ROUTER_STATUS` is built and documented but has zero callers
+(TODO-58).
 
 ## Still true: RESULT cannot be decoded before HELLO
 

@@ -12,6 +12,59 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (3) — **Receiver state model built offline. The design pass that preceded it found TWO more producer-side defects — including a documented safety net that is simply false.** UNKNOWN is a first-class state because the firmware cannot currently say otherwise. **No firmware change, no bench action, not committed**
+
+**What the design pass was for, and why it ran before any code.** The rule for this slice was: inspect, propose the lifecycle, stop at the decision gate. That gate is what produced the two findings below. Had the model been written first, both would have been absorbed into Python as "the way it is" and become invisible — which is exactly the failure this project keeps catching one layer too late.
+
+**🔴 F1 / TODO-57 — a documented safety net is FALSE.** `presentation_updateLive()` is gated to `IDLE | ARMED` ([.ino:748-756](../guitar_rig_analyzer.ino#L748)): in CAPTURE, PROCESSING, RESULT, EXPORTING and **ABORTED**, no live frame is sent at all. So the `measurement_state` byte at LIVE_FRAME offset [0] is effectively a **two-value field**.
+
+That matters because [data_sender.cpp:681](../data_sender.cpp#L681) states *"measurement_state rides in every live frame, so the Pi still learns the fact"* — and **TODO-34 cites exactly that line as the mitigation for a dropped ABORTED**. It does not hold. During ABORTED there are no live frames; if the best-effort ABORTED packet drops, the Pi never learns the abort happened. It observes live frames stop, then resume showing IDLE. **The most safety-relevant state in the machine has the weakest delivery guarantee on the wire, and the compensating control written into the source does not exist.**
+
+**🔴 F2 / TODO-57 — a reconnecting Pi cannot learn measurement state at all.** HELLO carries geometry, not state. Combined with F1, a Pi attaching during a sticky ABORTED receives HELLO and then silence, and cannot distinguish *"not IDLE/ARMED"* from *"link dead"* from *"Teensy wedged"*. **This is TODO-56's exact shape one layer up:** state announced once as an event with no way to re-obtain it. TODO-56 fixed it for geometry; measurement state still has it.
+
+**The fix that was explicitly ruled out, and why that ruling is right.** The cheap repair is to widen the LIVE_FRAME gate so frames flow in every state. Rejected at the gate: that couples **state observability to DSP/live-stream availability**, two things that must be able to fail independently. LIVE_FRAME is a live-data product, not a state channel. Pushing a full spectrum frame through CAPTURE merely to carry one byte would also add transport load precisely when the instrument is busiest. The likely correct shape is a small authoritative state packet, or a periodic state announcement on the TODO-56 pattern — its own design pass, its own gate.
+
+**🔴 F3 / TODO-58 — `ROUTER_STATUS` has zero callers.** `presentation_routerStatus()` is implemented in **all three** backends and `dataSender_sendRouterStatus()` builds a complete payload — and **nothing in the firmware calls either**. The packet type, the payload builder, the wire documentation and the presentation API all exist; the call site was never written. The Pi therefore cannot learn jack presence, return source, route validity or monitor mode, all of which the Live view is specified to show. Not a protocol defect — the parser decodes it correctly and is tested. Kept as a **separate, lower-priority** item from TODO-57: this is telemetry publication, that is measurement-state authority.
+
+**Four rulings, and the one that was corrected at the gate.** I proposed that `VIEW(LIVE)` clear the abort latch. That was wrong, and the correction is worth recording because the reasoning generalises.
+
+`presentation_restoreLive()` is called from **two** places: after `measurementEngine_acknowledgeAbort()` ([.ino:590](../guitar_rig_analyzer.ino#L590)) *and* after `measurementEngine_returnToLive()` from a RESULT view ([:600](../guitar_rig_analyzer.ino#L600)). `presentation.h` documents it as *"returns the renderer from a result/abort view to the live view"* — a **view** fact. **"The Teensy asked for the live view" and "the measurement engine is no longer ABORTED" are different claims, and the protocol does not make the first imply the second.** The pairing in the `.ino` is an incidental call-site adjacency, not a protocol contract. Treating adjacency as contract is how a boundary erodes one convenient inference at a time.
+
+What *does* clear the latch is an authoritative observation of `IDLE`. That is not the Pi deciding an abort was acknowledged: the firmware defines ABORTED as leaving **only** through `acknowledgeAbort() → IDLE` ([measurement_engine.h:167](../measurement_engine.h#L167)), so an authoritative IDLE **is** evidence of acknowledgement. The rule is implemented against *any* packet carrying a measurement state rather than against LIVE_FRAME, so TODO-57's eventual state packet plugs in with no change here.
+
+**The four rulings as implemented:**
+
+| | Rule |
+|---|---|
+| **D1** | `UNKNOWN` is first-class. Silence, HELLO, connection and session establishment are **never** mapped to IDLE |
+| **D2** | An authoritative `IDLE` observation may clear the latch. `VIEW(LIVE)` may not |
+| **D3** | A changed `session_id` ends the previous session; its abort cannot remain the *current* instrument state. Cleared, recorded as **"session ended while abort was latched"**, new session starts `UNKNOWN` |
+| **D4** | No promotion into renderable state before a valid HELLO. Pre-HELLO packets are still decoded and counted for diagnostics |
+
+**D3's wording was corrected too, and precisely.** I had written "lost to reboot"; that implies telemetry failed. What is actually known is narrower: **the previous session ended before this receiver observed an acknowledgement.** The Teensy may well have been acknowledged by an operator standing in front of it. The field is named `ended_with_abort_latched` and the record keeps the reason, so the history is a statement of observation rather than of blame.
+
+**`UNKNOWN` deliberately does not live in `protocol.MeasurementState`.** That enum is a *mirror* of the firmware's, and the drift guard fails if it gains a member the Teensy does not have — correctly, because a mirror that drifts is worse than no mirror. UNKNOWN is a **receiver** concept: the Teensy always knows its own state. So it is a separate sentinel in the receiver's vocabulary, and `ObservedState = MeasurementState | Unknown`.
+
+**A test failed for the right reason and taught something.** I asserted that a pre-HELLO LIVE_FRAME would decode-but-not-promote, since its array lengths *are* self-describing from `payload_length`. It does not decode — and should not. **`decim_ratio` is not derivable from the frame**, and without it the per-bin coverage nibbles cannot be interpreted: *"2 of ? source bins clamped"* is not a renderable fact. Deriving a ratio would be assuming geometry, which D4 forbids. The test now pins that reasoning rather than the assumption I started with.
+
+**Evidence.** 113 tests pass (79 → 113), standard library only. Three negative controls, each reverted after confirming it fails:
+
+| Mutation | Result |
+|---|---|
+| New session assumes IDLE instead of UNKNOWN (D3) | 2 failures |
+| `VIEW(LIVE)` clears the abort latch (D2) | `test_view_live_moves_the_view_but_does_NOT_clear_the_abort` |
+| Telemetry promoted before HELLO (D4) | 1 failure |
+
+The ADR-001 boundary guard now also covers `state.py` — the module most likely to want to compute something, because "the UI needs to show something" is constant pressure to fill a gap with an assumption.
+
+**🔺 EVIDENCE BOUND, unchanged.** Offline only. No firmware was compiled or flashed, no serial session opened, no relay, generator, injection or validation. The parser and the firmware still share one author's reading of `data_sender.h`; wire agreement needs a captured Teensy stream. **No Phase 10 step is passed. Phase 9 untouched.**
+
+**Sequencing changed as a result of this pass.** The next slice is **not** the renderer. It is the producer-side state-observability design for TODO-57 — because building UI on a state channel that cannot represent a sticky ABORTED after reconnect would make that defect invisible exactly where it matters most.
+
+**Portfolio note.** Three slices, three defects, one pattern: **the consumer is what audits the producer.** Protocol v2 was audited once — 17 findings, five severe — and that audit asked *"is every verdict on the wire?"*. It never asked *"can a receiver that arrives late obtain this?"*. TODO-56 (geometry), TODO-57 (measurement state) and TODO-58 (route state) are all the same unasked question, and all three survived an audit that was genuinely thorough about a different one.
+
+---
+
 ## 2026-09-26 (2) — **TODO-56 fixed in source: HELLO is now re-announced at 1 Hz and carries a session id.** Option B rejected on evidence, not preference. The generation mechanism was chosen by elimination and the rejects are recorded. **Compile-verified only — not flashed, no bench action**
 
 **Decision, and why it was not the obvious one.** Two mechanisms could fix a HELLO that only exists at startup: periodic announcement, or an explicit Pi→Teensy request. The request option produces cleaner reconnect semantics *and* lays groundwork the touch UI will need anyway, so it was not dismissed — it was evidence-checked and deferred.

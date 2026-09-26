@@ -1294,6 +1294,34 @@ reboot recovers without a restart.
 
 </details>
 
+### TODO-57 — Measurement state is not observable to a reconnecting Pi, and the documented safety net for a dropped ABORTED is FALSE 🔴 **producer-side contract defect found 2026-09-26 during the receiver state-model design pass. HIGHER PRIORITY THAN TODO-58 — it concerns a safety-relevant state**
+> **⬆️ This should be the next producer-side slice, ahead of the renderer.** Building UI on a state channel that cannot represent a sticky ABORTED after reconnect means the defect becomes invisible at exactly the moment it matters.
+
+**Two findings, one root cause — the only carrier of measurement state is gated off in most states.**
+
+**F1 — `LIVE_FRAME` is only sent in `IDLE` or `ARMED`** (`OBS`, [guitar_rig_analyzer.ino:748-756](../guitar_rig_analyzer.ino#L748)). The `live_display_active` gate suppresses live updates in CAPTURE, PROCESSING, RESULT, EXPORTING and **ABORTED**, so the `measurement_state` byte at LIVE_FRAME offset [0] is effectively a **two-value field**.
+**➡️ Therefore the safety net documented at [data_sender.cpp:681](../data_sender.cpp#L681) does not hold.** It claims *"measurement_state rides in every live frame, so the Pi still learns the fact"*, and **TODO-34 cites exactly that as the mitigation for a dropped ABORTED**. During ABORTED there are no live frames at all. If the best-effort ABORTED packet is dropped, **the Pi never learns the abort happened** — it sees live frames stop and later resume showing IDLE. The claim must be corrected wherever it appears, not just the code fixed.
+
+**F2 — a reconnecting Pi cannot learn the current measurement state at all.** HELLO carries geometry and capabilities, not measurement state. Combined with F1, a Pi attaching during a sticky ABORTED receives HELLO and then **silence**. Absence of live frames is ambiguous between *"not IDLE/ARMED"*, *"link dead"* and *"Teensy wedged"*. **This is TODO-56's exact shape one layer up:** state announced once as an event, with no way to re-obtain it. TODO-56 fixed it for geometry; measurement state still has it.
+
+**🛑 DO NOT FIX F1 BY WIDENING THE LIVE_FRAME GATE.** Sending live frames through CAPTURE/PROCESSING/RESULT/ABORTED merely to transport one state byte couples **state observability to DSP/live-stream availability** — two things that must be able to fail independently. LIVE_FRAME is a live-data product; it is not a state channel. The likely correct shape is a small authoritative state/status packet, or a periodic state announcement on the TODO-56 pattern. **That deserves its own design pass and its own decision gate.**
+
+**Scope this must cover when designed:**
+- late attachment and reconnect during **every** measurement state, not just IDLE;
+- a dropped ABORTED event;
+- **sticky ABORTED**, which is latched until `measurementEngine_acknowledgeAbort()` ([measurement_engine.h:167](../measurement_engine.h#L167)) and must survive a reconnect as a fact about the instrument;
+- an unambiguous distinction between **link silence** and **measurement state**.
+
+**Consumer-side containment already in place (slice 3, not a fix):** the Pi receiver models `UNKNOWN` as a first-class state and never maps silence, HELLO, connection or session establishment to IDLE. That represents the gap honestly; it does not close it.
+**Proof:** a Pi receiver attached at an arbitrary moment — including mid-CAPTURE and during a sticky ABORTED — obtains the current measurement state without the Teensy being reset and without inferring it from the absence of packets; and a deliberately dropped ABORTED still leaves the Pi able to establish that the instrument is in ABORTED.
+
+### TODO-58 — `ROUTER_STATUS` (0x05) is built, documented and never sent — it has zero callers 🔴 **found 2026-09-26. Lower priority than TODO-57 — this is telemetry publication, not measurement-state authority**
+**What (`OBS`):** `presentation_routerStatus()` is defined in **all three** backends ([presentation.cpp:68/130/179](../presentation.cpp#L68)) and `dataSender_sendRouterStatus()` builds a full payload ([data_sender.cpp:723](../data_sender.cpp#L723)) — **and nothing anywhere in the firmware calls either.** A whole-tree search returns only the definitions and the header declarations. The packet type, the payload builder, the wire documentation and the presentation API all exist; the call site does not.
+**Why it matters:** the Pi therefore cannot learn **jack presence, return source, route validity, or monitor mode** — all of which the production Live view is specified to show ("active source/return routing"). It is the same failure shape the protocol audit named for the v1 findings: *the firmware computes something and does not put it on the wire* — except here the transmitter was written and simply never wired up.
+**Note this is NOT a protocol defect.** Protocol v2 carries the packet correctly and the Pi parser decodes it (`packets.decode_router_status`, tested). The gap is entirely a missing producer call.
+**What:** call `presentation_routerStatus()` where route state actually changes — `signalRouter_update()`'s `JACK_CHANGED`, `signalRouter_setReturnSource()`'s transition, and once after `signalRouter_init()` so a receiver has an initial snapshot. **Consider the TODO-56 lesson before choosing "on change only":** a Pi that attaches after the last change would never receive one. Whatever TODO-57 decides about periodic state announcement probably governs this too — **resolve TODO-57 first and reuse its mechanism rather than inventing a second cadence.**
+**Proof:** a Pi attached at an arbitrary moment displays the current route and jack state, and a route change is reflected without a reconnect.
+
 ### TODO-39 — T1 acceptance harness (`timing_probe`) 🟢 **DONE — compile-verified 2026-09-11, all three targets**
 **Why:** the T1 pass condition is "acquisition timing indistinguishable from the
 `_NONE` control", and **the firmware could not produce the numbers that claim
