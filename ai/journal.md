@@ -12,6 +12,47 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (6) — **TODO-58 was not "wire up the missing caller." The packet would have transmitted fabricated physical state.** Schema corrected before first transmission; two dishonest booleans removed; `UNKNOWN` given a representation. **Compile-verified only**
+
+**What the design pass changed.** The item began as a one-line fix: `presentation_routerStatus()` is implemented in all three backends and called nowhere, so call it. Inspecting *what the packet would say* stopped that.
+
+**🔴 Every `jacks` bit was a pullup artefact.** All four detect inputs are `INPUT_PULLUP` ([signal_router.cpp:208-211](../signal_router.cpp#L208)) with **nothing attached**. `config.h` says so about three of them in its own comments — *"Phase 7 — not built, sense unverified"* — and the fourth, marked `INSTALLED`, is a **two-terminal jack with no switch terminal** (TODO-44); TODO-5 states plainly that *"pin 16 currently feeds nothing at all."* The D2F-01L microswitches intended to provide detection are parts-blocked at zero on hand.
+
+So adding the missing call would have begun streaming a physical claim that **no hardware supports**, to a renderer whose job is to display physical claims. The defect would have been introduced by the fix.
+
+**🔑 The representational problem, which is the real content of this slice.** `false` cannot mean both *"no plug"* and *"no detector."* Overloading it is how a renderer ends up drawing a confident ABSENT from a floating pin — the same class of error as the 2026-09-07 clamp rail being drawn as a measurement. The packet now carries **two masks**: presence, and availability. Per detector: `available=0` → **UNKNOWN**; `available=1, present=0` → ABSENT; `available=1, present=1` → PRESENT. The Pi exposes it as a three-valued `Detect`, so a renderer cannot accidentally read presence alone.
+
+**Two fields deleted rather than renamed, which was the sharper call.** The instinct was to rename `route_valid` and `can_inject`, since both are documented as historically misnamed. Renaming a byte while preserving a misleading computation helps nobody.
+
+- `route_valid` was `(selected_return != NONE)`. ADR-004 guarantees a selection always exists, so it is a **tautology** — always true, fully recomputable from `return_source`, which is already on the wire. It carried zero information and its name asserted connectivity it never established.
+- `can_inject` was that tautology **AND** an unavailable detector. Its honest value today is UNKNOWN, and there is no Boolean encoding of that.
+
+Then the decisive evidence: **neither has a consumer.** `signalRouter_canInject()` and `signalRouter_canMeasure()` are defined and called nowhere; [.ino:386](../guitar_rig_analyzer.ino#L386) records that the measurement engine does not consult them. They existed only to be transmitted. Removing them costs nothing, and injection readiness can return as an authoritative fact when the Teensy can actually establish it. **Prefer primitive facts the producer owns over derived booleans it cannot guarantee.**
+
+`injection_active` was kept, and the distinction is worth stating because it looks like the same case: HELLO's capability bit answers *"can this build inject?"*, ROUTER_STATUS answers *"is injection active right now?"*. Different facts. Constantly 0 today, and **truthfully** 0 — not unknown.
+
+**Masking at the presentation boundary, not in the router.** `RouterStatus` keeps the **raw** debounced readings so bench diagnostics still see actual pin state; `data_sender` ANDs presence with availability on the way out. Framed deliberately as a **wire-contract obligation rather than sanitising bad data**: the raw GPIO value is not wrong, it simply is not evidence of presence when no detect conductor exists. Two layers, two jobs — the router observes hardware and owns routing authority, the presentation boundary guarantees what escapes is externally valid.
+
+**Lifecycle: on-change + 1 Hz repair, and the trigger path needed no new coupling.** The `.ino` already owns this pattern — it calls `presentation_restoreLive()` immediately after `measurementEngine_acknowledgeAbort()`. Two call sites give the same shape: after a successful `signalRouter_setReturnSource()`, and on `JACK_CHANGED` from the `RouterEvent` that was previously `(void)`-discarded. **`signal_router.cpp` never learns a transport exists.**
+
+Unlike TODO-57, on-change is tractable here: the authoritative field has **exactly one** mutation path, not eleven scattered transitions. The periodic path remains independently sufficient — if every on-change emission vanished, a reconnecting Pi still converges in a second. 1 Hz rather than STATE's 500 ms because route state is slowly-changing *configuration*, so it belongs in HELLO's cadence tier. **I deliberately did not inherit STATE's cadence**, and the distinction is recorded so the next packet does not inherit this one's either.
+
+*(The `JACK_CHANGED` branch is unreachable today — no detector can change — and is wired now so the lifecycle is complete and testable when detectors are fitted, rather than leaving the periodic path silently carrying the entire contract.)*
+
+**Corrected in place, staying at v2, and the reasoning matters.** The superseded layout had **zero firmware callers**, so it never formed part of an observed or deployed wire contract. Bumping the whole transport to v3 would imply a compatibility boundary that does not exist for this packet. Recorded explicitly as a *pre-first-transmission correction* — and this was the cheapest moment it would ever be fixable, which is the general lesson: **a packet that has never been transmitted is free to fix; one that has is not.**
+
+**This packet stopped being the weak exception.** It previously had a single round-trip vector, which cannot catch a field reorder because encoder and decoder move together. It now has a structural guard that reads the **firmware builder**: every byte offset, the presence-AND-availability masking, the jack bit positions in *both* masks, and the absence of the removed fields. Plus an availability guard asserting all four flags are 0 — and if someone raises one, **that test should fail**, with the fix being to record as-built evidence rather than edit the test.
+
+**Evidence.** `_PI` and `_NONE` compile clean with zero warnings. 164 tests pass (138 → 164). Negative controls, each reverted: dropping the availability mask from `payload[0]` fails the layout guard; raising a detector flag without evidence fails the availability guard.
+
+**🔺 EVIDENCE BOUND.** Offline and compile only. **NOT FLASHED**, no serial session, no relay, generator, injection or validation. Physical jack detection remains unbuilt — this slice makes the *absence* representable, it does not make detection work. Phase 9 untouched.
+
+**Sequencing — and this is a real transition.** With session identity (TODO-56), measurement state (TODO-57) and route state (TODO-58) all now representable, the known producer-observability holes are closed. **The next useful evidence jump is no longer another layer of offline architecture — it is a real captured Teensy byte stream.** Everything built across these five slices proves that two implementations agree with one author's reading of the source. None of it proves the instrument agrees with them.
+
+**Portfolio note.** Five slices, five defects, and this one completes the taxonomy. TODO-56: the producer never says it. TODO-57: the producer says it only where nobody is listening. TODO-59: the producer says it correctly and destroys it in transit. TODO-58: **the producer says something it cannot know.** That last is the subtlest and the only one a wire-level test would never catch — the bytes would arrive intact, pass CRC, decode cleanly, and be false.
+
+---
+
 ## 2026-09-26 (5) — **TODO-57 implemented: `DS_PACKET_STATE` 0x08, periodic at 500 ms. Every measurement state is now observable, and a dropped ABORTED self-heals.** Two verification questions were answered before writing code, and one of them made the design *more* restrictive
 
 **What was broken.** The only carrier of measurement state was LIVE_FRAME byte [0], and `presentation_updateLive()` is gated to `IDLE|ARMED` ([.ino:748-756](../guitar_rig_analyzer.ino#L748)) — so that byte was effectively a two-value field, CAPTURE/PROCESSING/RESULT/EXPORTING were never observable, and a Pi attaching during a sticky ABORTED got geometry and then silence. Two comments in `data_sender.cpp` and one clause in TODO-34 asserted a safety net that did not exist.

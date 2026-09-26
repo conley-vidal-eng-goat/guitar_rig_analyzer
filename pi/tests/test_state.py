@@ -487,3 +487,74 @@ class TestStatePacket(StateHarness):
                             vectors.state_payload(abort_reason=99))
         self.feed(bad)
         self.assertEqual(self.state.health.decode_errors, 1)
+
+
+# =============================================================================
+# TODO-58 — router status in the receiver model
+# =============================================================================
+
+class TestRouterStatusIntegration(StateHarness):
+
+    def setUp(self):
+        super().setUp()
+        self.establish()
+
+    def test_router_is_unknown_before_the_first_packet(self):
+        # NOT TS, even though ADR-004 makes TS the boot default. The operator
+        # may have selected XLR long before the Pi attached; assuming the
+        # default would be the Pi inventing instrument state.
+        self.assertIsNone(self.state.router)
+
+    def test_router_is_promoted_once_it_arrives(self):
+        self.feed(vectors.router_status(return_source=2,
+                                        description="XLR return"))
+        self.assertIsNotNone(self.state.router)
+        self.assertEqual(self.state.router.return_source,
+                         protocol.ReturnSource.XLR)
+
+    def test_a_late_attach_converges_from_the_periodic_repair_alone(self):
+        # No on-change emission is ever seen here -- only the 1 Hz repair.
+        # That path must be independently sufficient.
+        fresh = ReceiverState()
+        scanner = FrameScanner()
+        for f in scanner.feed(vectors.hello(session_id=1)
+                              + vectors.router_status(return_source=2)):
+            fresh.on_frame(f, now_ms=protocol.ROUTER_REPAIR_MS)
+        self.assertIsNotNone(fresh.router)
+        self.assertEqual(fresh.router.return_source, protocol.ReturnSource.XLR)
+
+    def test_session_change_returns_router_to_unknown(self):
+        self.feed(vectors.router_status(return_source=2))
+        self.feed(vectors.hello(session_id=2))
+        self.assertIsNone(self.state.router)
+
+    def test_every_jack_reads_unknown_on_current_hardware(self):
+        self.feed(vectors.router_status())
+        for jack in protocol.Jack:
+            self.assertIs(self.state.router.detect(jack),
+                          protocol.Detect.UNKNOWN)
+
+    def test_presence_never_overrides_the_selected_return(self):
+        # ADR-004 Decision 3. An XLR plug detected while TS is selected is a
+        # legitimate state, and the model reports the selection unchanged.
+        self.feed(vectors.router_status(presence=0x08, available=0x08,
+                                        return_source=1))
+        self.assertIs(self.state.router.detect(protocol.Jack.RETURN_XLR),
+                      protocol.Detect.PRESENT)
+        self.assertEqual(self.state.router.return_source,
+                         protocol.ReturnSource.TS)
+
+    def test_router_is_not_promoted_before_hello(self):
+        fresh = ReceiverState()
+        scanner = FrameScanner()
+        for f in scanner.feed(vectors.router_status()):
+            fresh.on_frame(f, now_ms=0)
+        self.assertIsNone(fresh.router)
+        self.assertEqual(fresh.health.not_promoted_pre_hello, 1)
+
+    def test_a_contract_violating_packet_is_rejected_not_rendered(self):
+        self.feed(vectors.frame(
+            protocol.PacketType.ROUTER_STATUS,
+            vectors.router_payload(presence=0x0F, available=0x00)))
+        self.assertIsNone(self.state.router)
+        self.assertEqual(self.state.health.decode_errors, 1)

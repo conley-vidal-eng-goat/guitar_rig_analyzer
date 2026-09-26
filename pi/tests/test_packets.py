@@ -319,23 +319,73 @@ class TestEventPackets(unittest.TestCase):
         v = decode_one(vectors.view())
         self.assertTrue(v.is_live)
 
-    def test_router_status(self):
-        r = decode_one(vectors.router_status(
-            jacks=0x05, return_source=2, route_valid=1,
-            description="Rig Send -> XLR Return"))
-        self.assertIn(protocol.JackPresence.INSTRUMENT_IN, r.jacks)
-        self.assertIn(protocol.JackPresence.RETURN_TS, r.jacks)
-        self.assertNotIn(protocol.JackPresence.RIG_SEND, r.jacks)
+    def test_router_status_current_hardware_is_all_unknown(self):
+        # The default vector mirrors the real instrument: no detect conductor
+        # on any jack, so every jack must read UNKNOWN -- never ABSENT.
+        r = decode_one(vectors.router_status(return_source=2,
+                                             description="XLR return"))
+        for jack in protocol.Jack:
+            self.assertIs(r.detect(jack), protocol.Detect.UNKNOWN)
+        self.assertFalse(r.any_detector_available)
         self.assertEqual(r.return_source, protocol.ReturnSource.XLR)
-        self.assertTrue(r.route_valid)
-        self.assertEqual(r.description, "Rig Send -> XLR Return")
+        self.assertEqual(r.description, "XLR return")
+
+    def test_detection_is_three_valued(self):
+        # instrument + return_ts have detectors; only instrument has a plug.
+        r = decode_one(vectors.router_status(presence=0x01, available=0x05))
+        self.assertIs(r.detect(protocol.Jack.INSTRUMENT_IN),
+                      protocol.Detect.PRESENT)
+        self.assertIs(r.detect(protocol.Jack.RETURN_TS),
+                      protocol.Detect.ABSENT)
+        self.assertIs(r.detect(protocol.Jack.RIG_SEND),
+                      protocol.Detect.UNKNOWN)
+        self.assertIs(r.detect(protocol.Jack.RETURN_XLR),
+                      protocol.Detect.UNKNOWN)
+
+    def test_absent_and_unknown_are_never_conflated(self):
+        # The whole reason two masks exist. Same presence byte, different
+        # availability, different meaning.
+        no_detector = decode_one(vectors.router_status(presence=0x00,
+                                                       available=0x00))
+        detector_no_plug = decode_one(vectors.router_status(presence=0x00,
+                                                            available=0x0F))
+        self.assertIs(no_detector.detect(protocol.Jack.RIG_SEND),
+                      protocol.Detect.UNKNOWN)
+        self.assertIs(detector_no_plug.detect(protocol.Jack.RIG_SEND),
+                      protocol.Detect.ABSENT)
+
+    def test_presence_without_availability_is_rejected(self):
+        # The producer masks before sending. A bit set without its availability
+        # bit means the two sides disagree about the contract.
+        with self.assertRaises(packets.DecodeError):
+            packets.decode_router_status(
+                vectors.router_payload(presence=0x02, available=0x00))
+
+    def test_return_source_is_independent_of_presence(self):
+        # ADR-004: presence must never determine the selected return. An XLR
+        # plug detected while TS is selected is a legitimate, renderable state.
+        r = decode_one(vectors.router_status(presence=0x08, available=0x08,
+                                             return_source=1))
+        self.assertIs(r.detect(protocol.Jack.RETURN_XLR),
+                      protocol.Detect.PRESENT)
+        self.assertEqual(r.return_source, protocol.ReturnSource.TS)
+
+    def test_removed_fields_are_not_reconstructed(self):
+        r = decode_one(vectors.router_status())
+        self.assertFalse(hasattr(r, "route_valid"))
+        self.assertFalse(hasattr(r, "can_inject"))
 
     def test_router_description_length_mismatch_is_rejected(self):
         # A self-inconsistent payload that is nonetheless CRC-valid: the
         # description length byte says 90, only 3 bytes follow. Built directly
         # rather than by corrupting a frame, because corrupting one would fail
         # at the CRC and never reach the decoder under test.
-        payload = bytes([0x01, 1, 0, 0, 1, 0, 90]) + b"abc"
+        payload = bytes([0x00, 0x00, 1, 0, 0, 0, 90]) + b"abc"
+        with self.assertRaises(packets.DecodeError):
+            packets.decode_router_status(payload)
+
+    def test_oversized_description_length_is_rejected(self):
+        payload = bytes([0x00, 0x00, 1, 0, 0, 0, 200]) + b"x" * 200
         with self.assertRaises(packets.DecodeError):
             packets.decode_router_status(payload)
 

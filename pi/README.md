@@ -189,10 +189,44 @@ and never exceeds ~1.48e6. The model records it and implements no newer-than
 comparison, because such a comparison would be wrong. Ordering is already
 guaranteed by the transport, which writes whole packets in FIFO order.
 
-### Still missing from the producer
+### Route state (`ROUTER_STATUS` 0x05, TODO-58)
 
-`router` stays `None` indefinitely: `ROUTER_STATUS` is built and documented but
-has zero callers (TODO-58).
+Emitted immediately on a real change and repaired every `ROUTER_REPAIR_MS`
+(1 s), so a Pi attaching at an arbitrary moment converges without waiting for
+anything to happen.
+
+**Jack detection is three-valued. Never read presence on its own.**
+
+```python
+status.detect(protocol.Jack.RETURN_XLR)   # PRESENT | ABSENT | UNKNOWN
+```
+
+| `available` | `present` | meaning |
+|---|---|---|
+| 0 | — | **UNKNOWN** — no detector exists; the presence bit is not evidence |
+| 1 | 0 | ABSENT |
+| 1 | 1 | PRESENT |
+
+A Boolean cannot carry *"we have no detector"*, which is why the packet has two
+masks. **All four detectors are unavailable on the current hardware**, so
+`UNKNOWN` is the expected answer today, not an error — three are unbuilt and
+the instrument jack is a two-terminal part with no switch terminal at all.
+
+**`return_source` is the only authority on the selected return.** It is
+operator-selected (ADR-004). Never infer it from presence: *"XLR plug detected
+therefore XLR is active"* is forbidden by ADR-004 Decision 3, and today it
+would be inferred from a pullup artefact. An XLR plug present while TS is
+selected is a legitimate state to render.
+
+**`route_valid` and `can_inject` are not on the wire and must not be
+reconstructed.** The first was a tautology recomputable from `return_source`;
+the second depended on an unavailable detector, so its honest value was
+UNKNOWN.
+
+Before the first `ROUTER_STATUS`, and after a session change, `router` is
+`None` — render route as unknown. **Do not assume TS** even though ADR-004
+makes it the boot default: the operator may have selected XLR long before the
+Pi attached.
 
 ## Still true: RESULT cannot be decoded before HELLO
 

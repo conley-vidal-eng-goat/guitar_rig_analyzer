@@ -62,6 +62,12 @@ HELLO_REANNOUNCE_MS = 1000
 # best-effort and are refused while a RESULT drains, by design.
 STATE_ANNOUNCE_MS = 500
 
+# ROUTER_STATUS periodic repair period (DS_ROUTER_REPAIR_MS). Slower than STATE
+# because route state is slowly-changing configuration. The Teensy also emits
+# immediately on a real change, so this is the convergence floor for a late
+# attachment, not the expected update rate.
+ROUTER_REPAIR_MS = 1000
+
 # =============================================================================
 # GEOMETRY DEFAULTS  —  DEFAULTS ONLY. Read the real values from HELLO.
 # =============================================================================
@@ -92,8 +98,8 @@ INSIGHT_ENTRY_BYTES = 138       # DS_INSIGHT_ENTRY_BYTES
 HELLO_PAYLOAD_BYTES = 40
 STATE_PAYLOAD_BYTES = 8
 VIEW_PAYLOAD_BYTES = 1
-ROUTER_FIXED_BYTES = 7
-ROUTER_MAX_DESC = 100
+ROUTER_FIXED_BYTES = 7      # DS_ROUTER_FIXED_BYTES
+ROUTER_MAX_DESC = 100       # DS_ROUTER_MAX_DESC
 
 
 def live_payload_bytes(live_bins: int) -> int:
@@ -280,11 +286,35 @@ class Capability(enum.IntFlag):
     MODE_LF = 0x08
 
 
-class JackPresence(enum.IntFlag):
+class Jack(enum.IntFlag):
+    """Bit positions shared by ROUTER_STATUS bytes [0] and [1]."""
     INSTRUMENT_IN = 0x01
     RIG_SEND = 0x02
     RETURN_TS = 0x04
     RETURN_XLR = 0x08
+
+
+# Retained name for the presence bitmask. Use Detect (below) for rendering:
+# a raw presence flag cannot express "no detector exists".
+JackPresence = Jack
+
+
+class Detect(enum.Enum):
+    """Three-valued jack detection, because a Boolean cannot carry UNKNOWN.
+
+    ROUTER_STATUS carries presence and availability as separate masks
+    precisely so that "no plug" and "no detector" stay distinguishable:
+
+        available = 0              -> UNKNOWN
+        available = 1, present = 0 -> ABSENT
+        available = 1, present = 1 -> PRESENT
+
+    All four detectors are unavailable in the current hardware, so UNKNOWN is
+    the expected value today, not an error state.
+    """
+    UNKNOWN = "unknown"
+    ABSENT = "absent"
+    PRESENT = "present"
 
 
 # =============================================================================

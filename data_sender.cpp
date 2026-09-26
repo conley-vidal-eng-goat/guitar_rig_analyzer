@@ -74,7 +74,8 @@ static uint32_t s_result_len = 0;   // total framed bytes staged
 // disturbed by an operator pressing 't'.
 static uint16_t s_session_id    = 0;
 static uint32_t s_last_hello_ms = 0;
-static uint32_t s_last_state_ms = 0;
+static uint32_t s_last_state_ms  = 0;
+static uint32_t s_last_router_ms = 0;
 
 // Extended UART TX buffer. Without this the default Serial1 TX buffer is far
 // smaller than one live frame, availableForWrite() could never report room, and
@@ -502,6 +503,21 @@ void dataSender_service() {
         sendState();
     }
 
+    // -------------------------------------------------------------------------
+    // ROUTER_STATUS periodic repair (TODO-58). The two immediate emissions are
+    // orchestrated from the .ino for responsiveness; THIS path is what makes
+    // the packet obtainable at all. It must be independently sufficient: if
+    // every on-change emission were lost, a Pi attaching at an arbitrary moment
+    // still converges within one period.
+    //
+    // 1 Hz, not STATE's 500 ms. Route state is slowly-changing CONFIGURATION —
+    // an operator selection and a set of build-time detector facts — so it
+    // belongs in HELLO's cadence tier rather than the operational one.
+    // -------------------------------------------------------------------------
+    if ((uint32_t)(millis() - s_last_router_ms) >= DS_ROUTER_REPAIR_MS) {
+        dataSender_sendRouterStatus();
+    }
+
     if (s_result_len == 0) {
         s_stats.result_pending = false;
         s_stats.result_pending_bytes = 0;
@@ -847,45 +863,76 @@ void dataSender_sendView(uint8_t view_id) {
 
 // -----------------------------------------------------------------------------
 // dataSender_sendRouterStatus()
-// Payload:
-//   [0] jack_states (bit0 instrument, 1 send, 2 ts, 3 xlr)
-//   [1] return_source   [2] injection_active   [3] monitor_mode
-//   [4] route_valid     [5] can_inject         [6] description_length
-//   [7..] description
-// Whether injection/monitor EXIST in this build is advertised once in HELLO's
-// capability bitmap, not inferred from these bytes (audit T4).
+// ONE builder, used by all three triggers (TODO-58): the two immediate
+// emissions orchestrated from the .ino, and the periodic repair below. They
+// must emit identical bytes — a repair packet that disagreed with the
+// immediate one would be worse than no repair at all.
+//
+// Layout and the receiver invariant: see data_sender.h.
+//
+// No RESULT-pending guard here. TODO-59 owns transport atomicity centrally in
+// trySendBestEffort(); adding a second gate per producer is what made that
+// defect possible.
 // -----------------------------------------------------------------------------
 void dataSender_sendRouterStatus() {
     const RouterStatus& rs = signalRouter_getStatus();
     uint8_t desc_len = (uint8_t)strlen(rs.description);
-    if (desc_len > 100) desc_len = 100;
+    if (desc_len > DS_ROUTER_MAX_DESC) desc_len = DS_ROUTER_MAX_DESC;
 
-    uint8_t payload[7 + 100];
+    uint8_t payload[DS_ROUTER_FIXED_BYTES + DS_ROUTER_MAX_DESC];
     memset(payload, 0, sizeof(payload));
 
-    payload[0] = (uint8_t)((rs.jacks.instrument_in ? 0x01 : 0)
-                         | (rs.jacks.rig_send       ? 0x02 : 0)
-                         | (rs.jacks.return_ts      ? 0x04 : 0)
-                         | (rs.jacks.return_xlr     ? 0x08 : 0));
-    payload[1] = (uint8_t)rs.return_source;
+    // [1] Which detectors exist. A build fact, and the authoritative
+    // qualification on byte [0].
+    const uint8_t available =
+        (uint8_t)((rs.detect_available.instrument_in ? 0x01 : 0)
+                | (rs.detect_available.rig_send      ? 0x02 : 0)
+                | (rs.detect_available.return_ts     ? 0x04 : 0)
+                | (rs.detect_available.return_xlr    ? 0x08 : 0));
+
+    // [0] Raw observations, MASKED BY AVAILABILITY. Every detect pin is
+    // INPUT_PULLUP, so an unmasked bit from a jack with no detect conductor
+    // would put a pullup artefact on the wire as a physical claim. Masking is
+    // a wire-contract obligation discharged here, at the presentation
+    // boundary — signal_router deliberately keeps the raw readings so bench
+    // diagnostics still see real pin state.
+    const uint8_t observed =
+        (uint8_t)((rs.jacks.instrument_in ? 0x01 : 0)
+                | (rs.jacks.rig_send      ? 0x02 : 0)
+                | (rs.jacks.return_ts     ? 0x04 : 0)
+                | (rs.jacks.return_xlr    ? 0x08 : 0));
+
+    payload[0] = (uint8_t)(observed & available);
+    payload[1] = available;
+
+    // [2] ADR-004: operator-selected, and the ONLY authority on the selected
+    // return. Never derived from presence, in either direction.
+    payload[2] = (uint8_t)rs.return_source;
+
+    // [3] Current injection state — a primitive fact, distinct from HELLO's
+    // capability bit. HELLO answers "can this build inject?"; this answers
+    // "is injection active right now?". Both are needed.
 #if ENABLE_DUT_INJECTION
-    payload[2] = rs.injection_active ? 1 : 0;
-#else
-    payload[2] = 0;
-#endif
-#if ENABLE_MONITOR_MODE
-    payload[3] = (uint8_t)rs.monitor_mode;
+    payload[3] = rs.injection_active ? 1 : 0;
 #else
     payload[3] = 0;
 #endif
-    payload[4] = rs.route_valid ? 1 : 0;
-    payload[5] = rs.can_inject  ? 1 : 0;
-    payload[6] = desc_len;
-    memcpy(&payload[7], rs.description, desc_len);
 
-    if (timedBestEffort(DS_PACKET_ROUTER, payload, (uint16_t)(7 + desc_len)))
-         s_stats.events_sent++;
-    else s_stats.events_dropped++;
+    // [4] Current monitor mode. 0 (SOURCE_RETURN) in this build, which is the
+    // router's actual state and not a placeholder. TODO-60 covers the latent
+    // build failure when ENABLE_MONITOR_MODE is 1; it is not repaired here.
+    payload[4] = 0;
+
+    payload[5] = 0;                    // reserved
+    payload[6] = desc_len;
+    memcpy(&payload[DS_ROUTER_FIXED_BYTES], rs.description, desc_len);
+
+    if (timedBestEffort(DS_PACKET_ROUTER, payload,
+                        (uint16_t)(DS_ROUTER_FIXED_BYTES + desc_len)))
+         s_stats.router_sent++;
+    else s_stats.router_dropped++;
+
+    s_last_router_ms = millis();
 }
 
 // =============================================================================
@@ -910,6 +957,10 @@ void dataSender_printDiagnostics() {
     Serial.printf("[Link] Atomicity:   %lu best-effort packets refused while a "
                   "RESULT was draining (expected, not a fault)\n",
                   (unsigned long)s.blocked_by_result);
+    Serial.printf("[Link] Router:      %lu sent, %lu dropped | repair every "
+                  "%d ms + on change\n",
+                  (unsigned long)s.router_sent, (unsigned long)s.router_dropped,
+                  DS_ROUTER_REPAIR_MS);
     Serial.printf("[Link] State:       %lu sent, %lu dropped (drops include "
                   "atomicity refusals), every %d ms\n",
                   (unsigned long)s.state_sent, (unsigned long)s.state_dropped,

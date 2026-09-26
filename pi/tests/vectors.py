@@ -164,14 +164,19 @@ def aborted(reason: str) -> bytes:
     return frame(protocol.PacketType.ABORTED, reason.encode())
 
 
-def router_status(jacks: int = 0x01, return_source: int = 1,
-                  injection: int = 0, monitor: int = 0,
-                  route_valid: int = 1, can_inject: int = 0,
-                  description: str = "Rig Send -> TS Return") -> bytes:
+def router_payload(presence: int = 0x00, available: int = 0x00,
+                   return_source: int = 1, injection: int = 0,
+                   monitor: int = 0,
+                   description: str = "TS return, no injection") -> bytes:
+    """Corrected TODO-58 layout. Defaults mirror the current hardware: no
+    detector is available, so no presence bit may be set."""
     desc = description.encode()[:protocol.ROUTER_MAX_DESC]
-    p = bytes([jacks, return_source, injection, monitor,
-               route_valid, can_inject, len(desc)]) + desc
-    return frame(protocol.PacketType.ROUTER_STATUS, p)
+    return (bytes([presence, available, return_source, injection, monitor,
+                   0, len(desc)]) + desc)
+
+
+def router_status(**kwargs) -> bytes:
+    return frame(protocol.PacketType.ROUTER_STATUS, router_payload(**kwargs))
 
 
 def view(view_id: int = protocol.VIEW_LIVE) -> bytes:

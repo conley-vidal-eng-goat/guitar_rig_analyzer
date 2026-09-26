@@ -209,6 +209,122 @@ class TestGeometryConstants(unittest.TestCase):
         self.assertEqual(protocol.max_payload_bytes(), expected)
 
 
+class TestRouterStatusLayout(unittest.TestCase):
+    """Structural protection for the corrected ROUTER_STATUS payload (TODO-58).
+
+    Until now this packet had the weakest coverage of the eight: only a
+    round-trip against a vector this repository wrote itself, which cannot
+    catch a field reorder because both sides would move together. These tests
+    read the FIRMWARE BUILDER and pin what each byte actually receives.
+    """
+
+    def setUp(self):
+        src = _read("data_sender.cpp")
+        start = src.index("void dataSender_sendRouterStatus(")
+        end = src.index("\n}", start)
+        self.body = src[start:end]
+        self.ds = defines("data_sender.h")
+
+    def _assigned(self, index: int) -> str:
+        m = re.search(rf"payload\[{index}\]\s*=\s*([^;]+);", self.body)
+        self.assertIsNotNone(m, f"payload[{index}] is never assigned")
+        return " ".join(m.group(1).split())
+
+    def test_fixed_block_size(self):
+        self.assertEqual(int(self.ds["DS_ROUTER_FIXED_BYTES"]),
+                         protocol.ROUTER_FIXED_BYTES)
+        self.assertEqual(int(self.ds["DS_ROUTER_MAX_DESC"]),
+                         protocol.ROUTER_MAX_DESC)
+
+    def test_repair_period(self):
+        self.assertEqual(int(self.ds["DS_ROUTER_REPAIR_MS"]),
+                         protocol.ROUTER_REPAIR_MS)
+
+    def test_byte0_is_presence_MASKED_by_availability(self):
+        # The single most important line in the builder. Without the mask, a
+        # pullup artefact from a jack with no detect conductor goes onto the
+        # wire as a physical claim.
+        assigned = self._assigned(0)
+        self.assertIn("observed", assigned)
+        self.assertIn("available", assigned)
+        self.assertIn("&", assigned,
+                      "payload[0] must be presence ANDed with availability")
+
+    def test_byte1_is_the_availability_mask(self):
+        self.assertEqual(self._assigned(1), "available")
+
+    def test_byte2_is_return_source(self):
+        self.assertIn("return_source", self._assigned(2))
+
+    def test_byte3_is_injection_active(self):
+        self.assertIn("injection_active", self.body)
+        self.assertIn("payload[3]", self.body)
+
+    def test_byte5_is_reserved_zero(self):
+        self.assertEqual(self._assigned(5), "0")
+
+    def test_byte6_is_description_length(self):
+        self.assertEqual(self._assigned(6), "desc_len")
+
+    def test_removed_fields_are_absent_from_the_builder(self):
+        # route_valid and can_inject still exist on RouterStatus for bench
+        # diagnostics. They must never reach the wire again.
+        self.assertNotIn("route_valid", self.body)
+        self.assertNotIn("can_inject", self.body)
+
+    def test_jack_bit_positions_match(self):
+        # Firmware assigns 0x01/0x02/0x04/0x08 in instrument/send/ts/xlr order
+        # in BOTH masks. A reorder here silently relabels every jack.
+        for jack, bit in ((protocol.Jack.INSTRUMENT_IN, "0x01"),
+                          (protocol.Jack.RIG_SEND, "0x02"),
+                          (protocol.Jack.RETURN_TS, "0x04"),
+                          (protocol.Jack.RETURN_XLR, "0x08")):
+            with self.subTest(jack=jack.name):
+                self.assertEqual(int(bit, 16), int(jack))
+        field = {"INSTRUMENT_IN": "instrument_in", "RIG_SEND": "rig_send",
+                 "RETURN_TS": "return_ts", "RETURN_XLR": "return_xlr"}
+        for name, member in field.items():
+            with self.subTest(jack=name):
+                bit = f"0x{int(protocol.Jack[name]):02X}"
+                self.assertRegex(
+                    self.body,
+                    rf"jacks\.{member}\s*\?\s*{bit}",
+                    f"{member} is not mapped to {bit} in the presence mask")
+                self.assertRegex(
+                    self.body,
+                    rf"detect_available\.{member}\s*\?\s*{bit}",
+                    f"{member} is not mapped to {bit} in the availability mask")
+
+
+class TestJackDetectAvailability(unittest.TestCase):
+    """The availability flags are as-built evidence, not configuration taste."""
+
+    FLAGS = ("JACK_INSTRUMENT_DETECT_AVAILABLE",
+             "JACK_RIG_SEND_DETECT_AVAILABLE",
+             "JACK_RETURN_TS_DETECT_AVAILABLE",
+             "JACK_RETURN_XLR_DETECT_AVAILABLE")
+
+    def test_all_four_are_declared(self):
+        cfg = defines("config.h")
+        for flag in self.FLAGS:
+            self.assertIn(flag, cfg, f"{flag} missing from config.h")
+
+    def test_all_four_are_zero_on_current_hardware(self):
+        # Not a style assertion. Three detectors are marked "not built" in
+        # config.h's own comments, and J4 was continuity-identified as a
+        # two-terminal jack with no switch terminal (TODO-44). If someone
+        # raises a flag, this test SHOULD fail -- and the fix is to record the
+        # as-built evidence for the fitted detector, not to edit this test.
+        cfg = defines("config.h")
+        for flag in self.FLAGS:
+            with self.subTest(flag=flag):
+                self.assertEqual(
+                    int(cfg[flag]), 0,
+                    f"{flag} is set. Raising it asserts that a detect "
+                    f"conductor is fitted AND its sense verified. Record the "
+                    f"as-built evidence before changing this test.")
+
+
 class TestEnumsMatchFirmware(unittest.TestCase):
     """Every Teensy-authored enum, member by member.
 

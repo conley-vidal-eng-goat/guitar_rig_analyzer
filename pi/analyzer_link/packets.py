@@ -292,18 +292,52 @@ class Aborted:
 
 @dataclass(frozen=True)
 class RouterStatus:
-    """0x05 — jack/route snapshot.
+    """0x05 — jack/route snapshot (schema corrected 2026-09-26, TODO-58).
+
+    *** jack_present IS MEANINGLESS WITHOUT jack_detect_available. ***
+    Do not read ``presence_bits`` directly; call ``detect()``. For each jack:
+
+        available = 0              -> UNKNOWN
+        available = 1, present = 0 -> ABSENT
+        available = 1, present = 1 -> PRESENT
+
+    A Boolean cannot carry "we have no detector", which is why two masks exist
+    rather than one overloaded flag. All four detectors are unavailable in the
+    current hardware, so UNKNOWN is the expected answer today.
+
+    *** ADR-004: return_source IS THE ONLY AUTHORITY ON THE SELECTED RETURN. ***
+    It is operator-selected. NEVER infer it from presence — "XLR plug detected
+    therefore XLR is active" is exactly what ADR-004 Decision 3 forbids, and
+    with no detectors fitted it would be inferred from a pullup artefact.
+
+    ``route_valid`` and ``can_inject`` were removed from the wire: the first
+    was a tautology recomputable from ``return_source``, the second depended on
+    an unavailable detector so its honest value was UNKNOWN. The Pi must not
+    reconstruct either.
 
     Whether injection and monitor mode EXIST in this build comes from HELLO's
     capability bitmap, never inferred from these bytes (audit T4).
+    ``injection_active`` answers a different question — is injection active
+    *right now* — and both are needed.
     """
-    jacks: protocol.JackPresence
+    presence_bits: protocol.Jack
+    available_bits: protocol.Jack
     return_source: protocol.ReturnSource
     injection_active: bool
     monitor_mode: protocol.MonitorMode
-    route_valid: bool
-    can_inject: bool
     description: str
+
+    def detect(self, jack: protocol.Jack) -> protocol.Detect:
+        """Three-valued detection for one jack. The only correct way to ask."""
+        if not (self.available_bits & jack):
+            return protocol.Detect.UNKNOWN
+        return (protocol.Detect.PRESENT if (self.presence_bits & jack)
+                else protocol.Detect.ABSENT)
+
+    @property
+    def any_detector_available(self) -> bool:
+        """False on the current hardware: no jack has a detect conductor."""
+        return bool(self.available_bits)
 
 
 @dataclass(frozen=True)
@@ -521,20 +555,37 @@ def decode_router_status(payload: bytes) -> RouterStatus:
     if len(payload) < protocol.ROUTER_FIXED_BYTES:
         raise DecodeError(f"ROUTER_STATUS is only {len(payload)} B")
     desc_len = payload[6]
+    if desc_len > protocol.ROUTER_MAX_DESC:
+        raise DecodeError(
+            f"ROUTER_STATUS declares a {desc_len} B description, above the "
+            f"{protocol.ROUTER_MAX_DESC} B the firmware can send")
     if len(payload) != protocol.ROUTER_FIXED_BYTES + desc_len:
         raise DecodeError(
             f"ROUTER_STATUS declares a {desc_len} B description but carries "
             f"{len(payload) - protocol.ROUTER_FIXED_BYTES} B")
 
+    presence = protocol.Jack(payload[0] & 0x0F)
+    available = protocol.Jack(payload[1] & 0x0F)
+
+    # The producer masks presence by availability before transmitting. A bit
+    # set here without its availability bit means the two sides disagree about
+    # the contract -- fail loudly rather than render a presence claim no
+    # detector can support.
+    if presence & ~available:
+        raise DecodeError(
+            "ROUTER_STATUS reports jack presence for a detector it also "
+            "reports as unavailable; the producer must mask these")
+
     return RouterStatus(
-        jacks=protocol.JackPresence(payload[0] & 0x0F),
-        return_source=_enum(protocol.ReturnSource, payload[1],
+        presence_bits=presence,
+        available_bits=available,
+        return_source=_enum(protocol.ReturnSource, payload[2],
                             "return_source"),
-        injection_active=bool(payload[2]),
-        monitor_mode=_enum(protocol.MonitorMode, payload[3], "monitor_mode"),
-        route_valid=bool(payload[4]),
-        can_inject=bool(payload[5]),
-        description=payload[7:7 + desc_len].decode("ascii", errors="replace"),
+        injection_active=bool(payload[3]),
+        monitor_mode=_enum(protocol.MonitorMode, payload[4], "monitor_mode"),
+        description=payload[protocol.ROUTER_FIXED_BYTES:
+                            protocol.ROUTER_FIXED_BYTES + desc_len]
+                    .decode("ascii", errors="replace"),
     )
 
 

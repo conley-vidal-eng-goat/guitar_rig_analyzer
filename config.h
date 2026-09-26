@@ -293,6 +293,34 @@ set AUDIO_SHIELD_STACKED to match the actual hardware. Do not silence this."
 //
 // Applied in signal_router.cpp as: present = raw_present ^ inverted
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// JACK DETECT AVAILABILITY  —  a HARDWARE/BUILD fact, not a runtime reading
+// -----------------------------------------------------------------------------
+// 1 = a detect conductor exists for this jack and its GPIO reading is
+//     authoritative evidence of plug presence.
+// 0 = NO detect hardware. The GPIO still reads something — every detect pin is
+//     INPUT_PULLUP (signal_router.cpp:208-211) — but that reading is a pullup
+//     artefact, NOT an observation of a plug.
+//
+// *** ALL FOUR ARE 0 TODAY. That is the as-built truth, not a placeholder. ***
+//   instrument  J4 was continuity-identified as a TWO-TERMINAL jack with NO
+//               switch terminal (TODO-44). Pin 16 feeds nothing (TODO-5).
+//   rig_send    Phase 7 — not built (see the INVERTED comment below).
+//   return_ts   Phase 7 — not built.
+//   return_xlr  Phase 8 — the D2F-01L microswitch is deliberately not built
+//               (TODO-8), and the parts gate in TODO-5 records zero on hand.
+//
+// These drive ROUTER_STATUS byte [1]. Where a bit is 0 the presentation
+// boundary forces the matching presence bit to 0 and the receiver renders
+// UNKNOWN — never ABSENT. A Boolean cannot carry "we have no detector", and
+// transmitting a pullup artefact as a physical claim is the defect this exists
+// to prevent. Raise a flag to 1 ONLY with as-built evidence that the detect
+// conductor is fitted AND its sense verified.
+#define JACK_INSTRUMENT_DETECT_AVAILABLE 0
+#define JACK_RIG_SEND_DETECT_AVAILABLE   0
+#define JACK_RETURN_TS_DETECT_AVAILABLE  0
+#define JACK_RETURN_XLR_DETECT_AVAILABLE 0
+
 #define JACK_INSTRUMENT_DETECT_INVERTED 1   // Switchcraft #11, INSTALLED 2026-09-08
 #define JACK_RIG_SEND_DETECT_INVERTED   0   // Phase 7 — not built, sense unverified
 #define JACK_RETURN_TS_DETECT_INVERTED  0   // Phase 7 — not built, sense unverified

@@ -157,6 +157,13 @@
 #define DS_VIEW_LIVE          0x00
 
 #define DS_FRAMING_BYTES      7      // 5-byte header + 2-byte CRC
+
+// ROUTER_STATUS fixed block, ahead of the variable-length description. Seven
+// bytes both before and after the TODO-58 correction: two dishonest booleans
+// (route_valid, can_inject) left and jack_detect_available plus one reserved
+// byte arrived, so the size is unchanged by coincidence rather than by design.
+#define DS_ROUTER_FIXED_BYTES 7
+#define DS_ROUTER_MAX_DESC    100
 #define DS_MAX_STRING_PAYLOAD 200    // STATUS / ABORTED string cap
 
 // =============================================================================
@@ -199,6 +206,15 @@
 // sticky ABORTED observed after a late attach.
 #ifndef DS_STATE_ANNOUNCE_MS
 #define DS_STATE_ANNOUNCE_MS    500
+#endif
+
+// ROUTER_STATUS periodic repair period. 1 Hz, NOT STATE's 500 ms: route state
+// is slowly-changing configuration (an operator selection plus build-time
+// detector facts), so it sits in HELLO's cadence tier. Responsiveness comes
+// from the immediate emissions the application makes on a real change; this
+// path exists so a late attachment or a lost event still converges.
+#ifndef DS_ROUTER_REPAIR_MS
+#define DS_ROUTER_REPAIR_MS     1000
 #endif
 
 // =============================================================================
@@ -428,6 +444,64 @@ static_assert(DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES < DS_TX_BUFFER_BYTES,
 // =============================================================================
 
 // =============================================================================
+// ROUTER_STATUS (0x05) PAYLOAD LAYOUT  —  corrected 2026-09-26 (TODO-58)
+// =============================================================================
+//   [0]      uint8   jack_present        bit0 instrument, 1 rig_send,
+//                                        bit2 return_ts,  3 return_xlr
+//                                        bits 4-7 reserved (0)
+//   [1]      uint8   jack_detect_available   same bit mapping
+//   [2]      uint8   return_source       ReturnSource (TS=1, XLR=2)
+//   [3]      uint8   injection_active    current injection state
+//   [4]      uint8   monitor_mode        current MonitorMode
+//   [5]      uint8   reserved (0)
+//   [6]      uint8   description_length  0..DS_ROUTER_MAX_DESC
+//   [7..]    char    description
+//
+// *** THE RECEIVER INVARIANT — NOT OPTIONAL. ***
+//
+//   jack_present MUST NOT be interpreted independently of
+//   jack_detect_available. For each detector n:
+//
+//     available = 0                 -> UNKNOWN   (do not read the present bit)
+//     available = 1, present = 0    -> ABSENT
+//     available = 1, present = 1    -> PRESENT
+//
+// A Boolean cannot carry "we have no detector", which is why the mask exists
+// rather than an overloaded false. ALL FOUR availability bits are 0 in the
+// current build (config.h JACK_*_DETECT_AVAILABLE): three detectors are
+// unbuilt, and J4 is a two-terminal jack with no switch terminal at all. Every
+// detect pin is INPUT_PULLUP, so an unmasked reading would be a pullup
+// artefact presented as a physical claim.
+//
+// The producer forces jack_present bits to 0 wherever availability is 0, so a
+// raw hex dump or log cannot expose those artefacts as apparent observations.
+// The mask remains authoritative either way. Note this is a WIRE CONTRACT
+// obligation, not sanitising bad router data: RouterStatus keeps the raw
+// readings for bring-up, and the raw GPIO value is not wrong — it simply is
+// not evidence of presence when no detect hardware exists.
+//
+// *** ADR-004: return_source IS THE ONLY AUTHORITY ON THE SELECTED RETURN. ***
+// It is operator-selected and is never derived from presence. A receiver MUST
+// NOT infer "XLR plug detected therefore XLR is active" — that is exactly what
+// ADR-004 Decision 3 forbids, and today it would be inferred from a pullup.
+//
+// *** WHAT WAS REMOVED, AND WHY IT IS NOT COMING BACK AS A Pi COMPUTATION ***
+// route_valid was (selected_return != NONE) — a tautology under ADR-004, fully
+// recomputable from byte [2], with a name that asserted physical connectivity
+// it never established. can_inject was route_valid && rig_send.debounced: a
+// tautology AND an unavailable detector, whose honest value is UNKNOWN.
+// Neither had any consumer. The Pi must not reconstruct either.
+//
+// *** v2 PRE-FIRST-TRANSMISSION CORRECTION — recorded deliberately. ***
+// The superseded layout had ZERO firmware callers: presentation_routerStatus()
+// and dataSender_sendRouterStatus() were implemented in all three backends and
+// invoked nowhere. It therefore never formed part of an observed or deployed
+// wire contract, and correcting it in place costs no compatibility. This is
+// the cheapest moment the schema will ever be fixable, which is why it was
+// fixed before the first transmission rather than versioned around afterwards.
+// PI_PROTOCOL_VERSION stays 2.
+//
+// =============================================================================
 // STATE (0x08) PAYLOAD LAYOUT  —  TODO-57
 // =============================================================================
 //   [0]      uint8   measurement_state   (MeasurementState, authoritative)
@@ -535,6 +609,12 @@ struct DataSenderStats {
     // both together is the invariant working, not a link problem.
     uint32_t state_sent;
     uint32_t state_dropped;
+
+    // ROUTER_STATUS path. Like state_dropped, router_dropped counts BOTH no
+    // UART room and TODO-59 atomicity refusals; blocked_by_result
+    // disambiguates.
+    uint32_t router_sent;
+    uint32_t router_dropped;
 
     // Timing of the calls themselves: this is the number that matters for T1.
     uint32_t send_calls;

@@ -170,6 +170,16 @@ static void buildDescription() {
 
 // Update the RouterStatus snapshot from current state.
 static void updateStatus() {
+    // Build-time hardware facts. Constant at runtime, refreshed here so every
+    // snapshot carries the qualification alongside the observation.
+    s_status.detect_available.instrument_in = JACK_INSTRUMENT_DETECT_AVAILABLE;
+    s_status.detect_available.rig_send      = JACK_RIG_SEND_DETECT_AVAILABLE;
+    s_status.detect_available.return_ts     = JACK_RETURN_TS_DETECT_AVAILABLE;
+    s_status.detect_available.return_xlr    = JACK_RETURN_XLR_DETECT_AVAILABLE;
+
+    // RAW readings — deliberately unmasked. See RouterStatus in signal_router.h:
+    // masking is a wire-contract obligation discharged at the presentation
+    // boundary, so bring-up diagnostics keep seeing actual pin state.
     s_status.jacks.instrument_in = s_jack_instrument.debounced;
     s_status.jacks.rig_send      = s_jack_rig_send.debounced;
     s_status.jacks.return_ts     = s_jack_return_ts.debounced;

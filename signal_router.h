@@ -116,8 +116,22 @@ enum class MonitorMode : uint8_t {
 // ROUTER STATUS — full snapshot of current routing state
 // =============================================================================
 struct RouterStatus {
-    // Jack detection (debounced)
+    // RAW debounced detector readings. These are engineering observations and
+    // are kept raw ON PURPOSE, so bring-up diagnostics can see actual pin
+    // state. A reading here is NOT evidence of plug presence unless the
+    // matching bit in detect_available is set.
+    //
+    // The wire contract is enforced at the presentation boundary, not here:
+    // data_sender masks presence bits whose detector is unavailable. The raw
+    // GPIO value is not "bad data" needing sanitising — it simply is not
+    // evidence of presence when no detect hardware exists.
     JackState     jacks;
+
+    // Which detectors physically exist in this build (config.h
+    // JACK_*_DETECT_AVAILABLE). A hardware/build fact, constant at runtime.
+    // Carried on the struct so every consumer sees the qualification attached
+    // to the observation rather than having to remember to look it up.
+    JackState     detect_available;
 
     // Operator-selected return source (ADR-004). Always TS or XLR.
     ReturnSource  return_source;
@@ -125,13 +139,22 @@ struct RouterStatus {
     // Whether generator injection is currently active
     bool          injection_active;
 
-    // Return routing configuration is defined (ADR-004). Always true in normal
-    // operation. Does NOT establish that a return signal is physically
-    // connected. The name is historical: not a reason to reintroduce presence.
+    // REMOVED FROM THE WIRE 2026-09-26 (TODO-58): route_valid and can_inject.
+    //
+    // route_valid was (selected_return != NONE). ADR-004 guarantees a selection
+    // always exists, so it was a tautology — always true, fully recomputable
+    // from return_source, and its name asserted physical connectivity it never
+    // established.
+    //
+    // can_inject was route_valid && rig_send.debounced: a tautology AND an
+    // unavailable detector. Its honest value today is UNKNOWN, and a Boolean
+    // cannot carry that. Neither had any consumer — signalRouter_canInject()
+    // and signalRouter_canMeasure() are defined and called nowhere.
+    //
+    // They remain on this struct for the two getters below and for bench
+    // diagnostics; they are simply not transmitted. Injection readiness can
+    // return to the wire when the Teensy can authoritatively establish it.
     bool          route_valid;
-
-    // route_valid && rig_send detected. With route_valid always true this
-    // reduces to Rig Send presence, which is still under review (ADR-003).
     bool          can_inject;
 
     // Human-readable description of current route

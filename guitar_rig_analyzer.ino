@@ -425,12 +425,25 @@ void loop() {
     // continuously rather than gated on audio-block availability. It is cheap:
     // four digitalRead() calls and a comparison when nothing changes.
     //
-    // The return value is intentionally not consumed yet. Phase 5's sign-off
-    // only requires that detect events FIRE and are observable on serial, which
-    // signalRouter_update() prints itself. Wiring RouterEvent into
-    // measurement_engine invalidation is Phase 7 work -- see TODO-11.
+    // CHANGED [todo-58]: the return value used to be discarded entirely. It is
+    // now consumed for ONE purpose — publishing a jack change to the Pi. Wiring
+    // RouterEvent into measurement_engine invalidation is still Phase 7 work and
+    // is still not done here (TODO-11).
+    //
+    // Under ADR-004 a jack change is informational only: it never selects the
+    // return source and never invalidates a measurement. Publishing it is a
+    // presentation act, which is why it is orchestrated here rather than inside
+    // the router.
+    //
+    // NOTE: with every JACK_*_DETECT_AVAILABLE flag at 0 this branch is
+    // unreachable in the current hardware — no detect conductor exists on any
+    // jack, so no debounced input can change. It is wired now so the lifecycle
+    // is complete and testable when detectors are fitted, and so the periodic
+    // repair is not silently carrying the whole contract.
     // -------------------------------------------------------------------------
-    (void)signalRouter_update();
+    if (signalRouter_update() == RouterEvent::JACK_CHANGED) {
+        presentation_routerStatus();
+    }
 
     // T1 harness: time the WHOLE loop body. Catches anything that blocks,
     // wherever it lives — not just presentation calls. A transport layer that is
@@ -554,6 +567,16 @@ void loop() {
                    if (signalRouter_setReturnSource(want)) {
                        Serial.printf("[Main] Return source selected: %s\n",
                                      want == ReturnSource::TS ? "TS" : "XLR");
+                       // TODO-58: publish the change immediately so the Pi does
+                       // not wait up to a second for the periodic repair to
+                       // show an action the operator just took.
+                       //
+                       // Orchestrated HERE, not inside signal_router: the
+                       // router must not learn that a transport exists. This is
+                       // the same shape as the acknowledgeAbort() ->
+                       // presentation_restoreLive() pairing above, and it keeps
+                       // the presentation boundary one-directional (ADR-001).
+                       presentation_routerStatus();
                    } else {
                        Serial.println("[Main] Return source selection rejected.");
                    }
