@@ -12,6 +12,83 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (7) — **Flash safety review before the first Teensy→Pi capture. The next image carries Phase 9 code that has never been runtime-tested, and one genuinely new boot-time side effect: a flash write.** Route B (the Pi we own) chosen over buying an adapter. **Nothing flashed, no serial opened, breadboard untouched**
+
+**Bench state carried forward, as reported and corrected by the operator (`PHYS`):** Teensy USB connected · **the Phase 8 XLR connector remains wired into the breadboard exactly as built** — this does *not* mean an external XLR cable is plugged in · jack loop disconnected · **no breadboard change made or requested.**
+
+**As-built XLR wiring, read from the record rather than reconstructed:** J7 XLR female (intended Neutrik NC3FAH2-0, **marking not read back — `NYV`**), **pin 2 (hot) → `17a` = K2 pole-1 NO; pins 1 and 3 → `TOP_GND` rail**, placement `PHYS` (`docs/asbuilt/netlist.md` lines 653/720/750, read in the working tree which carries the concurrent capture session's uncommitted edits — **not edited here**). Teensy pins 0/1 appear **nowhere** in the netlist, so `Serial1` is physically unconnected and the Pi link will be a genuinely new connection to two unused pins.
+
+**Route decision: use the Pi.** An isolated USB-UART capture would separate *"does the Teensy emit the right bytes"* from *"does the Pi platform work"*, which is methodologically cleaner. It was overruled, correctly: the production transport **is** Pi↔Teensy, the Pi is already owned, and stopping to buy a $10 part to make one experiment tidier is not worth the delay. The evidence from Route B is also more project-relevant. No `.mcp.json` change is needed as a result.
+
+---
+
+## 🔒 FLASH REVIEW GATE — what enters the board relative to `44c4680`
+
+**Nine firmware files, two tracks, and they cannot be separated.** The transport work and the Phase 9 harness work both sit between `44c4680` and HEAD, so **there is no flash that carries one without the other.**
+
+| File | Δ | Track |
+|---|---|---|
+| `data_sender.{h,cpp}` | +663 | Phase 10 transport (TODO-56/57/58/59) |
+| `config.h` | +46 | transport + jack-detect availability |
+| `signal_router.{h,cpp}` | +54 | TODO-58 + one stale-comment fix (`aec99bf`) |
+| `guitar_rig_analyzer.ino` | +53 | transport orchestration **+ Phase 9 Group C** |
+| **`validation.{h,cpp}`** | **+276** | **Phase 9 Groups A/C/D — never runtime-tested** |
+| `measurement_core.h` | +6 | Phase 9 Group D |
+
+This is not a surprise — TODO-9 already named this flash an *"EVIDENCE-ENABLING INTERMEDIATE BUILD, NOT the Phase 9 acceptance firmware."* One flash unlocks **two independent tracks**: passive `Serial1` capture, and TODO-48's runtime proof on the USB shell. They do not interact, and neither blocks the other.
+
+### The safety question: what does booting this image do that `44c4680` did not?
+
+Examined file by file, restricted to code reachable **without operator input**:
+
+| Concern | Finding | Tier |
+|---|---|---|
+| GPIO modes | **Unchanged.** `signalRouter_init()` is untouched; the same four `INPUT_PULLUP` detect pins and the same relay pin configuration | `OBS` |
+| Relay state | **Unchanged.** Both relay pins still driven LOW at init → K1 NC, K2 TS. No new write anywhere | `OBS` |
+| Generator / injection | **Unchanged.** `signalGen_init()` untouched; `ENABLE_DUT_INJECTION` still 0; `signalRouter_setInjectionEnabled()` still has zero callers | `OBS` |
+| Audio routing | **Unchanged.** No edit to `audio_capture`, `audio_engine`, or the route set at boot | `OBS` |
+| Validation at startup | **`validation_init()` is print-only** — four `Serial.printf` calls, no GPIO, no relay, no audio. Its diff since `44c4680` is **comment and printf text only** | `OBS` |
+| `measurement_core.h` | **Comment-only diff.** No constant changed | `OBS` |
+| Phase 9 test bodies | Reachable **only** via `v` / `1`–`4` on USB Serial. Not invoked at boot or idle | `OBS` |
+| `signal_router.cpp` | One comment correction plus four writes to `s_status.detect_available` — **RAM struct fields, no hardware access** | `OBS` |
+| `.ino` `loop()` | `(void)signalRouter_update()` → `if (… == JACK_CHANGED) presentation_routerStatus()`. Consumes an existing return value; emits a UART packet. No hardware action | `OBS` |
+
+### 🔺 One genuinely new boot-time side effect, and it is not zero
+
+**`dataSender_init()` now performs an EEPROM read-modify-write** — the TODO-56 session counter. That is **the firmware's only flash write**, and `44c4680` had none.
+
+- It writes **2 bytes at `EEPROM_ADDR_LINK_SESSION` (0)**, once per `_PI` boot.
+- It runs at `.ino:311`, **before** `audioCap_init()` at `:323`, so no audio is running and there is no acquisition timing to perturb.
+- Teensy 4.1 emulates EEPROM in a **reserved flash region separate from the program image**; nothing else in this firmware uses EEPROM.
+- Endurance at one write per boot is not a concern, and **no wear-levelling scheme is implemented or relied upon** (documented at `nextSessionId()`).
+
+**Credible hardware risk from booting: none identified.** No pin changes state that did not already, no relay actuates, no signal is generated or injected. The Teensy drives `Serial1` TX into open air, which it already did at `44c4680`. `Serial1` RX is enabled and never drained — unchanged, and harmless while nothing transmits into it.
+
+**New idle behaviour to expect on USB Serial:** an added `[DataSender] Session id N | HELLO re-announced every 1000 ms | STATE every 500 ms` line at boot, and `Router:` / `State:` / `Atomicity:` lines in the `u` diagnostics.
+
+---
+
+**Two false comments found and corrected before archiving a flash candidate**, because a candidate should not be built from text known to be wrong:
+
+1. **Mine, from the TODO-58 slice.** I wrote that the `JACK_CHANGED` branch is *"unreachable in the current hardware."* It is not: the availability flags gate the **wire masking**, not the debounce. The pins are still read, so a glitch on a floating `INPUT_PULLUP` could in principle produce a debounced change. Very unlikely, harmless if it happens — but **"unreachable" overstated it, and an overstated comment is how a surprising log line later gets called impossible.**
+2. **`config.h`:** *"Do not build a Pi-side parser against the current layout until TODO-34 closes."* Five commits of Pi parser now exist. What remains open in TODO-34 is **T1**, not the layout.
+
+**Runbook updated before bench execution**, as required: step 4's *"roughly 11 Hz"* corrected to **~15 sync words/s** (three periodic producers have been added since that sentence was written); a falsifiable idle packet inventory with rates, sizes and field-level expectations; and the physical steps decomposed so **each electrical action and each measurement is its own authorized step** — "wire the UART" is not one action.
+
+**The Pi's UART is to be confirmed, not assumed.** The existing table names GPIO14/15, correct for earlier models. The Pi 5 renumbered its UARTs and has a separate 3-pin debug connector, and the Freenove HAT sits between the Pi and the wire. **No header coordinates are recorded until they are read from the actual device.** Step 2a now lists exactly what to confirm.
+
+**Serial-console `[STOP]` reconciled by design, not by configuration:** the first capture leaves **Teensy pin 0 (RX) unconnected**, making the link physically incapable of Pi→Teensy transmission. The console hazard is designed out. RX gets added only when a control channel exists and has been reviewed.
+
+**Two findings about evidence handling:**
+- The first archived candidate was **a preview, not the artifact to flash**: the tree was dirty when built, and the build is not reproducible. **The archived hex must be the exact one flashed**, built from a reviewed commit immediately before flashing. The preview was deleted rather than promoted — an artifact should not become the candidate merely by being the one that happens to be sitting there.
+- **`.gitignore:6` (`*.hex`) excluded the evidence artifact.** Since builds are not reproducible, the hex is the *only* way to later verify what is on the board — an md5 with no file behind it proves nothing. **Resolved with a narrow exception** (`!ai/evidence/firmware/**/*.hex`) rather than un-ignoring `*.hex` globally, so ordinary compilation output stays out of the repository.
+
+**One expectation deliberately demoted to a weaker tier.** `tf_clamped_count` near 512 was written alongside the transport expectations, and it does not belong there. Packet ids, framing, CRC, sizes, cadence, session id, `IDLE`/`NONE` and availability `0x00` are hard properties of the **link** — they hold or the transport is wrong. The clamp count depends on the **analog state**, so a materially different reading is a finding to investigate, **not a transport failure.** Left as-is it could have failed a perfectly valid capture for a reason that has nothing to do with the thing under test.
+
+**Nothing flashed. No serial port opened. No wiring, no relay, no generator, no injection, no validation. The breadboard is exactly as it was.**
+
+---
+
 ## 2026-09-26 (6) — **TODO-58 was not "wire up the missing caller." The packet would have transmitted fabricated physical state.** Schema corrected before first transmission; two dishonest booleans removed; `UNKNOWN` given a representation. **Compile-verified only**
 
 **What the design pass changed.** The item began as a one-line fix: `presentation_routerStatus()` is implemented in all three backends and called nowhere, so call it. Inspecting *what the packet would say* stopped that.

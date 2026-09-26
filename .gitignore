@@ -6,6 +6,14 @@ build/
 *.hex
 *.elf
 
+# EXCEPTION: firmware flashed to the board is EVIDENCE, not a build product.
+# guitar_rig_analyzer.ino:215 stamps __DATE__/__TIME__, so builds are NOT
+# reproducible: rebuilding the same commit yields a different binary and a
+# different hash. The archived .hex is therefore the ONLY way to later verify
+# what is actually on the Teensy — an md5 with no file behind it proves
+# nothing. Deliberately narrow: ordinary compilation output stays ignored.
+!ai/evidence/firmware/**/*.hex
+
 # Bench test capture logs
 .serial-logs/
 

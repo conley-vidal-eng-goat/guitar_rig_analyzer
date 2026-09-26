@@ -435,11 +435,17 @@ void loop() {
     // presentation act, which is why it is orchestrated here rather than inside
     // the router.
     //
-    // NOTE: with every JACK_*_DETECT_AVAILABLE flag at 0 this branch is
-    // unreachable in the current hardware — no detect conductor exists on any
-    // jack, so no debounced input can change. It is wired now so the lifecycle
-    // is complete and testable when detectors are fitted, and so the periodic
-    // repair is not silently carrying the whole contract.
+    // NOTE, CORRECTED: with every JACK_*_DETECT_AVAILABLE flag at 0, no PLUG
+    // can drive this branch — no detect conductor exists on any jack. But the
+    // availability flags gate only the WIRE MASKING, not the debounce: the
+    // pins are still read, so a glitch on a floating INPUT_PULLUP could in
+    // principle produce a debounced change and fire this. Unlikely, and
+    // harmless if it happens (one extra ROUTER_STATUS packet whose presence
+    // bits are masked to 0 anyway) — but "unreachable" overstated it, and an
+    // overstated comment is how a surprising log line later gets called
+    // impossible. It is wired now so the lifecycle is complete and testable
+    // when detectors are fitted, and so the periodic repair is not silently
+    // carrying the whole contract.
     // -------------------------------------------------------------------------
     if (signalRouter_update() == RouterEvent::JACK_CHANGED) {
         presentation_routerStatus();

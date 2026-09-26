@@ -2030,7 +2030,33 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 
 **1. Assemble and boot the Pi alone.** Active Cooler fitted, OS installed, Touch Display 2 working, no Teensy connected. Confirm the touchscreen responds. *Verify:* the Pi boots to a desktop and touch works. Do not proceed with a Pi you have not already seen working by itself.
 
-**2. Wire GND, then TX, then RX.** In that order. *Verify:* continuity Teensy GND ↔ Pi GND.
+**2. Wire the link — ONE ACTION PER STEP.**
+
+> **⚠️ BENCH METHOD (2026-09-26): "wire the UART" is not one action.** Every physical or electrical action, and every measurement, is its own authorized step with its own observation recorded before the next begins. Bundling them is how a fault becomes unattributable — if three things changed and something is wrong, nothing has been isolated.
+
+| Step | Single action | Observation to record before proceeding |
+|---|---|---|
+| 2a | **Confirm the Pi's UART configuration** (see below). No wiring. | The device path, the `config.txt` state, and the header pins, each read from the Pi itself |
+| 2b | Power **off** the Teensy | Rail voltage 0 V, or USB physically removed |
+| 2c | Connect **GND only** — Teensy GND ↔ Pi GND | Continuity, both boards unpowered |
+| 2d | Measure continuity Teensy GND ↔ Pi GND | Reading recorded with probe points stated |
+| 2e | Connect **Teensy pin 1 (TX) → Pi RX** | Connection made; nothing powered |
+| 2f | Leave **Teensy pin 0 (RX) UNCONNECTED for the first capture** | Confirmed unconnected — see below |
+| 2g | Power the Teensy | Boot banner on USB Serial |
+
+> **🔒 LEAVE Teensy pin 0 (RX) UNCONNECTED FOR THE FIRST CAPTURE.** Nothing in the firmware reads `Serial1` RX — there is no inbound path at all, by design (`presentation.h` refuses to host one). Leaving the wire off makes the first capture **physically incapable** of Pi→Teensy transmission, which designs out the serial-console hazard below instead of configuring around it. Add RX only when a control channel actually exists and has been reviewed.
+
+**2a — confirm the Pi's UART, do not assume it.** The table further down names GPIO14/15, which is correct for the 40-pin header on earlier Pi models. **The Pi 5 is not assumed to match.** Confirm on the actual device, and record each answer:
+
+| Question | Why it cannot be assumed |
+|---|---|
+| What does `/dev/serial0` symlink to? | Pi 5 renumbered its UARTs; `ls -l /dev/serial0` is the only authority |
+| Is `enable_uart` / the relevant `dtparam` set in `/boot/firmware/config.txt`? | The header UART may be disabled by default |
+| Is the Pi 5's separate 3-pin **debug** UART being confused with the header UART? | They are different connectors; only one is the production link |
+| Does the **Freenove HAT** pass GPIO14/15 through unmodified? | It sits between the Pi and the wire and has not been verified here |
+| Pi OS version and whether `/boot/firmware/` or `/boot/` is the config path | The path moved in recent releases |
+
+**No header coordinates are recorded in this runbook until 2a has been performed on the actual hardware.** Guessing a pin and finding out by continuity is not the method used elsewhere in this document.
 
 > **[STOP] Disable the Pi's serial console on this UART before connecting RX.** Raspberry Pi OS ships a login console (`getty`) on the primary UART by default. If it is left enabled, the **Pi transmits** login-prompt and kernel bytes down the wire at the Teensy continuously. Use `raspi-config` → *Interface Options* → *Serial Port*: **login shell over serial = NO**, **serial hardware = YES**. Confirm `console=serial0,115200` is absent from `/boot/firmware/cmdline.txt`.
 >
@@ -2040,7 +2066,48 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 
 **3. Build the firmware with `DISPLAY_TARGET_PI`.** One line in `config.h`. The boot banner prints `[Main] Display target: Pi 5 (UART)` — confirm that on USB Serial before looking at the Pi. If it says anything else you are testing the wrong binary.
 
-**4. Observe raw bytes on the Pi before writing any parser.** `stty -F /dev/serial0 460800 raw` then `xxd /dev/serial0 | head`. *Verify:* you can see the `55 AA` sync word recurring at roughly 11 Hz. **Stop here and fix the link if you cannot** — every later problem is easier to diagnose than a physical-layer fault.
+**4. Observe raw bytes on the Pi before writing any parser.** `stty -F /dev/serial0 460800 raw` then `xxd /dev/serial0 | head`. *Verify:* you can see the `55 AA` sync word recurring. **Stop here and fix the link if you cannot** — every later problem is easier to diagnose than a physical-layer fault.
+
+> **Corrected 2026-09-26.** This step used to say *"at roughly 11 Hz"*, which was the LIVE_FRAME rate when live frames were the only periodic packet. Three more periodic producers have since been added, so an idle instrument now emits **~15 sync words per second**. See *What an idle instrument emits* below before judging what you see.
+
+### What an idle instrument emits — falsifiable expectations
+
+Written down **before** observing bytes, so the capture can disagree. `DISPLAY_TARGET_PI`, nothing connected to either node, no measurement armed:
+
+| Packet | Type | Rate | Framed size | Why |
+|---|---|---:|---:|---|
+| LIVE_FRAME | `0x01` | ~11/s | 1689 B | one per processed block; gated to IDLE/ARMED |
+| STATE | `0x08` | 2/s | 15 B | `DS_STATE_ANNOUNCE_MS` = 500 (TODO-57) |
+| HELLO | `0x06` | 1/s | 47 B | `DS_HELLO_REANNOUNCE_MS` = 1000 (TODO-56) |
+| ROUTER_STATUS | `0x05` | 1/s | ~37 B | `DS_ROUTER_REPAIR_MS` = 1000 (TODO-58) |
+| STATUS | `0x03` | **0** | — | clip transitions only |
+| RESULT / ABORTED / VIEW | — | **0** | — | require a measurement or an operator action |
+
+**~15 packets/s, ~18.7 KB/s of the 46 KB/s the wire carries at 460 800 baud (~41 %).**
+
+Field-level expectations:
+
+| Field | Expected | Because |
+|---|---|---|
+| `session_id` (HELLO) | matches `[DataSender] Session id N` on USB | the boot counter issued this session |
+| `measurement_state` (STATE) | `IDLE` (0) | nothing armed |
+| `abort_reason` (STATE) | `NONE` (0) | no abort |
+| `jack_detect_available` | `0x00` | **no detect conductor exists on any jack** |
+| `jack_present` | `0x00` | producer masks presence by availability |
+| `return_source` | whatever the Teensy selected | **see the ADR-004 note below** |
+| `tf_clamped_count` (LIVE_FRAME) | *see the separate note below* | depends on analog state, not on transport |
+
+> **⚠️ `return_source` is NOT predicted from the hardware.** ADR-004 makes it TS at every boot *and not saved*, so a freshly booted board should report TS — but that is a prediction about **firmware**, never about wiring. **What is physically plugged in is not evidence of what is selected.** If the two disagree, the Teensy is right and the expectation was wrong.
+
+> **🔍 The clamp figure is a WEAKER class of expectation — do not fail a capture on it.**
+>
+> Everything else in the two tables above is a hard, falsifiable property of the **transport**: packet ids, framing, CRC, sizes, cadence, session id, `IDLE`/`NONE`, availability `0x00`. Those either hold or the transport is wrong.
+>
+> `tf_clamped_count` is different. It is a **predicted observation based on prior bench behaviour** under a known idle/open-return condition: with nothing on RETURN_NODE the true transfer function sits far below the −24 dB rail, so high or near-full clamping is expected, and coverage bytes should mostly show `clamped == ratio` (the 2026-09-07 condition protocol v2 was built to survive).
+>
+> But it depends on the **analog state and live-frame behaviour**, not on the link. **A materially different observation is a finding to investigate, not a transport failure.** A capture whose framing, CRC and field values are all correct has proven what this step exists to prove, whatever the clamp count says.
+
+> **🧪 An honest-ignorance check, and it is the point of TODO-58.** The Phase 8 XLR connector is wired into the breadboard as built (J7 pin 2 → `17a`; pins 1 and 3 → `TOP_GND`). **The firmware must still report `RETURN_XLR` as UNKNOWN**, because no detect conductor exists for it — the D2F-01L microswitch was deliberately not built. A capture that reported XLR as ABSENT, or that let XLR presence influence `return_source`, would be a defect. UNKNOWN is the correct answer and the one to verify.
 
 **5. Read HELLO before anything else.** The Teensy sends a structured HELLO packet (type `0x06`) carrying `protocol_version`, `live_bins`, `fft_bins`, `decim_ratio`, baud, sample rate, `session_id`, a capability bitmap and the firmware version. *Verify:* `protocol_version == 2`. A receiver that does not check this will eventually misparse a future layout silently.
 
@@ -2115,7 +2182,12 @@ Procedure per run: flash → let it settle → press `t` → leave it for the sa
 |---|---|---|
 | Common ground | continuity Teensy GND ↔ Pi GND | **[STOP]** |
 | Banner | `[Main] Display target: Pi 5 (UART)` | |
-| Raw bytes | `55 AA` sync word at ~11 Hz | **[STOP]** |
+| Raw bytes | `55 AA` sync word at ~15/s (see the packet inventory) | **[STOP]** |
+| STATE `0x08` | present at ~2/s; `measurement_state` = IDLE when idle | |
+| ROUTER_STATUS `0x05` | present at ~1/s; `jack_detect_available` = `0x00` | |
+| Jack detection | every jack renders **UNKNOWN**, never ABSENT | **[STOP]** |
+| Return source | as reported by the Teensy, never inferred from a plug | **[STOP]** |
+| RESULT integrity under traffic | a RESULT arrives intact while STATUS/STATE are also being emitted; `blocked_by_result` non-zero (TODO-59) | **[STOP]** |
 | HELLO | `protocol_version == 2` | |
 | Known data renders | synthetic stream renders correctly | |
 | **Clamp contract** | railed bins marked saturated, **not** drawn as −24 dB data | **[STOP]** |

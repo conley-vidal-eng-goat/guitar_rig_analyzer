@@ -204,7 +204,10 @@
 // *** THE WIRE FORMAT IS NOT YET FROZEN. *** An audit against the canonical
 // 512-bin MeasurementResult model found five gaps, one of which drops the TF
 // clamp mask and would let the Pi render a saturation rail as a measurement.
-// Do not build a Pi-side parser against the current layout until TODO-34 closes.
+// SUPERSEDED 2026-09-26: that audit produced protocol v2, which closed all five
+// gaps, and TODO-34's schema is frozen. A Pi-side parser, receiver state model
+// and test suite now exist under pi/. What remains open in TODO-34 is T1 — the
+// measured proof that transmission cannot perturb acquisition — not the layout.
 // -----------------------------------------------------------------------------
 #define PI_LINK_UART_RX_PIN  0   // Teensy Serial1 RX — RESERVED, do not reassign
 #define PI_LINK_UART_TX_PIN  1   // Teensy Serial1 TX — RESERVED, do not reassign
