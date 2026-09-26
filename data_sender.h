@@ -97,6 +97,7 @@
 //   0x05  ROUTER_STATUS  jack/route/monitor state snapshot
 //   0x06  HELLO          structured identification — REPLACES v1's parsed string
 //   0x07  VIEW           explicit view transition (audit T3)
+//   0x08  STATE          authoritative measurement state (~2 Hz, TODO-57)
 //
 // RECEIVER ALGORITHM
 //   1. Scan for SYNC_WORD
@@ -148,6 +149,7 @@
 #define DS_PACKET_ROUTER      0x05
 #define DS_PACKET_HELLO       0x06
 #define DS_PACKET_VIEW        0x07
+#define DS_PACKET_STATE       0x08
 
 // View ids for DS_PACKET_VIEW. RESULT and ABORTED transitions are implied by
 // their own packets arriving; this type exists for transitions that carry no
@@ -188,6 +190,15 @@
 // wait is not worth buying with more traffic.
 #ifndef DS_HELLO_REANNOUNCE_MS
 #define DS_HELLO_REANNOUNCE_MS  1000
+#endif
+
+// STATE announcement period. Deliberately SHORTER than HELLO's: HELLO is
+// slowly-changing session identity, STATE is operational state. 15 B framed is
+// ~0.33 ms of wire time at 460800 baud — about 0.07 % duty at 2 Hz — so the
+// tighter cadence costs nothing and halves the worst-case repair latency for a
+// sticky ABORTED observed after a late attach.
+#ifndef DS_STATE_ANNOUNCE_MS
+#define DS_STATE_ANNOUNCE_MS    500
 #endif
 
 // =============================================================================
@@ -417,6 +428,60 @@ static_assert(DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES < DS_TX_BUFFER_BYTES,
 // =============================================================================
 
 // =============================================================================
+// STATE (0x08) PAYLOAD LAYOUT  —  TODO-57
+// =============================================================================
+//   [0]      uint8   measurement_state   (MeasurementState, authoritative)
+//   [1]      uint8   abort_reason        (AbortReason; NONE=0 when not aborted)
+//   [2-3]    uint16  reserved (0)
+//   [4-7]    uint32  audio_block_counter (audioCap_getBlockCounter())
+//
+// *** WHY THIS PACKET EXISTS ***
+//
+// Before it, the ONLY carrier of measurement state was LIVE_FRAME byte [0] —
+// and presentation_updateLive() is gated to IDLE|ARMED
+// (guitar_rig_analyzer.ino:748-756), so that byte was effectively a two-value
+// field. CAPTURE, PROCESSING, RESULT, EXPORTING and ABORTED were never
+// observable at all, and a Pi attaching during a sticky ABORTED received
+// geometry and then silence. Same shape as the HELLO defect one layer up
+// (TODO-56): state announced once as an event, with no way to re-obtain it.
+//
+// Emitted PERIODICALLY, not on transition, and that is a deliberate choice
+// rather than a shortcut. Of 16 transitionTo() call sites in
+// measurement_engine.cpp, update() ever returns only 5 non-NONE events, and
+// several transitions happen inside command functions that never pass through
+// update() at all. Transition-triggered announcement would mean wiring up
+// ~11 currently-silent transitions, and its failure mode is a MISSING
+// announcement — exactly the defect being fixed. A periodic snapshot reads the
+// authoritative getter and needs none of that plumbing.
+//
+// Every STATE packet means one thing: *this was the Teensy's current state
+// when the snapshot was constructed.*
+//
+// *** THE PAIR IS COHERENT BY CONSTRUCTION ***
+// measurement_state and abort_reason are two separate getters, but the engine
+// maintains the pairing itself: abortTo() sets s_abort_reason BEFORE
+// transitionTo(ABORTED), and acknowledgeAbort() clears it BEFORE
+// transitionTo(IDLE); arm() clears it too. So "IDLE with a stale CLIP reason"
+// is unconstructible. Independently, the engine has no interrupt path at all —
+// no ISR, no volatile, no attachInterrupt in measurement_engine.cpp — so
+// nothing can transition between two adjacent reads in loop context.
+// IF THE ENGINE IS EVER DRIVEN FROM A TIMER OR ISR, RE-CHECK THIS.
+//
+// *** abort_reason IS THE MACHINE-READABLE FACT; the ABORTED packet keeps the
+// prose. *** A dropped ABORTED then costs the wording, not the knowledge —
+// which is what data_sender.cpp used to claim falsely about live frames.
+//
+// *** audio_block_counter IS A TIMESTAMP, NOT A SEQUENCE NUMBER. ***
+// It is canonical audio-time evidence of when the snapshot was taken, and
+// nothing else. DO NOT use it to decide whether one observation is newer than
+// another: audioCap_getBlockCounter() is (uint32_t)(micros() * SAMPLE_RATE /
+// (AUDIO_BLOCK_SAMPLES * 1e6)), so it WRAPS TO ZERO ROUGHLY EVERY 71.6 MINUTES
+// and never exceeds ~1.48e6. It is not a monotonic 32-bit counter and
+// newer-than comparison against it is wrong. Ordering is already guaranteed by
+// the transport: trySendBestEffort() writes whole packets in FIFO order and
+// nothing can reorder them.
+//
+// =============================================================================
 // TRANSPORT STATISTICS
 // =============================================================================
 // Instrumentation for audit finding T1. Every figure here is MEASURED at
@@ -462,6 +527,14 @@ struct DataSenderStats {
     // A NON-ZERO VALUE HERE IS THE INVARIANT WORKING, NOT A FAULT — expect it
     // to rise whenever a result is delivered while the signal is still live.
     uint32_t blocked_by_result;
+
+    // STATE announcement path — best effort, counted separately for the same
+    // reason HELLO is. NOTE: state_dropped counts BOTH causes of refusal — no
+    // UART room, and the TODO-59 atomicity invariant refusing to interleave
+    // with a draining RESULT. Read it alongside blocked_by_result; a rise in
+    // both together is the invariant working, not a link problem.
+    uint32_t state_sent;
+    uint32_t state_dropped;
 
     // Timing of the calls themselves: this is the number that matters for T1.
     uint32_t send_calls;

@@ -25,7 +25,8 @@ D2  A valid Teensy-authored observation explicitly reporting MeasurementState
     measurementEngine_acknowledgeAbort() -> IDLE, so an authoritative IDLE
     observation IS evidence of acknowledgement. The rule is written against
     "any packet carrying an authoritative measurement_state", not against
-    LIVE_FRAME specifically, so TODO-57's state packet plugs in unchanged.
+    LIVE_FRAME specifically -- which is why TODO-57's STATE packet plugged in
+    with no change to this rule at all.
 
 D3  A changed session_id ends the previous session. Its abort latch cannot
     remain the CURRENT instrument state — it belonged to a Teensy that is
@@ -115,6 +116,7 @@ class SessionEnd:
     session_id: int
     ended_with_abort_latched: bool
     abort_reason: str | None
+    abort_reason_code: protocol.AbortReason
     measurement_state_at_end: ObservedState
 
 
@@ -165,6 +167,7 @@ class ReceiverState:
         self._measurement_state: ObservedState = UNKNOWN
         self._abort_latched = False
         self._abort_reason: str | None = None
+        self._abort_reason_code = protocol.AbortReason.NONE
         self._view = View.NONE
 
         self._latest_live: packets.LiveFrame | None = None
@@ -212,7 +215,21 @@ class ReceiverState:
 
     @property
     def abort_reason(self) -> str | None:
+        """Human-readable reason, from the ABORTED event.
+
+        None when the abort was learned from a STATE snapshot instead — a Pi
+        that attached after the event, or one whose ABORTED packet was dropped,
+        knows WHY from ``abort_reason_code`` but has never been told the
+        wording. Rendering must handle that: the code is the fact, the string
+        is an elaboration that may legitimately be missing.
+        """
         return self._abort_reason
+
+    @property
+    def abort_reason_code(self) -> protocol.AbortReason:
+        """Machine-readable reason. Repaired by every STATE snapshot, so it
+        survives a dropped ABORTED event and a late attach."""
+        return self._abort_reason_code
 
     @property
     def view(self) -> View:
@@ -308,6 +325,7 @@ class ReceiverState:
             session_id=self._session_id,
             ended_with_abort_latched=self._abort_latched,
             abort_reason=self._abort_reason,
+            abort_reason_code=self._abort_reason_code,
             measurement_state_at_end=self._measurement_state,
         ))
 
@@ -316,6 +334,7 @@ class ReceiverState:
         self._measurement_state = UNKNOWN
         self._abort_latched = False
         self._abort_reason = None
+        self._abort_reason_code = protocol.AbortReason.NONE
         self._view = View.NONE
         self._latest_live = None
         self._latest_result = None
@@ -337,6 +356,8 @@ class ReceiverState:
             # observation is made here.
 
         elif isinstance(packet, packets.Aborted):
+            # The prose. The machine-readable code arrives with the next STATE
+            # snapshot, so a dropped ABORTED costs the wording, not the fact.
             self._abort_latched = True
             self._abort_reason = packet.reason
             self._measurement_state = protocol.MeasurementState.ABORTED
@@ -348,6 +369,20 @@ class ReceiverState:
             # fact the protocol does not carry.
             if packet.is_live:
                 self._view = View.LIVE
+
+        elif isinstance(packet, packets.StatePacket):
+            # The authoritative observation TODO-57 exists to provide. It is
+            # what repairs a dropped ABORTED and what lets a Pi attaching
+            # mid-CAPTURE or mid-ABORTED learn the state without waiting for a
+            # transition that may never come.
+            self._abort_reason_code = packet.abort_reason
+            if packet.is_aborted:
+                # Latch without a reason string: a receiver that never saw the
+                # ABORTED event knows WHY (the code) but not the wording.
+                self._abort_latched = True
+                if self._view is not View.ABORTED:
+                    self._view = View.ABORTED
+            self._observe_state(packet.measurement_state)
 
         elif isinstance(packet, packets.RouterStatus):
             self._router = packet
@@ -372,3 +407,4 @@ class ReceiverState:
         if observed is protocol.MeasurementState.IDLE:
             self._abort_latched = False
             self._abort_reason = None
+            self._abort_reason_code = protocol.AbortReason.NONE

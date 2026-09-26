@@ -56,6 +56,12 @@ MAX_STRING_PAYLOAD = 200                      # DS_MAX_STRING_PAYLOAD
 # design, so a missed one is normal and means nothing on its own.
 HELLO_REANNOUNCE_MS = 1000
 
+# STATE announcement period (DS_STATE_ANNOUNCE_MS). Shorter than HELLO's
+# because operational state changes faster than session identity. Like HELLO,
+# this is the expected cadence, NOT a timeout to enforce: announcements are
+# best-effort and are refused while a RESULT drains, by design.
+STATE_ANNOUNCE_MS = 500
+
 # =============================================================================
 # GEOMETRY DEFAULTS  —  DEFAULTS ONLY. Read the real values from HELLO.
 # =============================================================================
@@ -84,6 +90,7 @@ RESULT_ARRAYS = 4               # tf_cal_mag_db, tf_cal_phase_rad,
 INSIGHT_ENTRY_BYTES = 138       # DS_INSIGHT_ENTRY_BYTES
 
 HELLO_PAYLOAD_BYTES = 40
+STATE_PAYLOAD_BYTES = 8
 VIEW_PAYLOAD_BYTES = 1
 ROUTER_FIXED_BYTES = 7
 ROUTER_MAX_DESC = 100
@@ -126,6 +133,7 @@ class PacketType(enum.IntEnum):
     ROUTER_STATUS = 0x05
     HELLO = 0x06
     VIEW = 0x07
+    STATE = 0x08
 
 
 VIEW_LIVE = 0x00                              # DS_VIEW_LIVE
@@ -203,6 +211,24 @@ class WindowFunction(enum.IntEnum):
     HANN = 0
     BLACKMAN = 1
     FLAT_TOP = 2
+
+
+class AbortReason(enum.IntEnum):
+    """Why a measurement aborted — the machine-readable fact.
+
+    Carried in the periodic STATE packet, so it survives a dropped ABORTED
+    event and is re-obtainable by a Pi that attaches after the abort. The
+    ABORTED packet carries the human-readable prose; this carries the fact.
+    """
+    NONE = 0
+    USER_CANCEL = 1
+    CLIP_SOURCE = 2
+    CLIP_RETURN = 3
+    TIMEOUT = 4
+    GENERATOR_MISSED = 5
+    ROUTE_CHANGED = 6
+    CALIBRATION_MISMATCH = 7
+    HARDWARE_FAULT = 8
 
 
 class ReturnSource(enum.IntEnum):

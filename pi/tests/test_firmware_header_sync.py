@@ -83,6 +83,10 @@ class TestFramingConstants(unittest.TestCase):
         self.assertEqual(int(self.cfg["PI_PROTOCOL_VERSION"]),
                          protocol.PROTOCOL_VERSION)
 
+    def test_state_announce_period(self):
+        self.assertEqual(int(self.ds["DS_STATE_ANNOUNCE_MS"]),
+                         protocol.STATE_ANNOUNCE_MS)
+
     def test_hello_reannounce_period(self):
         self.assertEqual(int(self.ds["DS_HELLO_REANNOUNCE_MS"]),
                          protocol.HELLO_REANNOUNCE_MS)
@@ -116,6 +120,7 @@ class TestFramingConstants(unittest.TestCase):
         protocol.PacketType.ROUTER_STATUS: "DS_PACKET_ROUTER",
         protocol.PacketType.HELLO:         "DS_PACKET_HELLO",
         protocol.PacketType.VIEW:          "DS_PACKET_VIEW",
+        protocol.PacketType.STATE:         "DS_PACKET_STATE",
     }
 
     def test_packet_type_ids(self):
@@ -215,6 +220,7 @@ class TestEnumsMatchFirmware(unittest.TestCase):
         ("measurement_engine.h", "MeasurementState", protocol.MeasurementState),
         ("measurement_core.h", "ResultQuality", protocol.ResultQuality),
         ("measurement_core.h", "CalibrationType", protocol.CalibrationType),
+        ("measurement_core.h", "AbortReason", protocol.AbortReason),
         ("measurement_core.h", "FftMode", protocol.FftMode),
         ("measurement_core.h", "TfEstimator", protocol.TfEstimator),
         ("measurement_core.h", "StimulusType", protocol.StimulusType),

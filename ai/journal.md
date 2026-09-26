@@ -12,6 +12,44 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (5) — **TODO-57 implemented: `DS_PACKET_STATE` 0x08, periodic at 500 ms. Every measurement state is now observable, and a dropped ABORTED self-heals.** Two verification questions were answered before writing code, and one of them made the design *more* restrictive
+
+**What was broken.** The only carrier of measurement state was LIVE_FRAME byte [0], and `presentation_updateLive()` is gated to `IDLE|ARMED` ([.ino:748-756](../guitar_rig_analyzer.ino#L748)) — so that byte was effectively a two-value field, CAPTURE/PROCESSING/RESULT/EXPORTING were never observable, and a Pi attaching during a sticky ABORTED got geometry and then silence. Two comments in `data_sender.cpp` and one clause in TODO-34 asserted a safety net that did not exist.
+
+**Why periodic, not transition-triggered — the evidence inverts the intuition.** "Announce on change, repair periodically" sounds strictly better. The call-site evidence says otherwise: `measurement_engine.cpp` has **16** `transitionTo()` sites, `update()` ever returns only **5** non-`NONE` events, and `arm`, `returnToLive`, `acknowledgeAbort` and `exportToSD` transition inside *command functions* that never pass through `update()`. `MeasurementEvent::STATE_CHANGED` exists and **the `.ino` never handles it.** Transition-triggered announcement would mean wiring ~11 currently-silent transitions across two call paths, and **its failure mode is a missing announcement — the exact defect being repaired.** A periodic snapshot reads the authoritative getter and needs none of that plumbing. Transition-triggered remains available later as an *optimisation* for latency, which is a different problem from observability.
+
+**✅ Verification 1 — is a coherent state/reason pair obtainable?** There is no combined API; two separate getters. The instruction was to stop rather than invent synchronisation if they could not be read coherently. They can, for **two independent reasons**:
+
+1. **The engine maintains the pairing itself.** `abortTo()` sets `s_abort_reason` **before** `transitionTo(ABORTED)`; `acknowledgeAbort()` clears it **before** `transitionTo(IDLE)`; `arm()` clears it too. So `IDLE + CLIP_SOURCE` — the exact combination we did not want to be able to emit — is **unconstructible**, regardless of interleaving.
+2. **There is no interrupt path.** No ISR, no `volatile`, no `attachInterrupt` anywhere in `measurement_engine.cpp`. Nothing can transition between two adjacent reads in loop context.
+
+(1) is the stronger guarantee because it does not depend on threading at all. (2) is the undocumented precondition that would break if the engine were ever driven from a timer, so `sendState()` says so in a comment. **No API change was needed and none was made.**
+
+**✅ Verification 2 — and this one tightened the design.** The ruling was to treat `audio_block_counter` as timestamp-like evidence and not build newer-than logic on it. Checking the implementation turned that from prudence into necessity: `audioCap_getBlockCounter()` is not a counted variable at all but a **pure computation**, `(uint32_t)(micros() * SAMPLE_RATE / (AUDIO_BLOCK_SAMPLES * 1e6))`. Two consequences:
+
+- Reading it is inherently atomic from any context — no shared state, so no synchronisation question.
+- **It wraps to zero roughly every 71.6 minutes and never exceeds ~1.48e6.** It is *not* a monotonic 32-bit counter.
+
+So a newer-than comparison against it would not merely be unproven, it would be **wrong** — an observation from 72 minutes in would compare as older than one from a minute ago. The restriction is now documented with that reason in both the firmware header and the Pi decoder, which makes it much harder to "optimise" away later than a bare instruction would have been.
+
+**Two reasons, and the difference is deliberate.** `abort_reason` (enum) rides in every snapshot: the machine-readable fact, repairable, survives a dropped event and a late attach. The ABORTED packet keeps the prose. So a Pi that attaches after an abort **knows why but was never told the wording** — `abort_reason_code` is set, `abort_reason` is `None`. That is honest rather than degraded, and a test pins it, because the tempting mistake is to treat a missing string as a missing abort.
+
+**No RESULT-pending guard on STATE, on instruction, and the consequence is recorded rather than hidden.** TODO-59 owns transport atomicity centrally; duplicating the check per producer is what made TODO-59 possible in the first place. The cost is that `state_dropped` counts **both** causes of refusal — no UART room, and the atomicity invariant. `blocked_by_result` disambiguates at the aggregate level, and both the struct comment and the `u` diagnostics line say so. Worth contrasting with HELLO, whose outer gate was *kept* for efficiency and statistics-clarity reasons: the difference is that HELLO's gate is not load-bearing for safety, and it is now documented as such.
+
+**The false comments are corrected — both of them.** The ABORTED note and the VIEW note both claimed *"measurement_state rides in every live frame"*. Both now name the STATE packet and state why the live frame never could have done the job. TODO-34's mitigation clause got the same correction, because T1 is where someone would rely on it.
+
+**Evidence.** `_PI` and `_NONE` compile with **zero warnings**. 138 tests pass (123 → 138). The ones that matter: every previously-unobservable state now reaches the model; **a late attach learns a sticky ABORTED with no ABORTED event ever sent**; a dropped ABORTED self-heals; `abort_reason` is legitimately `None` while the code is known; and wire positions are pinned for all four fields, so dropping the reserved bytes would fail rather than silently shifting the block counter. Two negative controls, each reverted: drifting the firmware cadence to 1000 ms fails the sync test; making STATE stop latching on ABORTED fails two tests.
+
+The drift guard earned its keep again — it failed immediately on `DS_PACKET_STATE` not being in the packet-id mapping, in **both** directions, which is exactly the "new packet type added to one side only" case it was built for.
+
+**🔺 EVIDENCE BOUND, unchanged.** Compile and offline only. The parser and the firmware still share one author's reading of the header. **NOT FLASHED**, no serial session, no relay, generator, injection or validation. No Phase 10 step passed; Phase 9 untouched.
+
+**Next: TODO-58**, not the renderer. Route state is the last thing the producer still cannot tell the Pi.
+
+**Portfolio note.** The sequence TODO-56 → 57 → 59 is worth keeping as one story: *fix the geometry announcement → discover state has the same defect → while designing that fix, discover the transport destroys results.* Each was found by asking the next obvious question about the previous one, and none would have been found by reading packet definitions. The design-gate discipline — stop, report, get a ruling, then build — is what made that chain visible instead of collapsing it into one large commit where the third defect would have been attributed to the first two.
+
+---
+
 ## 2026-09-26 (4) — **TODO-59: a best-effort packet written during a RESULT drain lands INSIDE the result and destroys it — while the Teensy counts it as sent.** Fixed as a central transport invariant, not a per-producer gate. **Compile-verified only; TODO-57 deferred behind it**
 
 **How it was found, which matters more than the bug.** It surfaced while answering a routine design question for TODO-57: *does a new STATE packet need sequence numbers?* Working out whether packets could be reordered meant tracing how bytes actually reach the UART — and that showed two independent writers to the same stream with nothing arbitrating between them. The defect was not in the code being designed; it was in the code that design would have sat on top of. **Asking "what could reorder this?" found something that reorders nothing and corrupts everything.**

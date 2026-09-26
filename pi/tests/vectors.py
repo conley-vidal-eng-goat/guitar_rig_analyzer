@@ -178,6 +178,17 @@ def view(view_id: int = protocol.VIEW_LIVE) -> bytes:
     return frame(protocol.PacketType.VIEW, bytes([view_id]))
 
 
+def state_payload(measurement_state: int = 0,
+                  abort_reason: int = 0,
+                  audio_block_counter: int = 123456) -> bytes:
+    return struct.pack("<BBHI", measurement_state, abort_reason, 0,
+                       audio_block_counter)
+
+
+def state(**kwargs) -> bytes:
+    return frame(protocol.PacketType.STATE, state_payload(**kwargs))
+
+
 def unknown(packet_type: int = 0xFE, payload: bytes = b"future") -> bytes:
     """A well-formed packet of a type this receiver has never heard of.
 

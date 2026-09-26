@@ -54,6 +54,7 @@
 #include "signal_router.h"
 #include <math.h>
 #include <EEPROM.h>               // session id — see nextSessionId()
+#include "audio_capture.h"        // audioCap_getBlockCounter() — STATE timestamp
 
 // =============================================================================
 // STATE
@@ -73,6 +74,7 @@ static uint32_t s_result_len = 0;   // total framed bytes staged
 // disturbed by an operator pressing 't'.
 static uint16_t s_session_id    = 0;
 static uint32_t s_last_hello_ms = 0;
+static uint32_t s_last_state_ms = 0;
 
 // Extended UART TX buffer. Without this the default Serial1 TX buffer is far
 // smaller than one live frame, availableForWrite() could never report room, and
@@ -402,6 +404,42 @@ static void sendHello() {
     s_last_hello_ms = millis();
 }
 
+// -----------------------------------------------------------------------------
+// sendState()
+// One authoritative measurement-state snapshot (TODO-57). Layout and rationale
+// are documented in data_sender.h.
+//
+// NO RESULT-PENDING GUARD HERE, DELIBERATELY. Transport atomicity is owned in
+// one place — trySendBestEffort() (TODO-59) — and duplicating the check in
+// every producer is what made that defect possible. A refusal during a drain
+// is counted, and blocked_by_result explains it.
+// -----------------------------------------------------------------------------
+static void sendState() {
+    // COHERENT PAIR. These two getters are read adjacently and nothing may run
+    // between them. The engine also maintains the pairing itself — the reason
+    // is set before entering ABORTED and cleared before leaving it — so an
+    // impossible combination such as IDLE-with-a-CLIP-reason cannot be built.
+    // See the STATE layout note in data_sender.h before changing this.
+    const uint8_t state  = (uint8_t)measurementEngine_getState();
+    const uint8_t reason = (uint8_t)measurementEngine_getAbortReason();
+
+    // Timestamp, not a sequence number. See data_sender.h — this value wraps
+    // roughly every 71.6 minutes and must never drive a newer-than comparison.
+    const uint32_t blocks = audioCap_getBlockCounter();
+
+    uint8_t p[8];
+    p[0] = state;
+    p[1] = reason;
+    p[2] = 0;                       // reserved
+    p[3] = 0;                       // reserved
+    memcpy(&p[4], &blocks, 4);
+
+    if (timedBestEffort(DS_PACKET_STATE, p, sizeof(p))) s_stats.state_sent++;
+    else                                                s_stats.state_dropped++;
+
+    s_last_state_ms = millis();
+}
+
 // =============================================================================
 // PUBLIC API
 // =============================================================================
@@ -433,8 +471,10 @@ bool dataSender_init() {
                   DS_DECIM_RATIO, DS_TX_BUFFER_BYTES, FIRMWARE_VERSION);
     // Printed so a bench operator can confirm the id the Pi reports is the id
     // this boot actually issued, without inferring it from Pi-side output.
-    Serial.printf("[DataSender] Session id %u | HELLO re-announced every %d ms\n",
-                  (unsigned)s_session_id, DS_HELLO_REANNOUNCE_MS);
+    Serial.printf("[DataSender] Session id %u | HELLO re-announced every %d ms "
+                  "| STATE every %d ms\n",
+                  (unsigned)s_session_id, DS_HELLO_REANNOUNCE_MS,
+                  DS_STATE_ANNOUNCE_MS);
     Serial.printf("[DataSender] Live frame %d B framed; RESULT up to %d B "
                   "(reliable, drained across loop iterations)\n",
                   DS_LIVE_PAYLOAD_BYTES + DS_FRAMING_BYTES,
@@ -447,6 +487,20 @@ bool dataSender_init() {
 // -----------------------------------------------------------------------------
 void dataSender_service() {
     s_stats.service_calls++;
+
+    // -------------------------------------------------------------------------
+    // STATE announcement (TODO-57) — attempted on cadence REGARDLESS of whether
+    // a RESULT is draining. That is not an oversight: trySendBestEffort() owns
+    // transport atomicity (TODO-59) and will refuse this packet if a result is
+    // staged. Adding a second gate here would re-create the scattered-guard
+    // pattern that produced TODO-59 in the first place.
+    //
+    // Subtraction is wrap-safe on uint32_t, so a millis() rollover at ~49.7
+    // days does not stall announcements.
+    // -------------------------------------------------------------------------
+    if ((uint32_t)(millis() - s_last_state_ms) >= DS_STATE_ANNOUNCE_MS) {
+        sendState();
+    }
 
     if (s_result_len == 0) {
         s_stats.result_pending = false;
@@ -745,8 +799,17 @@ void dataSender_sendResult(const MeasurementResult& result,
 }
 
 // -----------------------------------------------------------------------------
-// Event packets — best effort. A dropped ABORTED costs the reason string only;
-// measurement_state rides in every live frame, so the Pi still learns the fact.
+// Event packets — best effort. A dropped ABORTED costs the reason STRING only;
+// the machine-readable fact is repaired within DS_STATE_ANNOUNCE_MS by the
+// periodic STATE packet, which carries both measurement_state and abort_reason.
+//
+// CORRECTED 2026-09-26 (TODO-57). This comment used to read "measurement_state
+// rides in every live frame, so the Pi still learns the fact", and TODO-34
+// cited that as the mitigation for a dropped ABORTED. IT WAS FALSE:
+// presentation_updateLive() is gated to IDLE|ARMED
+// (guitar_rig_analyzer.ino:748-756), so during ABORTED no live frame is sent at
+// all and a dropped ABORTED was simply never learned. The safety net is the
+// STATE packet; it was never the live frame.
 // -----------------------------------------------------------------------------
 void dataSender_sendAborted(const char* reason) {
     if (reason == nullptr) return;
@@ -768,9 +831,13 @@ void dataSender_sendStatus(const char* message) {
 
 // -----------------------------------------------------------------------------
 // dataSender_sendView()
-// Best effort. A dropped view packet is recoverable: measurement_state rides in
-// every live frame, so a receiver that missed this can still reconcile its view
-// from the next frame.
+// Best effort. A dropped view packet is recoverable: the periodic STATE packet
+// re-establishes the authoritative measurement state within
+// DS_STATE_ANNOUNCE_MS, and a receiver reconciles its view from that.
+//
+// CORRECTED 2026-09-26 (TODO-57): this said "measurement_state rides in every
+// live frame", which was false for the same reason as the ABORTED note above —
+// live frames stop entirely outside IDLE|ARMED.
 // -----------------------------------------------------------------------------
 void dataSender_sendView(uint8_t view_id) {
     const uint8_t payload[1] = { view_id };
@@ -843,6 +910,10 @@ void dataSender_printDiagnostics() {
     Serial.printf("[Link] Atomicity:   %lu best-effort packets refused while a "
                   "RESULT was draining (expected, not a fault)\n",
                   (unsigned long)s.blocked_by_result);
+    Serial.printf("[Link] State:       %lu sent, %lu dropped (drops include "
+                  "atomicity refusals), every %d ms\n",
+                  (unsigned long)s.state_sent, (unsigned long)s.state_dropped,
+                  DS_STATE_ANNOUNCE_MS);
     Serial.printf("[Link] Session id:  %u (constant for this boot) | HELLO "
                   "%lu sent, %lu dropped, every %d ms\n",
                   (unsigned)s_session_id,

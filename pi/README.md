@@ -159,17 +159,40 @@ state, not against `LIVE_FRAME`, so TODO-57's state packet plugs in unchanged.
 canonical measurement timebase is the Teensy's audio block counter, which
 arrives as `output_block_number`.
 
-### What you will see against current firmware (TODO-57)
+### The STATE packet (`0x08`, TODO-57)
 
-`measurement_state` can only ever be `IDLE`, `ARMED`, `ABORTED` or `UNKNOWN`.
-`LIVE_FRAME` — the only packet carrying a state byte — is sent **only in IDLE
-or ARMED** ([.ino:748](../guitar_rig_analyzer.ino#L748)), so CAPTURE,
-PROCESSING, RESULT and EXPORTING are never observed. A receiver attaching
-during a sticky ABORTED gets HELLO and then silence, and stays `UNKNOWN`.
+Every measurement state is now observable. The Teensy announces an
+authoritative snapshot every `STATE_ANNOUNCE_MS` (500 ms):
 
-That is a producer-side gap, not a modelling choice. `router` will likewise stay
-`None` forever: `ROUTER_STATUS` is built and documented but has zero callers
-(TODO-58).
+```
+[0]    measurement_state
+[1]    abort_reason
+[2-3]  reserved
+[4-7]  audio_block_counter
+```
+
+It means exactly one thing: *this was the Teensy's state when the snapshot was
+constructed.* Periodic rather than transition-driven, so a Pi attaching
+mid-CAPTURE or during a sticky ABORTED learns the state without waiting for a
+transition that may never come — and a dropped ABORTED event self-heals within
+500 ms.
+
+**Two reasons, and the difference matters.** `abort_reason_code` is the
+machine-readable fact and arrives with every snapshot. `abort_reason` is the
+prose from the ABORTED event and **may legitimately be `None`** — a receiver
+that attached after the abort knows *why* but was never told the wording.
+Render accordingly; don't treat a missing string as a missing abort.
+
+**`audio_block_counter` is a timestamp, not a sequence number.** The firmware
+derives it from `micros()`, so it **wraps to zero roughly every 71.6 minutes**
+and never exceeds ~1.48e6. The model records it and implements no newer-than
+comparison, because such a comparison would be wrong. Ordering is already
+guaranteed by the transport, which writes whole packets in FIFO order.
+
+### Still missing from the producer
+
+`router` stays `None` indefinitely: `ROUTER_STATUS` is built and documented but
+has zero callers (TODO-58).
 
 ## Still true: RESULT cannot be decoded before HELLO
 

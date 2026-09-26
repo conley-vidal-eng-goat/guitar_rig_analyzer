@@ -344,6 +344,43 @@ class TestEventPackets(unittest.TestCase):
             packets.decode_string_payload(b"x" * 201)
 
 
+class TestStateDecoding(unittest.TestCase):
+
+    def test_fields_round_trip(self):
+        p = decode_one(vectors.state(
+            measurement_state=int(protocol.MeasurementState.PROCESSING),
+            abort_reason=int(protocol.AbortReason.NONE),
+            audio_block_counter=987654))
+        self.assertIsInstance(p, packets.StatePacket)
+        self.assertIs(p.measurement_state,
+                      protocol.MeasurementState.PROCESSING)
+        self.assertIs(p.abort_reason, protocol.AbortReason.NONE)
+        self.assertEqual(p.audio_block_counter, 987654)
+        self.assertFalse(p.is_aborted)
+
+    def test_wire_positions(self):
+        # Pins the layout, not just the round trip. If the reserved bytes were
+        # ever dropped, the block counter would decode as garbage.
+        payload = vectors.state_payload(measurement_state=6, abort_reason=3,
+                                        audio_block_counter=0x01020304)
+        self.assertEqual(len(payload), protocol.STATE_PAYLOAD_BYTES)
+        self.assertEqual(payload[0], 6)
+        self.assertEqual(payload[1], 3)
+        self.assertEqual(payload[2:4], b"\x00\x00")
+        self.assertEqual(payload[4:8], b"\x04\x03\x02\x01")
+
+    def test_aborted_snapshot_reports_its_reason(self):
+        p = decode_one(vectors.state(
+            measurement_state=int(protocol.MeasurementState.ABORTED),
+            abort_reason=int(protocol.AbortReason.HARDWARE_FAULT)))
+        self.assertTrue(p.is_aborted)
+        self.assertIs(p.abort_reason, protocol.AbortReason.HARDWARE_FAULT)
+
+    def test_wrong_length_is_rejected(self):
+        with self.assertRaises(packets.DecodeError):
+            packets.decode_state(b"\x00" * 7)
+
+
 class TestForwardCompatibility(unittest.TestCase):
     """Runbook Phase 10 step 9. This is what lets a future packet type ship
     without a version break."""

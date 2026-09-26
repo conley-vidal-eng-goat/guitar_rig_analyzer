@@ -373,3 +373,117 @@ class TestRobustness(StateHarness):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# =============================================================================
+# TODO-57 — the authoritative STATE snapshot
+# =============================================================================
+
+class TestStatePacket(StateHarness):
+    """STATE is what makes measurement state observable at all outside
+    IDLE|ARMED, and what repairs a dropped ABORTED."""
+
+    def setUp(self):
+        super().setUp()
+        self.establish()
+
+    def test_state_is_observable_where_live_frames_never_flow(self):
+        # The whole point. LIVE_FRAME is gated to IDLE|ARMED, so before STATE
+        # these four were unobservable to a Pi.
+        for value in (protocol.MeasurementState.CAPTURE,
+                      protocol.MeasurementState.PROCESSING,
+                      protocol.MeasurementState.RESULT,
+                      protocol.MeasurementState.EXPORTING):
+            with self.subTest(state=value.name):
+                self.feed(vectors.state(measurement_state=int(value)))
+                self.assertIs(self.state.measurement_state, value)
+
+    def test_a_late_attach_learns_a_sticky_abort_without_the_event(self):
+        # The reconnect case. No ABORTED packet is ever seen — only the
+        # periodic snapshot — and the Pi still learns the instrument is
+        # latched, and why.
+        fresh = ReceiverState()
+        scanner = FrameScanner()
+        for f in scanner.feed(vectors.hello(session_id=1)
+                              + vectors.state(
+                                  measurement_state=int(
+                                      protocol.MeasurementState.ABORTED),
+                                  abort_reason=int(
+                                      protocol.AbortReason.CLIP_SOURCE))):
+            fresh.on_frame(f, now_ms=0)
+
+        self.assertIs(fresh.measurement_state,
+                      protocol.MeasurementState.ABORTED)
+        self.assertTrue(fresh.abort_latched)
+        self.assertIs(fresh.abort_reason_code, protocol.AbortReason.CLIP_SOURCE)
+        # It knows WHY but was never told the wording. That is honest, not a bug.
+        self.assertIsNone(fresh.abort_reason)
+        self.assertIs(fresh.view, View.ABORTED)
+
+    def test_a_dropped_aborted_event_self_heals(self):
+        self.feed(vectors.state(
+            measurement_state=int(protocol.MeasurementState.ABORTED),
+            abort_reason=int(protocol.AbortReason.ROUTE_CHANGED)))
+        self.assertTrue(self.state.abort_latched)
+        self.assertIs(self.state.abort_reason_code,
+                      protocol.AbortReason.ROUTE_CHANGED)
+
+    def test_the_aborted_event_supplies_prose_the_snapshot_cannot(self):
+        self.feed(vectors.aborted("Route changed mid-capture"),
+                  vectors.state(
+                      measurement_state=int(protocol.MeasurementState.ABORTED),
+                      abort_reason=int(protocol.AbortReason.ROUTE_CHANGED)))
+        self.assertEqual(self.state.abort_reason, "Route changed mid-capture")
+        self.assertIs(self.state.abort_reason_code,
+                      protocol.AbortReason.ROUTE_CHANGED)
+
+    def test_an_idle_snapshot_clears_the_latch_and_the_code(self):
+        self.feed(vectors.aborted("CLIP"))
+        self.assertTrue(self.state.abort_latched)
+        self.feed(vectors.state(
+            measurement_state=int(protocol.MeasurementState.IDLE)))
+        self.assertFalse(self.state.abort_latched)
+        self.assertIsNone(self.state.abort_reason)
+        self.assertIs(self.state.abort_reason_code, protocol.AbortReason.NONE)
+
+    def test_a_capture_snapshot_does_not_clear_a_latch(self):
+        # Only IDLE clears. Ruled that way deliberately.
+        self.feed(vectors.aborted("CLIP"))
+        self.feed(vectors.state(
+            measurement_state=int(protocol.MeasurementState.CAPTURE)))
+        self.assertTrue(self.state.abort_latched)
+
+    def test_state_is_not_promoted_before_hello(self):
+        fresh = ReceiverState()
+        scanner = FrameScanner()
+        for f in scanner.feed(vectors.state(
+                measurement_state=int(protocol.MeasurementState.CAPTURE))):
+            fresh.on_frame(f, now_ms=0)
+        self.assertIs(fresh.measurement_state, UNKNOWN)
+        self.assertEqual(fresh.health.not_promoted_pre_hello, 1)
+
+    def test_session_change_clears_the_code_as_well_as_the_latch(self):
+        self.feed(vectors.state(
+            measurement_state=int(protocol.MeasurementState.ABORTED),
+            abort_reason=int(protocol.AbortReason.TIMEOUT)))
+        self.feed(vectors.hello(session_id=2))
+        self.assertIs(self.state.abort_reason_code, protocol.AbortReason.NONE)
+        self.assertIs(self.state.measurement_state, UNKNOWN)
+        record = self.state.session_history[-1]
+        self.assertIs(record.abort_reason_code, protocol.AbortReason.TIMEOUT)
+
+    def test_block_counter_is_carried_but_never_compared(self):
+        # It is a timestamp, not a sequence number: the firmware derives it
+        # from micros(), so it wraps roughly every 71.6 minutes. The model
+        # records it and deliberately implements no newer-than logic.
+        self.feed(vectors.state(audio_block_counter=1_400_000))
+        self.feed(vectors.state(audio_block_counter=7))   # wrapped
+        # The later observation wins on arrival order, not on the counter.
+        self.assertIs(self.state.measurement_state,
+                      protocol.MeasurementState.IDLE)
+
+    def test_an_unknown_abort_reason_is_a_decode_error_not_a_guess(self):
+        bad = vectors.frame(protocol.PacketType.STATE,
+                            vectors.state_payload(abort_reason=99))
+        self.feed(bad)
+        self.assertEqual(self.state.health.decode_errors, 1)

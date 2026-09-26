@@ -307,6 +307,35 @@ class RouterStatus:
 
 
 @dataclass(frozen=True)
+class StatePacket:
+    """0x08 — the authoritative measurement-state snapshot (TODO-57).
+
+    Means exactly one thing: *this was the Teensy's state when the snapshot was
+    constructed.* Sent periodically rather than on transition, so a Pi that
+    attaches mid-CAPTURE or during a sticky ABORTED learns the state without
+    waiting for a new transition, and a dropped ABORTED event self-heals.
+
+    ``measurement_state`` and ``abort_reason`` are a coherent pair: the
+    firmware sets the reason before entering ABORTED and clears it before
+    leaving, so a combination like IDLE-with-a-CLIP-reason cannot occur.
+
+    *** audio_block_counter IS A TIMESTAMP, NOT A SEQUENCE NUMBER. ***
+    It is canonical audio-time evidence of when the snapshot was taken. Do NOT
+    compare two of them to decide which observation is newer: the firmware
+    derives it from micros(), so it wraps to zero roughly every 71.6 minutes
+    and never exceeds ~1.48e6. Ordering is already guaranteed by the transport,
+    which writes whole packets in FIFO order.
+    """
+    measurement_state: protocol.MeasurementState
+    abort_reason: protocol.AbortReason
+    audio_block_counter: int
+
+    @property
+    def is_aborted(self) -> bool:
+        return self.measurement_state is protocol.MeasurementState.ABORTED
+
+
+@dataclass(frozen=True)
 class ViewChange:
     """0x07 — an explicit view transition carrying no other data."""
     view_id: int
@@ -322,6 +351,7 @@ class ViewChange:
 
 _LIVE_HEADER = struct.Struct("<BBHfffH")
 _HELLO = struct.Struct("<HHHHIIHHI")
+_STATE = struct.Struct("<BBHI")
 _RESULT_HEAD = struct.Struct("<BBBBBBHffIBBBBHIIBBBBHH")
 
 
@@ -508,6 +538,20 @@ def decode_router_status(payload: bytes) -> RouterStatus:
     )
 
 
+def decode_state(payload: bytes) -> StatePacket:
+    if len(payload) != protocol.STATE_PAYLOAD_BYTES:
+        raise DecodeError(
+            f"STATE is {len(payload)} B, expected "
+            f"{protocol.STATE_PAYLOAD_BYTES}")
+    state, reason, _reserved, blocks = _STATE.unpack_from(payload, 0)
+    return StatePacket(
+        measurement_state=_enum(protocol.MeasurementState, state,
+                                "STATE measurement_state"),
+        abort_reason=_enum(protocol.AbortReason, reason, "STATE abort_reason"),
+        audio_block_counter=blocks,
+    )
+
+
 def decode_view(payload: bytes) -> ViewChange:
     if len(payload) != protocol.VIEW_PAYLOAD_BYTES:
         raise DecodeError(f"VIEW is {len(payload)} B, expected 1")
@@ -548,4 +592,6 @@ def decode(frame: Frame, geometry: protocol.Geometry | None = None):
         return decode_router_status(p)
     if t == protocol.PacketType.VIEW:
         return decode_view(p)
+    if t == protocol.PacketType.STATE:
+        return decode_state(p)
     return UnknownPacket(packet_type=t, payload=p)
