@@ -12,6 +12,65 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (8) — ✅ **`26f2bee` FLASHED AND RUNNING. All four Phase 10 producers are live on hardware for the first time.** Two predictions falsified — one of them exposes a stale figure that has been wrong since before TODO-27
+
+**The board now runs `26f2bee`**, `Build: Sep 26 2026 16:36:53   v0.6.0`, sha256 `24b71d73bf60a0d6ff9cbb5737a46bba6a04887a1fe55479d356b5a87dce3a6e`. It replaces `44c4680` (`Build: Sep 21 2026 17:21:24`). The artifact hash was verified immediately before upload and the archived `.hex` is committed at `8e6c9c6`, **before** the flash, so the intended artifact is a matter of record independent of the outcome. Full record: [`ai/evidence/2026-09-26-26f2bee-first-boot.md`](evidence/2026-09-26-26f2bee-first-boot.md).
+
+**⚠️ Commits after `8e6c9c6` are comment and documentation only. The board is not HEAD and does not need to be.** Any behavioural change invalidates the flashed artifact and requires a new candidate.
+
+**Verified `OBS`:** build identity exact · DataSender up (4096 B TX, 128 live bins, 4:1, protocol v2) · **session id `0`** · route `TS return, no injection` (ADR-004 boot default) · validation harness *announced* but **no test ran** · no generator, injection, relay transition or measurement · block period 46.3–46.7 ms against 46.4 expected · transport call time max **282 µs**.
+
+**Session id `0` is the documented first-boot case, not a failure.** The EEPROM counter had never been written, so it read `0xFFFF` and incremented to `0`. This is precisely why the receiver contract forbids treating `0` as "absent" — a test pins that, and the hardware has now produced the value the test anticipated.
+
+**All four producers live, measured across two consecutive 5 s windows:**
+
+| Producer | Δ / 5 s | Rate | Target |
+|---|---:|---:|---|
+| HELLO (TODO-56) | 5 | 1.0/s | 1000 ms ✅ |
+| STATE (TODO-57) | 10 | 2.0/s | 500 ms ✅ |
+| ROUTER_STATUS (TODO-58) | 5 | 1.0/s | 1000 ms ✅ |
+| LIVE_FRAME | 108 | 21.6/s | one per block |
+
+`Atomicity: 0 packets refused` — correct, and worth stating precisely: **TODO-59's invariant is instrumented but has not been exercised**, because no RESULT has been staged. Zero here proves the counter exists, not that the guard works.
+
+---
+
+### 🔺 Falsified prediction 1 — the live-frame rate has been wrong in the source since before TODO-27
+
+Predicted ~11/s. **Measured 21.6/s** — 108 frames per 5 s window, one per 46.3 ms block. The consequence is not cosmetic:
+
+```
+21.6/s × 1689 B = 36 482 B/s  of  46 080 B/s  =  79 % duty
+```
+
+not the ~41 % the runbook predicted, and ~25.6 sync words/s rather than ~15.
+
+**Root cause:** `data_sender.h` carries "~11 Hz" and a bandwidth table built on it, and both **predate TODO-27** — the finding that the FFT **hop** (11.6 ms), not the window (23.2 ms), sets the analysis cadence. TODO-27 corrected `EXPECTED_BLOCK_MS` across ten sites in seven files on 2026-09-21; this table was not among them. My runbook inventory then inherited the stale figure and restated it with more confidence than it deserved.
+
+**The 79 % figure independently agrees with TODO-34's T1 analysis** (~36.7 ms of wire time against a 46.3 ms block period), so the two halves of the repository disagreed with each other and nobody had put them side by side. Both the header and the runbook are corrected, and the header now says explicitly that its table is stale rather than silently carrying a better number beside a worse one.
+
+**Why this matters beyond bookkeeping:** the link runs at **79 % occupancy**, not 41 %. That is the number T1 exists to interrogate, and planning against 41 % would have understated the margin by nearly a factor of two.
+
+### 🔺 Falsified prediction 2 — and it is the one that was deliberately de-tiered
+
+Predicted `TF clamped bins` near 512. **Measured 0 of 512.**
+
+The reason is instructive rather than alarming. On 2026-09-07 there **was** source signal with nothing on RETURN, so the ratio railed and 33 of 33 windows reported `-24.0 dB`. Here there is no signal at all — SOURCE peak **−64.7 dBFS**, essentially the noise floor — so source bins fall below `TF_SOURCE_GATE` and `tf_db` is **NaN (pen-lift), not clamped**. `TF confidence 0%`, all spot-checks `---`. **Gated and railed are different states, and my prediction conflated them.**
+
+**This is exactly why that expectation was moved to the weaker tier before the capture.** Had it stayed beside the transport expectations, a completely healthy first run would have been recorded as a failure — and the investigation would have gone looking for a transport fault that does not exist.
+
+The general lesson is worth keeping: **an expectation about the analog domain does not belong in the same confidence tier as an expectation about the link**, even when both are checked in the same step.
+
+---
+
+**Evidence gap, stated rather than glossed: the boot banner was not captured.** The port can only be opened after `arduino-cli upload` returns, by which time the first lines were already emitted into a closed port; capture begins mid SGTL register dump. Build identity is still established, because `printBuildIdentity()` is deliberately **one format string** shared by the banner and the 5 s diagnostic block — the comment at `guitar_rig_analyzer.ino:205` says that is exactly why. The display target is established behaviourally: the whole `[Link]` block compiles only under `DISPLAY_TARGET_PI`. **To close it properly, capture a clean boot at the next authorized power cycle**, which the UART wiring sequence needs anyway (runbook 2b → 2g).
+
+**What this does and does not establish.** The firmware runs and emits the bytes we designed, at the cadences we specified, without disturbing acquisition. It establishes **nothing about reception**: no receiver has seen a byte, and the shared-author evidence loop is still unbroken. That needs the capture-and-replay step, which is next.
+
+**Not done:** no `v`, no Tests 1–4, no injection, no generator, no relay operation, no measurement, no analog breadboard change. **Phase 9 untouched. No Phase 10 step passed.**
+
+---
+
 ## 2026-09-26 (7) — **Flash safety review before the first Teensy→Pi capture. The next image carries Phase 9 code that has never been runtime-tested, and one genuinely new boot-time side effect: a flash write.** Route B (the Pi we own) chosen over buying an adapter. **Nothing flashed, no serial opened, breadboard untouched**
 
 **Bench state carried forward, as reported and corrected by the operator (`PHYS`):** Teensy USB connected · **the Phase 8 XLR connector remains wired into the breadboard exactly as built** — this does *not* mean an external XLR cable is plugged in · jack loop disconnected · **no breadboard change made or requested.**

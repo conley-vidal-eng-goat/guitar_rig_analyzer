@@ -2068,7 +2068,7 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 
 **4. Observe raw bytes on the Pi before writing any parser.** `stty -F /dev/serial0 460800 raw` then `xxd /dev/serial0 | head`. *Verify:* you can see the `55 AA` sync word recurring. **Stop here and fix the link if you cannot** — every later problem is easier to diagnose than a physical-layer fault.
 
-> **Corrected 2026-09-26.** This step used to say *"at roughly 11 Hz"*, which was the LIVE_FRAME rate when live frames were the only periodic packet. Three more periodic producers have since been added, so an idle instrument now emits **~15 sync words per second**. See *What an idle instrument emits* below before judging what you see.
+> **Corrected 2026-09-26, then corrected again by measurement.** This step used to say *"at roughly 11 Hz"*. Two things were wrong with it: three more periodic producers have since been added, **and the 11 Hz figure itself was stale** — it predates TODO-27's finding that the FFT hop sets the cadence. The first hardware capture measured **~25.6 sync words per second**. See *What an idle instrument emits* below before judging what you see.
 
 ### What an idle instrument emits — falsifiable expectations
 
@@ -2076,14 +2076,24 @@ Written down **before** observing bytes, so the capture can disagree. `DISPLAY_T
 
 | Packet | Type | Rate | Framed size | Why |
 |---|---|---:|---:|---|
-| LIVE_FRAME | `0x01` | ~11/s | 1689 B | one per processed block; gated to IDLE/ARMED |
+| LIVE_FRAME | `0x01` | **~21.6/s** | 1689 B | one per processed block (46.3 ms); gated to IDLE/ARMED |
 | STATE | `0x08` | 2/s | 15 B | `DS_STATE_ANNOUNCE_MS` = 500 (TODO-57) |
 | HELLO | `0x06` | 1/s | 47 B | `DS_HELLO_REANNOUNCE_MS` = 1000 (TODO-56) |
 | ROUTER_STATUS | `0x05` | 1/s | ~37 B | `DS_ROUTER_REPAIR_MS` = 1000 (TODO-58) |
 | STATUS | `0x03` | **0** | — | clip transitions only |
 | RESULT / ABORTED / VIEW | — | **0** | — | require a measurement or an operator action |
 
-**~15 packets/s, ~18.7 KB/s of the 46 KB/s the wire carries at 460 800 baud (~41 %).**
+**~25.6 packets/s, ~36.5 KB/s of the 46 KB/s the wire carries at 460 800 baud — ~79 % duty.**
+
+> **⚠️ MEASURED 2026-09-26, and it corrected a stale figure.** This table first
+> predicted ~11/s and ~41 %, taken from `data_sender.h`'s "~11 Hz". The first
+> hardware capture measured **21.6 LIVE_FRAMEs/s** — 108 per 5 s window, one per
+> 46.3 ms block. The "~11 Hz" figure **predates TODO-27's correction** that the
+> FFT *hop*, not the window, sets the cadence, and `data_sender.h`'s bandwidth
+> table is stale for the same reason. The 79 % figure agrees with TODO-34's
+> independent derivation (~36.7 ms of wire time against a 46.3 ms block period).
+> **The link runs far closer to saturation than the stale table implied, which
+> matters for T1.**
 
 Field-level expectations:
 
@@ -2182,7 +2192,7 @@ Procedure per run: flash → let it settle → press `t` → leave it for the sa
 |---|---|---|
 | Common ground | continuity Teensy GND ↔ Pi GND | **[STOP]** |
 | Banner | `[Main] Display target: Pi 5 (UART)` | |
-| Raw bytes | `55 AA` sync word at ~15/s (see the packet inventory) | **[STOP]** |
+| Raw bytes | `55 AA` sync word at ~25.6/s (measured; see the packet inventory) | **[STOP]** |
 | STATE `0x08` | present at ~2/s; `measurement_state` = IDLE when idle | |
 | ROUTER_STATUS `0x05` | present at ~1/s; `jack_detect_available` = `0x00` | |
 | Jack detection | every jack renders **UNKNOWN**, never ABSENT | **[STOP]** |

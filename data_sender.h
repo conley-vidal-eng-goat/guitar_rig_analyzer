@@ -90,7 +90,7 @@
 //   [N+1..N+2] uint16  CRC-16/CCITT over payload only
 //
 // PACKET TYPES
-//   0x01  LIVE_FRAME     periodic live data (~11 Hz)
+//   0x01  LIVE_FRAME     periodic live data (~21.6 Hz measured 2026-09-26)
 //   0x02  RESULT         full measurement result (on RESULT_READY)
 //   0x03  STATUS         status/event message string
 //   0x04  ABORTED        abort reason string
@@ -114,6 +114,14 @@
 //   230400   128 bins    ~1.7 KB      ~19 KB/s  (of 23 KB/s)
 //   460800   256 bins    ~3.4 KB      ~37 KB/s  (of 46 KB/s)
 //   921600   512 bins    ~6.7 KB      ~74 KB/s  (of 92 KB/s)
+//
+//   *** THE RATES IN THE TABLE ABOVE ARE STALE — see the measurement below. ***
+//   The "@ 11 Hz" column predates TODO-27, which established that the FFT HOP
+//   (11.6 ms), not the window (23.2 ms), sets the analysis cadence. Measured on
+//   hardware 2026-09-26: ONE live frame per 46.3 ms block = 21.6 Hz, so at 128
+//   bins the real load is 36.5 KB/s of 46 KB/s -- about 79 % duty, not the
+//   ~19 KB/s this table implies. The 79 % figure agrees with the T1 analysis in
+//   docs/pi_link_protocol_audit.md. Recompute this table before relying on it.
 //
 //   *** THIS TABLE MODELS AVERAGE THROUGHPUT AND THAT IS NOT THE BINDING
 //   CONSTRAINT. *** The binding constraint is burst occupancy inside one audio
