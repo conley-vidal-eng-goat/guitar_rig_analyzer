@@ -2058,6 +2058,69 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 
 **No header coordinates are recorded in this runbook until 2a has been performed on the actual hardware.** Guessing a pin and finding out by continuity is not the method used elsewhere in this document.
 
+#### 2a command sheet — run these ON THE PI, record every answer
+
+```sh
+# 1. What is the production UART, really?
+ls -l /dev/serial0 /dev/serial1 2>&1
+#    Pi 5 renumbered its UARTs. Whatever /dev/serial0 points to IS the
+#    answer; ttyAMA0 on an older model is not evidence about this one.
+
+# 2. Is the header UART enabled, and is a console squatting on it?
+grep -nE 'uart|console' /boot/firmware/config.txt /boot/firmware/cmdline.txt 2>&1
+#    [STOP] if cmdline.txt contains console=serial0 — that is the getty
+#    hazard. Not fatal for a receive-only capture, but fix it now.
+systemctl is-enabled serial-getty@$(basename $(readlink -f /dev/serial0)) 2>&1
+
+# 3. Which pins does the kernel actually own?
+cat /sys/kernel/debug/pinctrl/*/pinmux-pins 2>/dev/null | grep -iE 'uart|1[45]' | head
+raspi-gpio get 14,15 2>&1
+#    raspi-gpio reports the ALT function per pin. Record it verbatim.
+
+# 4. What is physically in the stack?
+cat /proc/device-tree/model; echo
+ls /proc/device-tree/hat/ 2>/dev/null && cat /proc/device-tree/hat/product 2>/dev/null; echo
+#    [STOP] if a HAT EEPROM claims GPIO14/15 for something else.
+
+# 5. OS identity, for the record
+cat /etc/os-release | head -2; uname -a
+```
+
+**Record all five answers before touching a wire.** Between them they establish
+the device path, whether a console owns it, which physical pins carry the UART
+function, and whether the Freenove HAT contests them.
+
+> **⚠️ The Freenove HAT is a pass-through breakout with no EEPROM in most
+> variants**, so step 4 may legitimately return nothing. That is an absence of
+> evidence, not evidence of absence — **confirm visually that the header pins
+> you intend to use are actually broken out and unoccupied**, and that the HAT
+> is not tying them to anything.
+
+#### Capture and replay tooling
+
+Both halves exist and are tested; the capture is one command on each machine.
+
+| Where | Command |
+|---|---|
+| **On the Pi** | `sudo sh pi/tools/capture.sh /dev/serial0 30 cap.bin` |
+| **Offline** | `python3 pi/tools/replay.py cap.bin --seconds 30` |
+
+`capture.sh` writes **raw bytes only** — no decoding during acquisition,
+deliberately, because a decoded log proves only that the decoder agreed with
+itself. It prints the byte count and sha256 so the artifact is identified at
+the moment it is made.
+
+`replay.py` reports packet counts by type, observed rates, CRC failures,
+framing/resync loss, unknown types, the HELLO session id, the final
+measurement state, and the full ROUTER_STATUS including all four detector
+states. **Its verdict covers the transport only.** Analog content —
+`tf_clamped_count`, peak levels, confidence — is reported under *analog
+observations* and can never fail a replay. On 2026-09-26 a prediction of
+near-full TF clamping was wrong by 512 bins on a completely healthy link.
+
+Expected for ~30 s idle: **~1.1 MB at ~36.5 KB/s**, ~25.6 packets/s. A byte
+count far below that is a link fault — fix it before replaying anything.
+
 > **[STOP] Disable the Pi's serial console on this UART before connecting RX.** Raspberry Pi OS ships a login console (`getty`) on the primary UART by default. If it is left enabled, the **Pi transmits** login-prompt and kernel bytes down the wire at the Teensy continuously. Use `raspi-config` → *Interface Options* → *Serial Port*: **login shell over serial = NO**, **serial hardware = YES**. Confirm `console=serial0,115200` is absent from `/boot/firmware/cmdline.txt`.
 >
 > **Why this is a [STOP] even though nothing reads RX today.** `Serial1.begin()` enables the Teensy's receiver, and **no code in the firmware ever drains it** — so today those bytes accumulate in a ring buffer and are silently discarded. Harmless, and therefore invisible. It stops being harmless the moment a Pi→Teensy control channel exists (deferred; see TODO-56's decision record): a command parser would be reading a stream of console garbage as input. Configure it now, while the consequence is zero, rather than discovering it as an intermittent command-injection bug later.
