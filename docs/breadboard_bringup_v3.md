@@ -2230,7 +2230,15 @@ Field-level expectations:
 
 **8. Demonstrate CRC rejection.** Deliberately corrupt a payload byte in a replayed stream. *Verify:* the Pi discards that packet and resynchronises on the next sync word. It must not render corrupted data and must not wedge.
 
+> **✅ DONE OFFLINE 2026-09-26**, against the committed 30 s hardware fixture rather than a synthetic stream. Mutation chosen to matter: the first HELLO's `session_id`, byte 25 400, `0x04` → `0x63`. Rejected; session `[4]` preserved; 99 never reached the model. **Measured cost of one lost HELLO: 21 live frames deferred = 0.98 s, then self-healing** — total live frames unchanged, so nothing is lost, only deferred by one re-announce period. Also verified on a 1 689-byte LIVE_FRAME: exactly one frame lost, no collateral.
+>
+> **Offline is the right place for this step.** Deliberate corruption on a live link is neither controllable nor repeatable, and the recorded stream is real hardware bytes. **Bound: it proves the receiver rejects. No corrupted byte was transmitted.**
+
 **9. Demonstrate unknown-packet tolerance.** Inject a synthetic packet with type `0xFE` and a valid length/CRC. *Verify:* the receiver skips `payload_length` bytes and carries on. This is what lets a future packet type be added without a version break.
+
+> **✅ DONE OFFLINE 2026-09-26.** Well-formed `0xFE` — valid sync, length and CRC — injected at a verified frame boundary in the hardware fixture. `frames_ok` 766, **0 CRC failures**, every known packet count and the whole router status identical to the clean replay. Zero-length `0xFD` also handled.
+>
+> **Note the two correct layers:** the **parser** skips it and continues; the **report** still flags it and fails `transport_ok`, because an unknown type in a capture from our own firmware means producer and consumer disagree about the protocol. A receiver that silently normalised it would be hiding version skew.
 
 **10. Demonstrate reboot recovery — BOTH directions.** *Verify:* the Pi recovers without being restarted, and re-reads HELLO.
 
@@ -2300,8 +2308,8 @@ Procedure per run: flash → let it settle → press `t` → leave it for the sa
 | HELLO | `protocol_version == 2` | |
 | Known data renders | synthetic stream renders correctly | |
 | **Clamp contract** | railed bins marked saturated, **not** drawn as −24 dB data | **[STOP]** |
-| CRC rejection | corrupted packet discarded, stream resyncs | **[STOP]** |
-| Unknown packet type | skipped by length, receiver continues | |
+| CRC rejection | corrupted packet discarded, stream resyncs | **[STOP]** ✅ **offline 2026-09-26** |
+| Unknown packet type | skipped by length, receiver continues | ✅ **offline 2026-09-26** |
 | Reboot recovery — Teensy resets | Pi recovers unaided; `session_id` **changed** | |
 | Reconnect — Pi restarts, Teensy untouched | Pi re-obtains geometry within ~1 s; `session_id` **unchanged** | **[STOP]** |
 | Pi serial console | `getty` disabled on the UART before RX was connected | **[STOP]** |

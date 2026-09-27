@@ -12,6 +12,52 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (11) — **Runbook steps 8 and 9 passed offline against the real hardware stream. A failing test measured what a dropped HELLO actually costs: 0.98 s, then it self-heals**
+
+Both failure-behaviour tests run against **derived in-memory copies** of the committed 30 s fixture. **The artifact is never modified** — a test asserts its SHA-256 on every invocation, and it was verified unchanged after the full 189-test suite. No mutated capture is committed: each mutation is derived at runtime, so the regression coverage is permanent without a second artifact. Record: [`2026-09-26-phase10-idle-30s.md`](evidence/2026-09-26-phase10-idle-30s.md).
+
+**765 frames were located independently** by walking the stream and verifying every CRC, matching the replay exactly, with the first frame at byte 1 664 — the discarded count. Doing that first mattered: it is what let the mutations target known fields rather than arbitrary offsets.
+
+### Step 8 — CRC rejection, with a mutation chosen to matter
+
+Target: the **first HELLO's `session_id` low byte, absolute byte 25 400, `0x04` → `0x63`** — session **4 → 99**. That is the most damaging single-byte corruption available in this stream: had CRC not caught it, the receiver would conclude the Teensy had rebooted and **discard the entire session, restarting at `UNKNOWN`**. Arbitrary garbage would only have proven the scanner can resynchronise; this proves CRC protecting a field whose corruption has consequences.
+
+Rejected as required: `frames_ok` 765 → **764**, `Hello` 30 → **29**, `hello_session_ids` **still `[4]`**, 99 never reaching the model, state `IDLE`, route `TS`.
+
+### 🔍 The result I did not plan for — and a test of mine that was wrong
+
+My first assertion was that the `LiveFrame` count would be **unchanged**, on the assumption that a dropped HELLO costs nothing. **It failed at 610 ≠ 631**, and the failure was worth more than the assertion:
+
+| | Clean | HELLO #1 corrupted | Δ |
+|---|---:|---:|---:|
+| promoted `LiveFrame` | 631 | 610 | **−21** |
+| `geometry_unavailable` | 14 | 35 | **+21** |
+| **total live frames** | **645** | **645** | **0** |
+
+**21 frames at 21.5/s = 0.98 s against a 1.0 s re-announce period.** Nothing is lost from the stream — promotion is **deferred by exactly one HELLO interval**, then self-heals.
+
+**That is TODO-56 measured instead of argued.** Before the fix, HELLO was sent once at boot and losing it meant the Pi could **never** decode a RESULT until the Teensy rebooted. The cost is now one second, and this is the first time that claim has been quantified rather than reasoned about. The corrected test asserts the conservation law — promoted + blocked is constant — and the interval, rather than an absence of effect that was never true.
+
+`STATE` and `ROUTER_STATUS` counts were **unchanged**, because neither needs geometry. That is precisely why STATE can repair a measurement state while live frames are still undecodable, and it is now demonstrated rather than asserted.
+
+A second corruption site confirmed it is not an artefact of a 47-byte packet: a payload byte inside a **1 689-byte LIVE_FRAME**, 36× larger, where resync rescans the entire rejected payload and a resync bug would swallow a neighbour. **Exactly one live frame lost; every other count unchanged.**
+
+### Step 9 — unknown packet type
+
+A **well-formed** packet — valid sync, valid length, **valid CRC** — type `0xFE`, 32-byte payload, injected at byte **61 007**, a verified frame boundary. This is forward compatibility, not error handling, and the distinction is the point.
+
+`unknown_types {0xfe: 1}` · `frames_ok` 765 → **766** · **`crc_failures` 0** — a valid-CRC unknown type is not misread as corruption · every known packet count **identical to clean** · session, state, geometry and the **entire router status byte-identical**. A zero-length `0xFD` packet was also handled.
+
+**Tolerated and unremarkable are different things**, and both layers behave correctly: the **parser** skips by length and continues, while the **report** flags it and `transport_ok` goes false — because in a capture from our own firmware an unknown type means producer and consumer disagree about the protocol. The tests assert both properties, because a receiver that silently normalised an unknown type would be hiding a version skew.
+
+### Bound
+
+These were exercised **offline against a recorded stream**, which is the right place for them — deliberate corruption on a live link is neither controllable nor repeatable. But they prove the **receiver** rejects and tolerates. **No corrupted byte was ever transmitted**, and the Teensy, the UART and the physical layer are untouched by this work.
+
+189 tests pass. No firmware change, no hardware contact, no Phase 9 activity. **TODO-34 and TODO-35 remain open.**
+
+---
+
 ## 2026-09-26 (10) — **30 s receive capture: 765 frames, zero errors, residual 0 again, and the cadence held to 0.5 %.** Idle RX has enough evidence. The unplanned result is that replay is deterministic across machines
 
 Same receive-only link, **no hardware change**. `/dev/ttyAMA0`, **30 of 30 s** requested and delivered — the corrected `capture.sh` timing its own run. **1 094 489 bytes at 36 483 B/s (79.2 % wire occupancy)**, sha256 `e26646cbb8df1714ae721ac45e33ad1f25486bf3af31eb9b36079e5c56ddb488`, verified byte-for-byte after transfer and **committed as a permanent replay fixture**: [`ai/evidence/phase10-teensy-pi-idle-30s.bin`](evidence/phase10-teensy-pi-idle-30s.bin). Full record: [`2026-09-26-phase10-idle-30s.md`](evidence/2026-09-26-phase10-idle-30s.md).
