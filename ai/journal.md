@@ -12,6 +12,47 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (10) — **30 s receive capture: 765 frames, zero errors, residual 0 again, and the cadence held to 0.5 %.** Idle RX has enough evidence. The unplanned result is that replay is deterministic across machines
+
+Same receive-only link, **no hardware change**. `/dev/ttyAMA0`, **30 of 30 s** requested and delivered — the corrected `capture.sh` timing its own run. **1 094 489 bytes at 36 483 B/s (79.2 % wire occupancy)**, sha256 `e26646cbb8df1714ae721ac45e33ad1f25486bf3af31eb9b36079e5c56ddb488`, verified byte-for-byte after transfer and **committed as a permanent replay fixture**: [`ai/evidence/phase10-teensy-pi-idle-30s.bin`](evidence/phase10-teensy-pi-idle-30s.bin). Full record: [`2026-09-26-phase10-idle-30s.md`](evidence/2026-09-26-phase10-idle-30s.md).
+
+**`TRANSPORT: OK` — 765 frames, 0 CRC failures, 0 oversize rejects, 0 decode errors, 0 buffered at end.** Single stable session `[4]`, so **the Teensy did not reboot during the window**. Firmware `0.6.0`, geometry 128/512/4:1 at 44 100, `IDLE`, `TS` return, all four detectors `unknown`, injection false.
+
+**Every byte reconciles again, at 6× the duration:**
+
+```
+LIVE   645 x 1689 = 1 089 405   (631 promoted + 14 pre-HELLO)
+STATE   60 x   15 =       900
+HELLO   30 x   47 =     1 410
+ROUTER  30 x   37 =     1 110
+discarded         +   1 664     (mid-stream partial frame)
+                  ---------
+                  1 094 489  =  captured      residual 0
+```
+
+`frames_ok 765` = 751 decoded + 14 geometry-blocked. And the non-live count falls out exactly: a 30 s window should carry 60 + 30 + 30 = 120, and 765 − 645 = **120**.
+
+**Cadence held across both windows:**
+
+| | 5 s | 30 s | Producer |
+|---|---:|---:|---:|
+| LIVE_FRAME incl. pre-HELLO | 21.40/s | **21.50/s** | 21.6/s |
+| Byte rate | 36 465 B/s | **36 483 B/s** | — |
+
+Two independent captures, six times apart in duration, both within **0.5 %** of the producer's cadence. The promoted figure reads 21.03/s for the same reason as before — the 14 pre-HELLO frames — and that explanation has now held twice.
+
+**🔍 Unplanned result worth keeping: the replay path is host-independent.** This capture was replayed on the **Pi 5 (aarch64, Debian Trixie)** and independently on the **Mac (arm64, macOS, Python 3.14)**, producing **byte-identical reports** — same frame counts, same packet counts, same session, same final state. Nothing was designed for that, and it was not part of the plan; it means a report from either machine is citable and that the evidence does not depend on which box produced it. Cheap property, and it makes the committed fixture genuinely portable.
+
+**What the longer window actually bought.** The 5 s sample was clean but small; 30 s is where marginal signal integrity would start surfacing as occasional resyncs. **Zero CRC failures across 765 frames and 1.09 MB at 79.2 % occupancy** is about as much as idle RX can say without a long soak. `buffered_at_end 0` adds that the stream ended on a frame boundary with nothing stranded.
+
+**🛑 And this is where idle captures stop adding information.** Everything still unproven was unproven before this capture and remains so: **RESULT transport** (none emitted) · **TODO-59 atomicity at runtime** (nothing staged a RESULT) · **CRC-invalid rejection on hardware** (only clean streams seen) · **unknown packet-type tolerance on hardware** (none appeared) · **reconnect / session change** (session `[4]` never moved) · **Pi→Teensy** (disconnected) · **the T1 matrix** (nothing measured acquisition perturbation) · **the production UI** (none exists). A third idle capture would confirm the same nine facts and establish no tenth.
+
+**Analog, not transport evidence:** `peak_source −63.9 dBFS`, `peak_return −66.2 dBFS`, `tf_confidence 0.0`, `tf_clamped_count 0`, no clipping.
+
+**No firmware change — the board still runs `26f2bee`. No Phase 9 validation was invoked and Phase 9 status is unaffected. No hardware was modified.**
+
+---
+
 ## 2026-09-26 (9) — ✅ **FIRST REAL TEENSY → PI 5 TRANSPORT CAPTURE. 127 frames, zero errors, and every one of 182 327 bytes accounted for.** The shared-author evidence loop is broken. Two integration defects found on the way, one of which nearly produced a false wiring diagnosis
 
 *(Las Vegas evening 2026-09-26; capture timestamps are UTC 2026-09-27.)*
