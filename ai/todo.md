@@ -1105,7 +1105,22 @@ landing in OCRAM rather than the tight RAM1 budget, as intended — RAM1 free fo
 locals differs by only ~2.3 KB between `_PI` and `_NONE`.
 **Not yet uploaded to hardware** — compile proof only. `[compiles]`
 
-### TODO-34 — Audit and freeze the Pi link wire format 🟡 **SCHEMA FROZEN 2026-09-11 (protocol v2). Transport unproven — T1 bench measurement outstanding**
+### TODO-34 — Audit and freeze the Pi link wire format 🟡 **SCHEMA FROZEN 2026-09-11. RECEIVE TRANSPORT PROVEN ON HARDWARE 2026-09-26. T1 still outstanding — do NOT read this as closed**
+> **✅ FIRST REAL TEENSY → PI 5 CAPTURE, 2026-09-26.** Teensy `26f2bee` (v0.6.0, protocol v2) → Pi 5, **receive-only** link: Teensy pin 1 → GPIO15/RXD0 physical pin 10, GND → physical pin 9, Teensy pin 0 and Pi GPIO14 **unconnected**, no rail shared. Device **`/dev/ttyAMA0`** (see the finding below). 5 s capture, **182 327 bytes at 36 465 B/s ≈ 36.47 KB/s** against a ~36.5 KB/s prediction. sha256 `c1a37dd136dd0441c0be72609312f75828d57a1a045596bc9d6d3a306bf011b8`. Artifact lives on the Pi at `~/guitar_rig_analyzer/first-real-teensy-pi-5s.bin`, **not yet transferred into this repository**. Record: [`ai/evidence/2026-09-26-first-teensy-pi-capture.md`](evidence/2026-09-26-first-teensy-pi-capture.md), journal 2026-09-26 (9).
+> **`TRANSPORT: OK` — 127 frames, 0 CRC failures, 0 oversize rejects, 0 decode errors.** HELLO repaired a mid-stream attach and established session **4**; firmware `0.6.0`, geometry 128 live / 512 FFT / 4:1 at 44 100 Hz. STATE recovered authoritative `IDLE`, no abort. ROUTER_STATUS recovered `return_source TS`, **all four detectors UNKNOWN**, `any_detector_available False`, injection inactive, `SOURCE_RETURN`. Pre-HELLO telemetry counted and **not promoted**, as designed.
+> **✅ Every byte accounted for, which is the stronger claim.** `107×1689 + 10×15 + 5×47 + 5×37 + 1034 discarded = 182 327` — **residual 0**. `frames_ok 127` = 113 decoded + 14 geometry-blocked. No unexplained gaps, no malformed packets. And the apparent 18.6/s live rate is **not** a producer slowdown: including the 14 pre-HELLO frames the receiver refused to promote, **107/5 s = 21.4/s** against 21.6/s at the producer.
+> **🔑 THE SHARED-AUTHOR EVIDENCE LOOP IS BROKEN.** The parser is no longer merely agreeing with its author's reading of `data_sender.h`; it has decoded bytes the compiled firmware actually produced. That bound has appeared on every Phase 10 record since 2026-09-26 (1) and is now **retired for the receive path**.
+> **🛑 STILL OPEN — this milestone is NOT T1 and NOT Phase 10 completion:**
+> 1. **T1 acceptance matrix** — all four runs, `blocks_skipped = 0`, runs 2–4 indistinguishable from the `_NONE` control. **Nothing here measured acquisition perturbation.** ⚠️ The link sits at **79 % occupancy**, so this is not a formality.
+> 2. **RESULT transport on hardware** — none was emitted or received. The reliable path is entirely unexercised.
+> 3. **TODO-59 atomicity at runtime** — nothing staged a RESULT, so the invariant had nothing to refuse. `blocked_by_result` read 0, which proves the counter exists, not that the guard works.
+> 4. **CRC-invalid rejection on hardware** — only a clean stream was observed.
+> 5. **Unknown packet-type tolerance on hardware** — none appeared.
+> 6. **Reconnect / reboot / session-change matrix** — session 0 → 4 across the two sessions is `INFER` only; no reboot was observed during a live capture.
+> 7. **Pi→Teensy direction** — physically disconnected by design.
+>
+> **🛑 Integration finding — `/dev/serial0` is NOT the header UART on this Pi 5.** `serial0 → ttyAMA10` received **nothing**; the 40-pin header UART is **`/dev/ttyAMA0`**. `MEAS`: continuity passed both conductors, and a **RIGOL DHO804 showed a 0–3.3 V UART waveform at Teensy pin 1 and at Pi physical pin 10** — bytes were arriving while Linux read a different peripheral. **When a capture is empty, check the device before the wire.** Recorded as a `[STOP]` in the runbook and in `capture.sh`'s zero-byte path.
+> **🔧 Tooling defect fixed — `capture.sh` reported a failure it never performed.** `stty … min 0 time 1` let a no-data read return immediately, so a 30 s request exited after ~1 s reporting 0 bytes. Correctly refused as evidence. Now `min 1 time 0`, plus an elapsed-vs-requested check that exits non-zero when short. Five regression tests guard both defects; a negative control confirms each fails when reverted.
 
 **🟢 Closed in source (protocol v2, `PI_PROTOCOL_VERSION 2`):** all five 🔴 findings plus six 🟡.
 - **L1 — clamp state now on the wire.** Per transmitted bin, one byte carries the number of source bins CLAMPED (high nibble) and VALID (low nibble), plus frame-level `tf_clamped_count` over all 512 source bins. The rendering contract is written into `data_sender.h`: `clamped == ratio` means draw a saturation indicator, **not** the rail value; `valid == 0` means pen-lift.
@@ -1173,7 +1188,18 @@ version and freeze the format. Measure T1 before choosing its fix.
 clamp state, `result_valid` and provenance present; and a measured (not predicted)
 worst-case loop-blocking figure for both packet types.
 
-### TODO-35 — Phase 10: Pi 5 integration and bench acceptance 🟡 **TEENSY SIDE FLASHED AND EMITTING 2026-09-26. Blocked on Pi access — no byte has yet been received by anything**
+### TODO-35 — Phase 10: Pi 5 integration and bench acceptance 🟡 **RECEIVE PATH PROVEN END-TO-END ON HARDWARE 2026-09-26. Phase NOT complete — T1, RESULT, reconnect and the entire UI remain**
+> **✅ Steps 1–6 of the runbook are effectively satisfied, and step 7's data-level precondition with them.** Pi 5 + Touch Display 2 + Active Cooler assembled and booting to the desktop; Raspberry Pi OS 64-bit (Debian Trixie), kernel `6.18.50+rpt-rpi-2712`, host `guitar-rig-analyzer`, SSH verified. Receive-only UART built as recorded in TODO-34. Real bytes captured and replayed: **`TRANSPORT: OK`**, 127 frames, zero errors of any class.
+> **🛑 WHAT REMAINS — do not collapse the milestone into the phase:**
+> - **Step 7 clamp contract** — the data-level path is proven, but *rendering* is not: there is **no production UI**. The Touch Display 2 boots to the Pi desktop and nothing more.
+> - **Step 8 CRC rejection on hardware** — only a clean stream was seen.
+> - **Step 9 unknown-packet tolerance on hardware** — none appeared.
+> - **Step 10 reboot recovery, both directions** — untested live. Session 0 → 4 is `INFER`.
+> - **Step 11 — the T1 acceptance matrix, all four runs.** The decisive step, and **entirely unattempted**. Requires a second flash at `_NONE` for the control run.
+> - **Step 12 freeze** — gated on step 11.
+> - **RESULT transport**, and with it TODO-59's atomicity invariant at runtime.
+> - **Pi→Teensy command path** — physically disconnected; adding it is a separate reviewed decision, not a wiring step.
+> **📌 Sequencing note.** The receive path is now proven, so the renderer is no longer blocked on *transport existence* — but TODO-36 blocks it on **T1**, and that rule stands: a renderer embeds frame-rate and latency assumptions T1 could invalidate, and at **79 % link occupancy** that is not a theoretical concern.
 > **✅ Producer side done and proven on hardware.** The board runs `26f2bee` (`Build: Sep 26 2026 16:36:53 v0.6.0`, sha256 `24b71d73…`), emitting all four producers at measured cadences: LIVE_FRAME **21.6/s**, STATE 2/s, HELLO 1/s, ROUTER_STATUS 1/s ≈ **25.6 packets/s, ~36.5 KB/s, 79 % of the 460800 wire**. Transport call time max **282 µs**; block period 46.3–46.7 ms against 46.4 expected. Journal 2026-09-26 (8).
 > **✅ Consumer side written and tested offline.** Framing, parser, receiver state model, and `pi/tools/{capture.sh,replay.py}` — 173 tests. `capture.sh` writes raw bytes only; `replay.py` reports packets by type, rates, CRC failures, resync loss, unknown types, session id, final state and all four detector states. **Its verdict is transport-only: analog content can never fail a replay.**
 > **🛑 BLOCKED ON PHYSICAL PI ACCESS — and this is the last real gap.** Nothing has *received* a byte. The parser and the firmware still share one author's reading of `data_sender.h`, so **the shared-author evidence loop is unbroken.** One 30 s capture replayed through `replay.py` breaks it.

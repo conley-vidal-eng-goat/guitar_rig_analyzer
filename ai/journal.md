@@ -12,6 +12,90 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (9) — ✅ **FIRST REAL TEENSY → PI 5 TRANSPORT CAPTURE. 127 frames, zero errors, and every one of 182 327 bytes accounted for.** The shared-author evidence loop is broken. Two integration defects found on the way, one of which nearly produced a false wiring diagnosis
+
+*(Las Vegas evening 2026-09-26; capture timestamps are UTC 2026-09-27.)*
+Full record: [`ai/evidence/2026-09-26-first-teensy-pi-capture.md`](evidence/2026-09-26-first-teensy-pi-capture.md).
+
+**This is the milestone the last five slices were built toward.** Until now the Pi parser and the Teensy firmware only agreed with **one author's reading of `data_sender.h`** — a closed loop that no amount of offline testing could open. A Raspberry Pi 5 has now decoded bytes the compiled firmware actually produced.
+
+**Link as built, receive-only by design:** Teensy pin 1 (TX1) → Pi GPIO15/RXD0 **physical pin 10**; Teensy GND → Pi **physical pin 9**; **Teensy pin 0 and Pi GPIO14 deliberately unconnected**; **no 3.3 V or 5 V rail shared** — ground is the only power-domain connection. The link is physically incapable of Pi→Teensy traffic, which is exactly what makes this capture independent of serial-console configuration. Teensy runs the `26f2bee` `_PI` artifact unchanged; **no firmware edit was made during this work.**
+
+---
+
+### 🛑 Integration defect A — `/dev/serial0` is not the header UART on a Pi 5
+
+```
+serial0  -> /axi/pcie@1000120000/rp1/serial@30000   -> ttyAMA10
+serial10 -> /soc@107c000000/serial@7d001000         -> ttyAMA0
+```
+
+With GPIO14/15 configured as TXD0/RXD0, **`/dev/serial0` → `ttyAMA10` received nothing.** The 40-pin header UART was **`/dev/ttyAMA0`**.
+
+**The symptom pointed squarely at the wiring, and the wiring was fine.** `MEAS`: continuity Teensy pin 1 → Pi-end connector **PASS**, Teensy GND → Pi ground **PASS**. A **RIGOL DHO804** then showed an active **0–3.3 V UART waveform at Teensy pin 1 and the same activity at Pi GPIO15 / physical pin 10.** The bytes were physically arriving at the header while Linux was reading a different peripheral entirely.
+
+**That scope measurement is what saved the session.** Without it the obvious next move is to re-seat jumpers, re-check pin numbering, suspect the Teensy — all of it wrong, and none of it convergent. **Runbook step 2a existed precisely because this was foreseeable ("the Pi 5 renumbered its UARTs; `ls -l /dev/serial0` is the only authority"), and the answer it returned was still not enough** — `/dev/serial0` resolved to a real device that simply was not the right one. The lesson is sharper than the original warning: **when a capture is empty, check the device before the wire.** That now lives in the runbook as a `[STOP]` and in `capture.sh`'s zero-byte path.
+
+### 🔧 Integration defect B — `capture.sh` reported a failure it never performed
+
+```
+sudo sh pi/tools/capture.sh /dev/serial0 30 cap.bin
+  start  : 03:41:07Z     end : 03:41:08Z     bytes : 0
+```
+
+**A 30-second capture that exited after ~1 second and reported zero bytes as though it had completed.** `bash -x` found it: `stty … min 0 time 1` lets a no-data read return immediately, so `cat` exits long before the outer `timeout`.
+
+**This was correctly refused as evidence.** A zero-byte result that quits early is indistinguishable from a dead link *unless somebody checks the clock* — and the scope later proved the waveform was arriving. Accepting it would have sent the session after a wiring fault that did not exist.
+
+**My defect, and worth being precise about why it survived review:** `min 0 time 1` is the idiom for a *non-blocking poll*, which is right when you are draining a buffer and wrong when you are timing a capture. I wrote it into a script whose entire contract is "capture for N seconds" and never tested the no-data path, because on the bench there is always data. **The failure mode only exists in the condition you are using the tool to diagnose.**
+
+Fixed to `min 1 time 0` so the read blocks and the outer `timeout` governs. The script now also **compares elapsed time against the request and exits non-zero when short**, because a capture that never ran must never be presented as a link result — and it prints the `ttyAMA0`/`serial0` diagnostic on a zero-byte run that *did* complete.
+
+**A test-quality lesson came out of guarding it.** My first regression test asserted the string `"TOOLING fault"` appeared in the script — and passed after I deleted the actual conditional, because the same words remained in a comment. **A structural test a comment can satisfy is not a structural test.** It now matches the `if [ "$ELAPSED" -lt … ]` conditional and the non-zero exits, and a negative control confirms removing the check fails it.
+
+---
+
+### ✅ The result — and the part that matters more than `TRANSPORT: OK`
+
+5 s on `/dev/ttyAMA0`: **182 327 bytes, 36 465 B/s**, sha256 `c1a37dd1…f011b8`. Replay: **127 frames, 0 CRC failures, 0 oversize rejects, 0 decode errors.** Session **4** established, firmware `0.6.0`, geometry 128/512/4:1 at 44 100 Hz, `measurement_state IDLE`, `return_source TS`, **all four jack detectors `unknown`**.
+
+**Every byte reconciles:**
+
+```
+LIVE 107 x 1689 = 180 723   (93 promoted + 14 pre-HELLO)
+STATE  10 x   15 =     150
+HELLO   5 x   47 =     235
+ROUTER  5 x   37 =     185
+discarded        +  1 034   (mid-stream partial frame)
+                 ---------
+                   182 327  =  captured      residual 0
+```
+
+`frames_ok 127` = 113 decoded + 14 geometry-blocked. **No unexplained gaps, no malformed packets, nothing unaccounted for.** That is a much stronger statement than a pass verdict: it means the receiver's model of the stream is complete, not merely non-failing.
+
+**The 18.6/s live-frame rate is not a producer slowdown**, and it would have been easy to read as one. Including the 14 frames the receiver counted but refused to promote before the first HELLO: **107 / 5 s = 21.4/s**, against 21.6/s measured at the producer. The aggregate byte rate confirms it independently — 36 465 B/s against a 36 500 B/s prediction, **from a figure that was itself a correction made only hours earlier**.
+
+**Three designs met hardware for the first time and behaved as specified:**
+- **TODO-56** — periodic HELLO **repaired a mid-stream attach**. The capture began partway through a live frame with no session; within a second the receiver had geometry and capabilities. This is the defect that, before the fix, would have left the Pi unable to decode a RESULT until the Teensy rebooted.
+- **TODO-57** — STATE delivered authoritative `IDLE` with `abort_reason NONE`, in a state where `LIVE_FRAME` alone could have carried it, but which would have been invisible in any other measurement state.
+- **TODO-58** — ROUTER_STATUS reported **all four detectors UNKNOWN** with `any_detector_available False`. The honest-ignorance contract, on real hardware, with the Phase 8 XLR connector physically wired into the breadboard and the firmware correctly declining to claim it can detect anything.
+
+**Session id: 0 at the producer test, 4 here.** `INFER`: consistent with the EEPROM counter advancing across intervening `_PI` boots. **The exact reboot sequence was not observed and is not claimed.** What is established is that the counter is **not stuck** and that a non-`0` value reaches the receiver intact.
+
+---
+
+### 🔺 What this does NOT establish — and Phase 10 is NOT complete
+
+**RESULT transport on hardware** (none emitted) · **TODO-59 atomicity at runtime** (nothing staged a RESULT, so the invariant had nothing to refuse) · **Pi→Teensy command path** (physically disconnected) · touch commands (**no production UI exists — the Touch Display 2 boots to the Pi desktop and nothing more**) · reconnect/reboot/session-change matrix · **CRC-invalid rejection on hardware** (only a clean stream was seen) · **unknown packet-type tolerance on hardware** (none appeared) · the **T1 acceptance matrix** · any analog correctness.
+
+**Analog observations, explicitly not transport evidence:** `peak_source −65.2 dBFS`, `peak_return −66.8 dBFS`, `tf_confidence 0.0`, `tf_clamped_count 0`, no clipping. Consistent with an idle instrument. The harness reports these under *analog observations* and cannot fail a replay on them — a separation that was added the same day a clamp prediction was wrong by 512 bins, and which has now paid off twice.
+
+**Phase 9 is untouched.** No `v`, no Tests 1–4, no generator, no injection, no relay operation, no measurement, no return-source change, no analog breadboard change.
+
+**Portfolio note.** Both defects here were *integration* defects — neither was a bug in the protocol, the firmware, or the parser, all of which worked the first time real bytes flowed. One was a platform naming change on the receiving OS; the other was a terminal-settings default in my own diagnostic tool, which failed **only in the condition the tool exists to diagnose**. The five preceding slices hardened the thing being tested; what actually cost the session was the apparatus around it. Worth remembering the next time a boundary looks well covered: **the instrument you measure with needs its own failure analysis.**
+
+---
+
 ## 2026-09-26 (8) — ✅ **`26f2bee` FLASHED AND RUNNING. All four Phase 10 producers are live on hardware for the first time.** Two predictions falsified — one of them exposes a stale figure that has been wrong since before TODO-27
 
 **The board now runs `26f2bee`**, `Build: Sep 26 2026 16:36:53   v0.6.0`, sha256 `24b71d73bf60a0d6ff9cbb5737a46bba6a04887a1fe55479d356b5a87dce3a6e`. It replaces `44c4680` (`Build: Sep 21 2026 17:21:24`). The artifact hash was verified immediately before upload and the archived `.hex` is committed at `8e6c9c6`, **before** the flash, so the intended artifact is a matter of record independent of the outcome. Full record: [`ai/evidence/2026-09-26-26f2bee-first-boot.md`](evidence/2026-09-26-26f2bee-first-boot.md).

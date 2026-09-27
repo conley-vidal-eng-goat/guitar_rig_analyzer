@@ -2016,9 +2016,22 @@ A Pi-side parser may be written against v2 now. The format freezes when step 8 p
 
 | Teensy | Signal | Pi (BCM) | Notes |
 |---|---|---|---|
-| pin 1 | `Serial1` TX | GPIO15 / RXD | Teensy transmits, Pi receives |
-| pin 0 | `Serial1` RX | GPIO14 / TXD | reserved for future Pi→Teensy control; not used by `data_sender` today |
-| GND | ground | GND | **required** — see the stop sign below |
+| pin 1 | `Serial1` TX | GPIO15 / RXD0, **physical pin 10** | Teensy transmits, Pi receives |
+| pin 0 | `Serial1` RX | GPIO14 / TXD0 | reserved for future Pi→Teensy control; **deliberately unconnected** |
+| GND | ground | **physical pin 9** | **required** — see the stop sign below |
+
+> **✅ AS BUILT 2026-09-26, receive-only.** Teensy pin 1 → Pi physical pin 10
+> (GPIO15/RXD0); Teensy GND → Pi physical pin 9. **Teensy pin 0 and Pi GPIO14
+> left unconnected, and no 3.3 V or 5 V rail shared** — each board keeps its own
+> supply, ground is the only power-domain connection. The link is therefore
+> physically incapable of Pi→Teensy traffic, which is what makes the first
+> capture independent of serial-console configuration.
+>
+> Pi as built: Raspberry Pi 5, Touch Display 2, Active Cooler, Raspberry Pi OS
+> 64-bit (Debian Trixie), kernel `6.18.50+rpt-rpi-2712`, host
+> `guitar-rig-analyzer`. `raspi-config`: serial login shell **NO**, serial
+> hardware **YES**; `console=serial0` removed from the kernel command line;
+> `dtparam=uart0=on`.
 
 Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 V between the boards.** Each has its own supply; the only power-domain connection is ground.
 
@@ -2057,6 +2070,29 @@ Both boards are 3.3 V logic, so no level shifting is needed. **Do not connect 5 
 | Pi OS version and whether `/boot/firmware/` or `/boot/` is the config path | The path moved in recent releases |
 
 **No header coordinates are recorded in this runbook until 2a has been performed on the actual hardware.** Guessing a pin and finding out by continuity is not the method used elsewhere in this document.
+
+> ## 🛑 `/dev/serial0` IS NOT THE HEADER UART ON THIS PI 5
+>
+> **Established by measurement 2026-09-26, and it cost a session.** With
+> GPIO14/15 configured as TXD0/RXD0, `/dev/serial0` symlinked to **`ttyAMA10`**
+> and received **nothing**. The 40-pin header UART was reachable as
+> **`/dev/ttyAMA0`**.
+>
+> ```
+> serial0  -> /axi/pcie@1000120000/rp1/serial@30000   -> ttyAMA10
+> serial10 -> /soc@107c000000/serial@7d001000         -> ttyAMA0
+> ```
+>
+> The Pi 5 renumbered its UARTs, so `/dev/serial0` no longer reliably means
+> *"the 40-pin header UART"*. **Confirm on your own hardware** — do not copy a
+> device path from an older model, and do not copy this one without checking.
+>
+> **How this presented, because the symptom points the wrong way:** a capture on
+> `/dev/serial0` returned zero bytes, which looks exactly like a wiring fault.
+> Continuity passed. A **RIGOL DHO804 showed a healthy 0–3.3 V UART waveform
+> arriving at the Pi's physical pin 10** — the bytes were physically there and
+> Linux was reading a different peripheral. **When a capture is empty, check the
+> device before you check the wire.**
 
 #### 2a command sheet — run these ON THE PI, record every answer
 
@@ -2102,7 +2138,7 @@ Both halves exist and are tested; the capture is one command on each machine.
 
 | Where | Command |
 |---|---|
-| **On the Pi** | `sudo sh pi/tools/capture.sh /dev/serial0 30 cap.bin` |
+| **On the Pi** | `sudo sh pi/tools/capture.sh /dev/ttyAMA0 30 cap.bin` |
 | **Offline** | `python3 pi/tools/replay.py cap.bin --seconds 30` |
 
 `capture.sh` writes **raw bytes only** — no decoding during acquisition,
