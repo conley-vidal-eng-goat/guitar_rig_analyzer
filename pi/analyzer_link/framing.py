@@ -41,9 +41,18 @@ _HEADER = struct.Struct("<HBH")     # sync, type, payload_length
 @dataclass(frozen=True)
 class Frame:
     """One CRC-verified frame. ``packet_type`` may be unknown — that is the
-    caller's problem to tolerate, not the scanner's to reject."""
+    caller's problem to tolerate, not the scanner's to reject.
+
+    ``offset`` is the absolute byte position of this frame's sync word within
+    the whole stream the scanner has been fed. The scanner knows it anyway and
+    used to throw it away; keeping it lets a recorded capture be placed on a
+    time axis, which is the only way to see WHEN a state changed rather than
+    merely that it did. Defaults to 0 so hand-built frames stay convenient in
+    tests.
+    """
     packet_type: int
     payload: bytes
+    offset: int = 0
 
 
 @dataclass
@@ -71,6 +80,10 @@ class FrameScanner:
 
     def __init__(self, max_payload: int | None = None) -> None:
         self._buf = bytearray()
+        # Absolute position of the next unconsumed byte, counting everything
+        # ever fed in — frames emitted plus bytes discarded. This is what makes
+        # Frame.offset exact rather than reconstructed from packet sizes.
+        self._consumed = 0
         self._max_payload = (max_payload if max_payload is not None
                              else protocol.max_payload_bytes())
         self.stats = ScannerStats()
@@ -102,11 +115,13 @@ class FrameScanner:
                 drop = len(buf) - keep
                 if drop > 0:
                     self.stats.bytes_discarded += drop
+                    self._consumed += drop
                     del buf[:drop]
                 return out
 
             if start > 0:
                 self.stats.bytes_discarded += start
+                self._consumed += start
                 del buf[:start]
 
             if len(buf) < protocol.HEADER_BYTES:
@@ -120,6 +135,7 @@ class FrameScanner:
                 # first byte and keep scanning.
                 self.stats.oversize_rejects += 1
                 self.stats.bytes_discarded += 1
+                self._consumed += 1
                 del buf[:1]
                 continue
 
@@ -137,11 +153,14 @@ class FrameScanner:
                 # one packet.
                 self.stats.crc_failures += 1
                 self.stats.bytes_discarded += 1
+                self._consumed += 1
                 del buf[:1]
                 continue
 
             self.stats.frames_ok += 1
-            out.append(Frame(packet_type=packet_type, payload=payload))
+            out.append(Frame(packet_type=packet_type, payload=payload,
+                             offset=self._consumed))
+            self._consumed += total
             del buf[:total]
 
     # -- reconnect ----------------------------------------------------------
@@ -153,6 +172,7 @@ class FrameScanner:
         be completed by bytes from after it, and leaving it in place would let
         a stale prefix corrupt the first frame of the new session.
         """
+        self._consumed += len(self._buf)
         self._buf.clear()
 
     @property
