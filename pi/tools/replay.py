@@ -44,6 +44,33 @@ every 71.6 minutes and never exceeds ~1.48e6 -- it is NOT a full 32-bit range.
 A negative delta means a wrap, and audio time is then withdrawn rather than
 reported wrongly. No arithmetic is attempted across a wrap.
 
+*** RESULT ARRAY REPORTING ***
+
+When a RESULT is decoded, the report adds a result_observations section: per
+array element counts, NaN/Inf census, finite min/max, plus quality, validity,
+valid_bin_fraction and decoded calibration warnings.
+
+ALL OF IT IS ANALOG OBSERVATION. None of it can fail a replay. A RESULT graded
+INVALID, with every warning bit set and every applicable bin NaN, is a perfectly
+successful transport result -- the question is whether the Teensy's authoritative
+result arrived intact, not whether the numbers are good.
+
+Per-array NaN conventions differ, and reading them as uniform would be wrong
+(measurement_engine.cpp:425-436, 513-523):
+
+  tf_cal_mag_db     NaN for an unenergised bin
+  tf_cal_phase_rad  NaN for an unenergised bin
+  group_delay_ms    NaN for an unenergised bin, AND ALWAYS NaN at bins 0 and
+                    511 -- the central difference is undefined at the edges, so
+                    >=2 NaN is expected even in a perfect measurement
+  coherence         0.0f for an unenergised bin, NOT NaN. Zero coherence is
+                    itself meaningful, so this array should show NO NaN at all
+
++Inf/-Inf are counted separately rather than lumped into "finite". The firmware
+guards every log10 and constrains H1_dB, so infinities are not expected to be
+producible -- which is exactly why an Inf appearing should surface as a finding
+instead of hiding inside a finite count.
+
 Analog content NEVER fails a replay. tf_clamped_count, peak levels and
 confidence describe the instrument's analog state, not the link. They are
 reported under "analog observations" and are excluded from the verdict. On
@@ -85,6 +112,40 @@ LIVE_GAP_SECONDS = 2.0
 AUDIO_BLOCK_SECONDS = 128 / 44100.0
 
 
+def _array_stats(name: str, values) -> dict:
+    """Census an array WITHOUT converting anything.
+
+    The decoded values keep whatever the wire carried -- NaN stays NaN. This
+    only counts and summarises; min/max are computed over finite values only,
+    and are None when the array holds no finite value at all (which is a real
+    possibility for a measurement with no energised bins, not an error).
+    """
+    finite, nan, pos_inf, neg_inf = [], 0, 0, 0
+    for v in values:
+        if v != v:                      # NaN: the only value unequal to itself
+            nan += 1
+        elif v == float("inf"):
+            pos_inf += 1
+        elif v == float("-inf"):
+            neg_inf += 1
+        else:
+            finite.append(v)
+    return {
+        "array": name,
+        "elements": len(values),
+        "finite": len(finite),
+        "nan": nan,
+        "pos_inf": pos_inf,
+        "neg_inf": neg_inf,
+        "min": (min(finite) if finite else None),
+        "max": (max(finite) if finite else None),
+    }
+
+
+def _warning_names(bits: int) -> list[str]:
+    return [w.name for w in protocol.CalibrationWarning if bits & int(w)]
+
+
 def replay(raw: bytes, seconds: float | None,
            timeline: bool = False) -> dict:
     scanner = FrameScanner()
@@ -92,6 +153,7 @@ def replay(raw: bytes, seconds: float | None,
     counts: collections.Counter = collections.Counter()
     unknown_types: collections.Counter = collections.Counter()
     hello_sessions: list[int] = []
+    result_payload_len: int | None = None
     decode_errors_before = 0
     now = 0
 
@@ -151,6 +213,8 @@ def replay(raw: bytes, seconds: float | None,
                 counts[type(pkt).__name__] += 1
             if isinstance(pkt, packets.Hello):
                 hello_sessions.append(pkt.session_id)
+            if isinstance(pkt, packets.Result):
+                result_payload_len = len(frame.payload)
 
             if not timeline:
                 continue
@@ -265,6 +329,33 @@ def replay(raw: bytes, seconds: float | None,
             f"{st.bytes_discarded} bytes discarded, above the {slack} B "
             f"explainable by a mid-stream start")
 
+    res = state.latest_result
+    result_obs = None
+    if res is not None:
+        result_obs = {
+            "result_valid": res.result_valid,
+            "quality_grade": res.result_quality.name,
+            "fft_size": res.fft_size,
+            "n_averages_completed": res.n_averages_completed,
+            "mean_coherence": round(res.mean_coherence, 6),
+            "valid_bin_fraction": round(res.valid_bin_fraction, 6),
+            "insight_count": len(res.insights),
+            "calibration_type": res.calibration_type.name,
+            "calibration_warning_bits": int(res.calibration_warnings),
+            "calibration_warnings": _warning_names(int(res.calibration_warnings)),
+            "clip_detected": res.clip_detected,
+            "calibration_applied": res.calibration_applied,
+            "payload_bytes": result_payload_len,
+            "framed_bytes": (None if result_payload_len is None
+                             else result_payload_len + protocol.FRAMING_BYTES),
+            "arrays": [
+                _array_stats("tf_cal_mag_db", res.tf_cal_mag_db),
+                _array_stats("tf_cal_phase_rad", res.tf_cal_phase_rad),
+                _array_stats("group_delay_ms", res.group_delay_ms),
+                _array_stats("coherence", res.coherence),
+            ],
+        }
+
     live = state.latest_live
     analog = {}
     if live is not None:
@@ -319,6 +410,8 @@ def replay(raw: bytes, seconds: float | None,
             "description": router.description,
         }),
         "analog_observations_not_a_verdict": analog,
+        **({"result_observations_not_a_verdict": result_obs}
+           if result_obs is not None else {}),
         "transport_problems": problems,
         "transport_ok": not problems,
         **({"timeline": events} if timeline else {}),
@@ -400,6 +493,41 @@ def main() -> int:
         print("      Expected on any capture that starts mid-stream — HELLO is")
         print("      announced ~1/s, so up to ~1 s of telemetry precedes it.")
         print()
+    ro = r.get("result_observations_not_a_verdict")
+    if ro:
+        print("RESULT observations (ANALOG -- NOT part of the verdict)")
+        print(f"  result_valid             {ro['result_valid']}   "
+              f"quality {ro['quality_grade']}")
+        print(f"  fft_size                 {ro['fft_size']}   "
+              f"(array length is the canonical grid, not this)")
+        print(f"  n_averages_completed     {ro['n_averages_completed']}")
+        print(f"  mean_coherence           {ro['mean_coherence']}")
+        print(f"  valid_bin_fraction       {ro['valid_bin_fraction']}")
+        print(f"  insight_count            {ro['insight_count']}")
+        print(f"  calibration_type         {ro['calibration_type']}   "
+              f"applied {ro['calibration_applied']}")
+        print(f"  calibration_warning_bits 0x{ro['calibration_warning_bits']:02X}"
+              f"  {ro['calibration_warnings'] or '(none set)'}")
+        print(f"  clip_detected            {ro['clip_detected']}")
+        print(f"  payload / framed         {ro['payload_bytes']} / "
+              f"{ro['framed_bytes']} B")
+        print()
+        print("  array              elems  finite    NaN  +Inf  -Inf"
+              "        min         max")
+        for a in ro["arrays"]:
+            mn = "        --" if a["min"] is None else f"{a['min']:10.4g}"
+            mx = "        --" if a["max"] is None else f"{a['max']:10.4g}"
+            print(f"  {a['array']:<17s} {a['elements']:5d} {a['finite']:7d} "
+                  f"{a['nan']:6d} {a['pos_inf']:5d} {a['neg_inf']:5d}  "
+                  f"{mn}  {mx}")
+        print("  note: group_delay_ms is NaN at bins 0 and 511 BY DESIGN "
+              "(central difference);")
+        print("        coherence uses 0.0 rather than NaN for an unenergised "
+              "bin, so it")
+        print("        should show no NaN at all. See measurement_engine.cpp"
+              ":425-436, 513-523.")
+        print()
+
     if r["analog_observations_not_a_verdict"]:
         print("analog observations (NOT part of the verdict)")
         for k, v in r["analog_observations_not_a_verdict"].items():

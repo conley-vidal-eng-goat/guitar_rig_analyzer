@@ -122,7 +122,11 @@ def result_payload(geometry: protocol.Geometry,
                    clip_return: int = 0,
                    firmware: str = "0.6.0",
                    provenance: str = "external loopback 2026-09-26",
-                   insights: list[bytes] | None = None) -> bytes:
+                   insights: list[bytes] | None = None,
+                   tf_cal_mag_db: list[float] | None = None,
+                   tf_cal_phase_rad: list[float] | None = None,
+                   group_delay_ms: list[float] | None = None,
+                   coherence: list[float] | None = None) -> bytes:
     n = geometry.fft_bins
     insights = insights or []
 
@@ -138,13 +142,29 @@ def result_payload(geometry: protocol.Geometry,
     p[42:42 + len(firmware.encode())] = firmware.encode()
     p[58:58 + len(provenance.encode())] = provenance.encode()
 
-    # tf_cal_mag_db carries a NaN at bin 3 so pen-lift survives a round trip.
-    mag = [-6.0 + 0.001 * i for i in range(n)]
-    mag[3] = math.nan
-    p += struct.pack(f"<{n}f", *mag)
-    p += struct.pack(f"<{n}f", *[0.1 * i for i in range(n)])
-    p += struct.pack(f"<{n}f", *[2.5] * n)
-    p += struct.pack(f"<{n}f", *[0.9] * n)
+    # Arrays default to the firmware's real conventions so a test fixture does
+    # not imply a uniform NaN policy the hardware does not have:
+    #   tf_cal_mag_db / tf_cal_phase_rad  NaN for an unenergised bin
+    #   group_delay_ms                    NaN for unenergised AND at both edges
+    #   coherence                         0.0 for unenergised, never NaN
+    if tf_cal_mag_db is None:
+        tf_cal_mag_db = [-6.0 + 0.001 * i for i in range(n)]
+        tf_cal_mag_db[3] = math.nan
+    if tf_cal_phase_rad is None:
+        tf_cal_phase_rad = [0.1 * i for i in range(n)]
+        tf_cal_phase_rad[3] = math.nan
+    if group_delay_ms is None:
+        group_delay_ms = [2.5] * n
+        group_delay_ms[0] = math.nan          # edge bin, always
+        group_delay_ms[n - 1] = math.nan      # edge bin, always
+        group_delay_ms[3] = math.nan          # unenergised
+    if coherence is None:
+        coherence = [0.9] * n
+        coherence[3] = 0.0                    # unenergised -> 0.0, NOT NaN
+    p += struct.pack(f"<{n}f", *tf_cal_mag_db)
+    p += struct.pack(f"<{n}f", *tf_cal_phase_rad)
+    p += struct.pack(f"<{n}f", *group_delay_ms)
+    p += struct.pack(f"<{n}f", *coherence)
 
     p += bytes([len(insights)])
     for entry in insights:
