@@ -12,6 +12,69 @@ How to use this file:
 
 ---
 
+## 2026-09-26 (12) — **Step A: 71 consecutive authoritative ABORTED/TIMEOUT snapshots with ZERO live frames after the abort. TODO-57's justification, on hardware.** The experiment did not follow its plan, and the bytes — not the plan — set the conclusion
+
+First hardware exercise of a measurement-state transition over the link. No wiring change, no stimulus, no generator, no injection, no relay or route change. Firmware `26f2bee` unmodified. Record: [`2026-09-26-phase10-stepA-abort.md`](evidence/2026-09-26-phase10-stepA-abort.md).
+
+**Artifacts:** [`phase10-stepA-abort.bin`](evidence/phase10-stepA-abort.bin), **347 870 bytes**, sha256 `3ac52680b28f4c2a7f2d3e4ea850a94b9493b726bde60afa3deccd190ba95380`; USB console [`2026-09-26-stepA-usb-console.jsonl`](evidence/2026-09-26-stepA-usb-console.jsonl), 106 events.
+
+### ★ The primary result, stated as a packet census rather than an interpretation
+
+Following the ABORTED packet at byte offset **343 845**, the remaining **4 025** captured bytes contain **71 STATE**, **35 HELLO**, **35 ROUTER_STATUS**, and **zero LIVE_FRAME** packets. All 71 **subsequent** STATE snapshots carry `ABORTED` with `abort_reason TIMEOUT`; **none of those 71 carries `NONE`.** The single `NONE` interval belongs to the ABORTED packet itself, which sets the latch before the next snapshot arrives — see the 502 ms lag below.
+
+That formulation was chosen deliberately over the two weaker ones I reached for first. A **counter freeze** on the USB diagnostics (`Live frames: 73780` unchanged across ten windows) is producer-side and requires trusting a diagnostic. The **timeline's gap detector** is a heuristic with a threshold I had already had to tune once. The byte-offset census depends on neither: either a LIVE_FRAME appears after offset 343 845 or it does not.
+
+> Without STATE, the Pi would have continued receiving link traffic but lacked authoritative measurement-state telemetry telling it the Teensy was latched in ABORTED(TIMEOUT).
+
+**The 70 HELLO and ROUTER_STATUS packets are exactly why my first phrasing — "silence indistinguishable from a dead link" — was wrong, and it is withdrawn.** The link was demonstrably healthy the whole time. The correct claim is sharper and a better architectural argument: **link health and measurement state are separable, and only STATE carries the latter.** Sustained ~35 s.
+
+### Observed sequence
+
+| Audio time | Observation |
+|---|---|
+| t=0.000 | session **4**; `STATE UNKNOWN -> ARMED` — already armed |
+| →8.998 | 19 STATE reporting ARMED; **202 LIVE_FRAME** ≈22/s — live telemetry *does* flow in ARMED |
+| **8.998** | ABORTED packet, prose **`"armed timeout"`**; latch **SET with `reason_code NONE`** |
+| **9.500** | `REASON CODE NONE -> TIMEOUT` — **502 ms, exactly one STATE period** |
+| →44.498 | 71 STATE carrying ABORTED/TIMEOUT, **zero** LIVE_FRAME |
+| end | **ABORTED · latched · TIMEOUT · view=aborted** |
+
+**The two-stage abort information predicted by the synthetic test is confirmed on hardware.** The ABORTED packet carries the prose and sets the latch; the machine-readable code follows 502 ms later with the next snapshot. The receiver knows *that* before it knows *why* in codeable form.
+
+**383 frames · 0 CRC failures · 0 oversize rejects · 0 decode errors · 0 buffered.** Session stable. Byte accounting reconciles to **347 870 with residual 0**.
+
+### 🔺 Two procedural misses, and the reason they are recorded rather than smoothed over
+
+**The capture began AFTER `m` was issued.** The first STATE already reports ARMED and there are **zero STATUS packets**, so the `"Measuring — external stimulus"` message `m` emits is absent. The planned 5 s IDLE baseline was never captured — the intended ordering was inverted.
+
+**The ABORTED dwell was ~35 s, not ~15 s.** I drove the commands through tool calls while treating their latency as negligible. It is several seconds each, and four full 5 s diagnostic windows elapsed between one read completing and the next write landing. `x` therefore fell outside the capture entirely.
+
+**What matters is which source settled the question.** I had a wall-clock reconstruction that said `m` landed ~5 s *into* the capture. The bytes said the opposite, and the bytes won. The same discipline applied to `x`: I *believed* from arithmetic that it fell outside the window, but that only became evidence when the artifact showed `ViewChange: 0`. **A belief derived from timing arithmetic is not an observation, even when it turns out to be correct.**
+
+And the accident improved the experiment. A 15 s dwell would have given ~30 STATE snapshots; 35 s gave **71**, over a longer sustained absence of the dominant stream. The planned run would have been weaker evidence for the question it existed to answer.
+
+### The timeline decision, validated by hardware rather than by argument
+
+Byte-position time renders the 35.50 s live-telemetry absence as **0.52 s** — a **68× understatement**. Had the axis not been moved to the `audio_block_counter` hours earlier, this capture's central observation would have been invisible in the analysis. The synthetic test predicted a distortion; the hardware supplied one, on the first capture that mattered.
+
+### ⚠️ One evidence item is unavailable, and is recorded as unavailable
+
+**The `capture.sh` completion output was not preserved**, so there is no independent record of `elapsed: 45s of 45s requested` for this run. The artifact-derived STATE audio span is **44.498 s**, which strongly suggests the capture ran essentially to completion — **but that is an artifact-derived figure and must not be restated as the script's own duration self-report.** Different sources, different claims. Not reconstructed.
+
+### Process rule this run established
+
+**A serial MCP `export_log` is temporary evidence.** It writes into the capture directory, which `.gitignore` excludes. The USB console log survived only because it was explicitly copied into `ai/evidence/` and hashed. Discovering that after a valuable RESULT capture would have been expensive, so the rule is now written into the runbook's tooling section: **copy and hash immediately, or the log does not exist.**
+
+### OPEN
+
+**Post-`x` recovery ordering — `ViewChange: 0` in the artifact.** No VIEW packet, no latch clear, no IDLE transition, no LIVE_FRAME resumption in UART evidence. The ordering of those four is **unestablished**; the USB console shows the firmware reached `ABORTED → IDLE`, but that is the producer's view, not receiver evidence. Also open: a Pi *attaching during* a sticky abort, a *suppressed* ABORTED event, RESULT transport, TODO-59 at runtime, Pi→Teensy, the T1 matrix, the UI.
+
+**Deliberately not rerun.** Recovery ordering removes less uncertainty than RESULT transport and can be folded into the reconnect/state-transition acceptance work later. **TODO-34 and TODO-35 are not closed, and Step A recovery is not marked complete.**
+
+**Portfolio note.** The reusable part here is not the result, it is the correction. The experiment deviated from its plan in two ways; the evidence disclosed exactly how; and the write-up moved to match the bytes instead of the bytes being read to match the plan. Three claims were downgraded in the process — "silence indistinguishable from a dead link" was too strong, a counter freeze was replaced by a byte-offset census, and a timing-arithmetic belief about `x` was held open until the artifact confirmed it. The accident that broke the plan also produced better evidence than the plan would have.
+
+---
+
 ## 2026-09-26 (11) — **Runbook steps 8 and 9 passed offline against the real hardware stream. A failing test measured what a dropped HELLO actually costs: 0.98 s, then it self-heals**
 
 Both failure-behaviour tests run against **derived in-memory copies** of the committed 30 s fixture. **The artifact is never modified** — a test asserts its SHA-256 on every invocation, and it was verified unchanged after the full 189-test suite. No mutated capture is committed: each mutation is derived at runtime, so the regression coverage is permanent without a second artifact. Record: [`2026-09-26-phase10-idle-30s.md`](evidence/2026-09-26-phase10-idle-30s.md).

@@ -2157,6 +2157,24 @@ near-full TF clamping was wrong by 512 bins on a completely healthy link.
 Expected for ~30 s idle: **~1.1 MB at ~36.5 KB/s**, ~25.6 packets/s. A byte
 count far below that is a link fault — fix it before replaying anything.
 
+> ## ⚠️ A serial MCP `export_log` is TEMPORARY evidence
+>
+> `export_log` writes into the capture directory, and **`.gitignore` excludes
+> `.serial-logs/`**. A USB console log left there does not survive.
+>
+> **Copy it into `ai/evidence/` and hash it immediately after any run worth
+> keeping**, along with the raw UART capture. Established the hard way on
+> 2026-09-26: the Step A console log was preserved only because the omission was
+> noticed before the working tree was cleaned. Discovering this after a valuable
+> RESULT capture would be expensive and unrecoverable.
+>
+> The same applies to the capture's own completion report. **`capture.sh` prints
+> its elapsed time, byte count and hash to the terminal and nowhere else** — if
+> that scrollback is lost, so is the script's independent duration self-report,
+> which is a different evidence class from anything derivable from the artifact.
+> Step A has no preserved `capture.sh` output for exactly this reason. Redirect
+> it to a file, or paste it somewhere durable, before moving on.
+
 > **[STOP] Disable the Pi's serial console on this UART before connecting RX.** Raspberry Pi OS ships a login console (`getty`) on the primary UART by default. If it is left enabled, the **Pi transmits** login-prompt and kernel bytes down the wire at the Teensy continuously. Use `raspi-config` → *Interface Options* → *Serial Port*: **login shell over serial = NO**, **serial hardware = YES**. Confirm `console=serial0,115200` is absent from `/boot/firmware/cmdline.txt`.
 >
 > **Why this is a [STOP] even though nothing reads RX today.** `Serial1.begin()` enables the Teensy's receiver, and **no code in the firmware ever drains it** — so today those bytes accumulate in a ring buffer and are silently discarded. Harmless, and therefore invisible. It stops being harmless the moment a Pi→Teensy control channel exists (deferred; see TODO-56's decision record): a command parser would be reading a stream of console garbage as input. Configure it now, while the consequence is zero, rather than discovering it as an intermittent command-injection bug later.
