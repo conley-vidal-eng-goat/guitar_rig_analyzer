@@ -12,6 +12,38 @@ How to use this file:
 
 ---
 
+## 2026-09-30 (2) — **Pi boots straight into the live analyzer.** My autostart assumption was wrong, the reboot test caught it in one cycle, and the fix made the file smaller
+
+Power-on → automatic launch → live Teensy telemetry, no terminal. Pi-only reboots; the **Teensy was never power-cycled** and reported **session 9** before and after, which is itself the evidence that the Pi reboot did not disturb it. Record: [`2026-09-30-pi-autostart-config.md`](evidence/2026-09-30-pi-autostart-config.md).
+
+### The assumption that was wrong
+
+I wrote, in the config and the record, that labwc reads `~/.config/labwc/autostart` **instead of** `/etc/xdg/labwc/autostart`. **labwc 0.20.1 runs both.** So my "system file minus pcmanfm-pi, plus the analyzer" copy did two unintended things: `pcmanfm-pi` started anyway from the system file, and every service I had helpfully re-listed now ran **twice** — two `lwrespawn wf-panel-pi` supervisors, two `kanshi`.
+
+**The duplication is what proved it**, and it is why the first reboot was worth doing unhardened. A single reboot turned a plausible assumption into a measured fact.
+
+**The fix made the file smaller, not bigger.** An additive file should contain only what must be *added*: one line, the analyzer. Second reboot confirmed exactly one of everything.
+
+### The objective was met by a different mechanism than I designed for
+
+I had been trying to *suppress* the desktop icon layer. Unnecessary: `pcmanfm-pi` runs, draws its icons, and the analyzer sits above it because it sets `-topmost`. Both boot screenshots show it fullscreen with nothing compositing over it. **Suppressing pcmanfm was never the requirement — getting above it was**, and that was already solved on 2026-09-29. The `--desktop-off` workaround is retired.
+
+### The flagged risk did not fire
+
+Xwayland is not running until something asks for it, and I flagged that a boot-time race might leave the UI dead. It did not: on both boots labwc spawned Xwayland on demand and the UI came up fullscreen. **No `sleep` was needed and none was added.** Flagging it beforehand cost nothing and would have made a failure diagnosable in one step.
+
+### What is honestly still open
+
+**Item 10 is partial.** Escape itself was never pressed — no key-injection tool is installed and installing one was out of scope. Everything Escape *leads to* was verified: terminate, 0 fds on the UART, a fresh capture succeeding, and no respawn. `destroy()` and SIGTERM converge on the same teardown, but that is an argument, not an observation. One operator keypress closes it.
+
+**Nothing here advances the open technical items** and none should be read as doing so: TODO-39, TODO-65, runbook step 7, T1 runs 3/4, Phase 9.
+
+### TODO-39 repair proposed, not written
+
+Constraint confirmed independently rather than accepted on trust: `output_block_number` must keep carrying the audio-block counter, because `packets.py` and `state.py` already read it that way **correctly**. Changing the transmitted value would break a correct consumer and silently redefine LIVE_FRAME bytes [2-3] under an unchanged protocol version. **The wire does not move; the detector does.**
+
+The stride falls out of constants that already exist — `FFT_AVERAGE_COUNT * FFT_HOP_SAMPLES / AUDIO_BLOCK_SAMPLES` = 16 — which is the same expression `EXPECTED_BLOCK_MS` is already built from, so the two cannot drift apart. And the test changes shape, not just its number: `gap > 1` becomes `gap != expected`, because **a gap smaller than expected is also a finding** and the current form cannot say so.
+
 ## 2026-09-30 (1) — **The Pi UI is reading the live UART on the physical display.** With no stimulus connected it draws nothing, and says why — which is a better demonstration than a tone would have been
 
 Checkpointed the night's work as three commits, then ran the live smoke test. No flash, no firmware change, no measurement initiated, no analog or routing change. Firmware `26f2bee`, session **9**, unchanged since Run 2. Record: [`2026-09-30-pi-ui-live-uart-smoke-test.md`](evidence/2026-09-30-pi-ui-live-uart-smoke-test.md).
