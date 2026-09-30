@@ -1,0 +1,188 @@
+T1 RUN 2 — DISPLAY_TARGET_PI, reader consuming normally
+=======================================================
+Executed 2026-09-29 local / 2026-09-30 UTC. Firmware 26f2bee, unmodified.
+Session 9 (fresh boot, physically power-cycled by the operator).
+Serial captured over native USB via the serial MCP; NOTHING was sent to the
+board except one lowercase 't' and one uppercase 'T'.
+
+*** RUN 2 STOPPED ON ITS OWN STOP CONDITION: blocks_skipped != 0. ***
+*** NOT RETRIED, per docs/T1_run2_procedure.md §8 and runbook step 11.  ***
+*** See ai/evidence/2026-09-29-t1-harness-block-stride-defect.md — the    ***
+*** skip metric is measuring the wrong counter stride, and acquisition   ***
+*** was in fact healthy. Do NOT read this as measurement disturbance.    ***
+
+-------------------------------------------------------------------------------
+FILE ORDER IS DELIBERATE
+-------------------------------------------------------------------------------
+pi/tools/t1_diff.py takes the LAST [Link] block in a file as the
+authoritative transport figures. The T1 report is therefore placed at the
+END of this file, after the representative diagnostic block, so the
+report's own [Link] values are the ones parsed. Verified by parsing this
+file: live_sent 4712, tx_room_min 2464 — the report's, not the sample's.
+
+-------------------------------------------------------------------------------
+REPRESENTATIVE 5 s DIAGNOSTIC BLOCK FROM INSIDE THE WINDOW (uptime 223 s)
+-------------------------------------------------------------------------------
+
+[Main] --- 5s diagnostics (uptime 223s) ---
+[Main] Build: Sep 26 2026 16:36:53   v0.6.0
+[Main] Block:      108 in 5000ms = 46.3 ms/block (expected 46.4 ms, delta -0.1 ms)
+[Main] Display: 108 updates = 46.3 ms/update (expected 46.4 ms)
+[Main] Loop:         4884711 iterations/5s = ~976942/sec
+[Link] Session id:  9 (constant for this boot) | HELLO 217 sent, 0 dropped, every 1000 ms
+[Link] Live frames:  4630 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Call time:    max 282 us, mean 237.6 us, last 6 us (5499 calls)
+[Link] TX room min:  2464 B of 4096 B buffer
+[Main] SOURCE_NODE peak: -23.8 dBFS          |   RETURN_NODE peak: -67.4 dBFS
+[Main] TF confidence: 2%          (threshold 10%)   persistence: ACTIVE
+[Main] TF clamped bins: 3 of 512
+[Main] TF spot-check:   120Hz=---   500Hz=---   1kHz=RAIL[-24.0dB]   5kHz=---   10kHz=---
+[Main] Route: TS return, no injection
+[Main] AudioMemory: 10 in use, 19 max, of 128 allocated
+[RAWDUMP] 32 int16 per node (src_avail=1 ret_avail=1)
+[RAWDUMP] SOURCE: 498 197 -96 -397 -682 -952 -1210 -1442 -1647 -1811 -1945 -2037 -2089 -2094 -2060 -1988 -1869 -1719 -1529 -1313 -1064 -793 -520 -222 72 368 663 934 1197 1424 1626 1809
+[RAWDUMP] RETURN: -3 -9 -1 -6 -3 -1 -1 1 -4 -2 0 1 6 3 6 5 10 5 8 2 6 11 0 -1 0 3 1 -2 3 -1 0 2
+
+*** THE INDEPENDENT CROSS-CHECK THAT EXONERATES ACQUISITION. ***
+Every 5 s block across the whole 137.8 s window reported 107-108 blocks per
+5000 ms — i.e. the expected ~21.5 analysis blocks/s with NO gaps. If 15 of
+every 16 blocks had genuinely been skipped, this counter would have read ~7.
+
+-------------------------------------------------------------------------------
+BENCH CONDITIONS
+-------------------------------------------------------------------------------
+Stimulus     battery phone -> active USB-C DAC -> continuity-verified TRS->TS
+             -> J4 SOURCE. Continuous ~1 kHz sine.
+SOURCE START -23.7 dBFS   (first block after settle, capture already running)
+SOURCE END   -23.8 dBFS   (last block before 'T')
+             Drift 0.1 dB across the window — well inside the +/-0.5 dB
+             procedural consistency guard. NOT an acceptance criterion.
+             NOTE: the matrix reference level is -23.7/-23.8 dBFS, NOT the
+             -21.8 dBFS of 2026-09-27. The phone was ~3 dB quieter. Nothing in
+             T1 depends on the absolute level, only on it being the SAME across
+             all four runs, and no run had yet been recorded.
+RETURN       -65.7 to -68.0 dBFS throughout
+Route        TS return, no injection (boot default; j/k never pressed)
+Raw SOURCE   clean sine, +/-2125 counts, monotonic ramps
+1 kHz        RAIL[-24.0dB], TF confidence 2%, 3-4 of 512 bins clamped
+Block period 46.3-46.7 ms per 5 s block vs 46.4 expected
+
+-------------------------------------------------------------------------------
+PI-SIDE CAPTURE (the reader that makes this run 2 rather than run 1)
+-------------------------------------------------------------------------------
+Tool         pi/tools/capture.sh (byte-identical to Mac HEAD, sha256 d829ea61...)
+             Run WITHOUT sudo: conley is in the dialout group and /dev/ttyAMA0
+             is root:dialout crw-rw----.
+Command      sh pi/tools/capture.sh /dev/ttyAMA0 150 t1-run2-pi-normal.bin
+start        2026-09-30T06:31:09Z
+end          2026-09-30T06:33:39Z
+elapsed      150s of 150s requested
+bytes        5472570
+sha256       fc9f7dbabd1c8f0e831ba74b9ed00bc777a9633f8c16a610367506269a3bdde7
+rate         36483 B/s   <-- full idle rate; the reader consumed normally
+Artifact     kept on the Pi at ~/guitar_rig_analyzer/t1-run2-pi-normal.bin
+             (5.5 MB; not committed — a 4.38 MB full-rate artifact is already
+             held in-repo and a second adds nothing. Hash recorded above.)
+
+-------------------------------------------------------------------------------
+PROCEDURAL DEVIATIONS — RECORDED, NOT SMOOTHED OVER
+-------------------------------------------------------------------------------
+1. WINDOW WAS 137.785 s, NOT THE FIXED 120 s.
+   Cause: operator-side (agent) tool-call latency. The passive serial read that
+   was holding the window open returned early at 75 s on a 32 KiB buffer cap,
+   and the gap before resuming added ~18 s. 'T' was sent as soon as the overrun
+   was noticed.
+   Effect: +14.8 % over the fixed window, which EXCEEDS the 10 % tolerance
+   pi/tools/t1_diff.py applies. Runs 1/3/4 must use the same 120 s target, so
+   this run is NOT window-matched to a future control and would be flagged.
+   This alone is grounds to re-run run 2 once the harness defect is fixed.
+
+2. THE BOOT BANNER WAS NOT CAPTURED.
+   The port was attached after the banner had scrolled. Accepted rather than
+   voided because all three identity items it carries were obtained from
+   equivalent sources actually captured here: the build stamp from every 5 s
+   block (printBuildIdentity() has two callers), display_target from
+   '[T1] display_target=Pi 5 (UART)', and the session id from '[Link] Session
+   id: 9'. docs/T1_run2_procedure.md §8 lists a missed banner as "void and
+   retry"; that condition is over-strict and should be amended.
+
+3. THE PI CAPTURE DID NOT SPAN THE WHOLE WINDOW.
+   Capture 06:31:09Z-06:33:39Z; window ~06:31:50Z-06:34:08Z. The final ~29 s of
+   the window had no Pi-side reader. Consequence of deviation 1.
+   Materially harmless, and provably so: there is NO hardware flow control on
+   this link (Serial1, no attachCts/attachRts anywhere, RTS/CTS not wired), so
+   the Teensy transmits at baud rate regardless of whether the Pi drains and
+   CANNOT observe the difference. No [T1] metric can depend on it.
+   It is still a deviation from "reader consuming normally for the whole
+   window" and is recorded as one.
+
+4. Ordering: the Pi capture was started BEFORE the serial precondition checks,
+   so the checks ran inside the settle period. Deliberate, to protect the
+   150 s capture's coverage of the window.
+
+-------------------------------------------------------------------------------
+WHAT THIS RUN DOES AND DOES NOT ESTABLISH
+-------------------------------------------------------------------------------
+DOES (OBS):
+  - Acquisition on this build, with a Pi attached and a reader consuming, held
+    a 46.440 ms mean block period with 0.089 ms total spread over 2966 blocks.
+  - Zero packets of any class were dropped: live 4712/0, STATE 438/0,
+    HELLO 220/0, ROUTER 219/0, events 5/0.
+  - Transport call time max 282 us — microseconds, not milliseconds.
+  - TX room min 2464 B of 4096 B, i.e. never exhausted in a boot with no
+    RESULT. Together with 2026-09-27's 0 B reading in a boot that DID drain an
+    8908 B RESULT, this confirms the earlier 0 B observation came from the
+    RESULT drain overflowing the 4096 B ring, not from live frames (TODO-63).
+
+DOES NOT:
+  - Does NOT pass T1. There is no control run, and the one absolute criterion
+    is unevaluable because the metric is defective.
+  - Does NOT establish anything comparative. block_ms_* means nothing until
+    run 1 exists. timing_probe.h: "the control run IS the threshold."
+  - Does NOT close TODO-34, TODO-35, TODO-36, TODO-59 or any runbook step.
+  - Does NOT touch Phase 9, which remains open.
+  - Says NOTHING about runs 3/4, whose backpressure premise is already void.
+-------------------------------------------------------------------------------
+THE T1 REPORT, VERBATIM
+-------------------------------------------------------------------------------
+
+[T1] ================ T1 ACCEPTANCE REPORT ================
+[T1] display_target=Pi 5 (UART)
+[T1] firmware=0.6.0 protocol=2
+[T1] window_ms=137785
+[T1] --- acquisition (must be indistinguishable across runs) ---
+[T1] block_n=2966
+[T1] block_ms_mean=46.440
+[T1] block_ms_max=46.484
+[T1] block_ms_min=46.395
+[T1] block_ms_spread=0.089
+[T1] blocks_skipped=44490
+[T1] skip_events=2966
+[T1] largest_block_gap=16
+[T1] loop_iters=134611620
+[T1] loop_us_max=598
+[T1] loop_us_mean=0.5
+[T1] audio_blocks_used=12
+[T1] audio_blocks_high_water=19
+[T1] --- transport (allowed to lose data; must not block) ---
+[Link] --- Pi link transport (measured) ---
+[Link] Atomicity:   0 best-effort packets refused while a RESULT was draining (expected, not a fault)
+[Link] Router:      219 sent, 0 dropped | repair every 1000 ms + on change
+[Link] State:       438 sent, 0 dropped (drops include atomicity refusals), every 500 ms
+[Link] Session id:  9 (constant for this boot) | HELLO 220 sent, 0 dropped, every 1000 ms
+[Link] Live frames:  4712 sent, 0 dropped (0.0%), longest drop streak 0
+[Link] Results:      0 queued, 0 delivered, 0 superseded (0 B abandoned), max drain 0 ms
+[Link] Events:       5 sent, 0 dropped
+[Link] Call time:    max 282 us, mean 237.7 us, last 282 us (5594 calls)
+[Link] TX room min:  2464 B of 4096 B buffer   (0 = the Pi is not draining)
+[Link] Frame size:   1689 B framed, 4:1 decimation, 128 live bins, protocol v2
+[Link] Interpretation: a high drop count with a LOW max call time is the policy working correctly —
+[Link] the Pi is absent or slow and measurement timing is unaffected. Compare against block timing above.
+[T1] --- PASS CONDITION ---
+
+*** SCOPE OF THE [Link] BLOCK: BOOT-SCOPED, NOT WINDOW-SCOPED (TODO-63). ***
+dataSender_resetStats() runs only from dataSender_init(), so the figures above
+cover the whole of session 9 — the settle time before 't' plus the window plus
+the tail before 'T' — not the 137.785 s window. TX room min is a
+min-since-boot high-water mark.
+

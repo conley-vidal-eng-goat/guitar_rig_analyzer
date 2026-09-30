@@ -1,0 +1,16 @@
+device : /dev/ttyAMA0 -> /dev/ttyAMA0
+config : 460800 8N1 raw, no flow control, min 1 time 0
+capturing 120 s ...
+
+start   : 2026-09-27T06:46:05Z
+end     : 2026-09-27T06:48:05Z
+elapsed : 120s of 120s requested
+bytes   : 4378056
+sha256  : 2da46560478d1843c24f07369252aa80de932c43d560a3dfc7b8203345b05eb8
+
+rate    : 36483 B/s
+
+Expected for an idle instrument: ~36 500 B/s (~25.6 packets/s), so
+~1.1 MB over 30 s. Measured on hardware 2026-09-26: 36 465 B/s.
+A byte count far below that is a link fault -- fix it here before
+replaying anything.

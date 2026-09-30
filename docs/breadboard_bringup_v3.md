@@ -1996,9 +1996,13 @@ An audit on 2026-09-11 found 17 findings against the v1 packet layout, five seve
 
 One finding is **not** closed, and it is the one this phase exists to settle:
 
-> **T1 — transmission must not perturb acquisition.** The prediction is that a 128-bin live frame occupies ~36.7 ms of wire time against a measured ~46.3 ms audio block period (~79 %). The delivery policy makes that *safe in principle* — a frame that does not fit is dropped, not waited on — but **nobody has measured it.** Until step 8 below produces a number, T1 is arithmetic, not evidence.
+> **T1 — transmission must not perturb acquisition.** The prediction is that a 128-bin live frame occupies ~36.7 ms of wire time against a measured ~46.3 ms audio block period (~79 %). The delivery policy makes that *safe in principle* — a frame that does not fit is dropped, not waited on — but **nobody has measured it.** Until **step 11** below produces a number, T1 is arithmetic, not evidence.
 
-A Pi-side parser may be written against v2 now. The format freezes when step 8 passes, because that measurement is the only remaining thing that could force a change to packet sizing or cadence.
+A Pi-side parser may be written against v2 now. The format freezes when **step 11** passes, because that measurement is the only remaining thing that could force a change to packet sizing or cadence.
+
+> *(Step numbering corrected 2026-09-27: both references above read "step 8". T1 is **step 11** — step 8 is the CRC-rejection demonstration. The wrong number appeared twice in the one section a reader consults to find out where T1 lives, and TODO-35/TODO-34 have always cited step 11. Numbering only; no criterion changed.)*
+
+**Execution aid:** [T1_run_sheet.md](T1_run_sheet.md) — the four runs as a fill-in sheet, with the flash sequence, the `_NONE` boot/electrical review, and a mechanical differ for the four reports. It carries no acceptance criteria of its own; step 11 below remains the authority.
 
 ## Parts tray for this phase
 

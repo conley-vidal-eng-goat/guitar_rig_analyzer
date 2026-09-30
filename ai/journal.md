@@ -12,6 +12,181 @@ How to use this file:
 
 ---
 
+## 2026-09-29 (1) — **T1 Run 2 ran, and the harness failed before the instrument did: 44 490 "skipped blocks" that never happened.** A 128-sample audio counter was being read as a 2 048-sample analysis counter. The Pi side had it right all along
+
+First hardware execution of `timing_probe`, and it broke on contact. Firmware `26f2bee` unmodified, session **9**, fresh physical power cycle, only `t` and `T` ever sent. **No flash, no firmware edit, no retry.** Records: [`t1-run2-pi-normal.txt`](evidence/t1-run2-pi-normal.txt), [`2026-09-29-t1-harness-block-stride-defect.md`](evidence/2026-09-29-t1-harness-block-stride-defect.md).
+
+### Raw observations first, explanation second — deliberately in that order
+
+```
+[T1] window_ms=137785        block_n=2966
+[T1] block_ms_mean=46.440    max=46.484  min=46.395  spread=0.089
+[T1] blocks_skipped=44490    skip_events=2966   largest_block_gap=16
+[T1] loop_us_max=598         loop_us_mean=0.5   audio_blocks_high_water=19
+```
+
+Transport, **boot-scoped** (TODO-63 — all of session 9, not the window): live **4712 sent / 0 dropped**, streak 0; STATE 438/0; HELLO 220/0; ROUTER 219/0; events 5/0; call time **max 282 µs**; **TX room min 2464 B of 4096**; 0 results queued; atomicity 0.
+
+Bench: SOURCE **−23.7 → −23.8 dBFS** across the window (0.1 dB drift), RETURN −65.7…−68.0, TS return / no injection, `1kHz=RAIL[-24.0dB]`, clean ±2125-count sine. Pi capture `150s of 150s`, **5 472 570 B at 36 483 B/s**, sha256 `fc9f7dba…3bdde7`.
+
+**The stop condition fired correctly and I did not retry it.** That was the right call for the wrong-looking reason: the number is real, the phenomenon is not.
+
+### ★ The tell was that the arithmetic was too clean
+
+`skip_events` was **2966** — *identical* to `block_n`. Every single block flagged. And `2966 × (16 − 1) = 44 490` exactly, with nothing left over. Real overruns are bursty and produce a variable gap; a constant `largest_block_gap=16` is not a fault, it is a stride.
+
+Then the identity that settled it:
+
+```
+block_ms_mean / largest_block_gap = 46.440 / 16 = 2.9025 ms
+128 samples / 44 100 Hz                        = 2.9025 ms
+```
+
+Exact to four decimals. The counter ticks once per **128-sample audio block**, not once per analysis block, and an analysis block is 2 048 samples = **16** of them.
+
+### Traced to three source facts, not inferred from the counter's name
+
+[timing_probe.cpp:89](../timing_probe.cpp#L89) tests `gap > 1`. [audio_engine.cpp:338](../audio_engine.cpp#L338) assigns `frame->output_block_number = block.audio_block_counter`. [audio_capture.h:103](../audio_capture.h#L103) documents that counter as *"the master timebase. Increments once per"* 128-sample block. Expected stride 1, real stride 16.
+
+**There is a second counter that would have been right.** `s_output_block_number` ([audio_capture.cpp:226](../audio_capture.cpp#L226)) does increment once per analysis block — and is **incremented, reset, and never read by anything**. Its own comment claims it *"appears in AudioRawBlock.output_block_number"*; it does not. [audio_engine.h:195](../audio_engine.h#L195) says the field *"Increments each time capture() returns true"*; false for the value assigned. **Two wrong comments and one dead counter fed one wrong instrument.**
+
+### ✅ Acquisition was fine, and three independent things say so
+
+The 5 s diagnostic block — which uses a **different** counter — read **107–108 blocks per 5 000 ms** in *every* block across 137.8 s. That is the expected ~21.5 analysis blocks/s. Had 15 of every 16 genuinely been lost it would have read ~7. The measured period was **46.440 ms with 0.089 ms spread over 2 966 blocks**; a real overrun stretches the *interval*, and it did not move. And zero packets of any class dropped. **44 490 dropped blocks is not a fact about this instrument and must never be recorded as one.**
+
+### 🔑 The humbling part: the other half of the codebase already knew
+
+[`packets.py:194`](../pi/analyzer_link/packets.py#L194) documents the transmitted field as *"the lower 16 bits of the **audio block counter**"*, and [`replay.py:110`](../pi/tools/replay.py#L110) records **2.9027 ms/tick measured** against our own 30 s fixture versus 2.9025 theoretical. The Pi-side decoder has been correct since 2026-09-26. The firmware's own skip detector was not. **Nothing ever cross-checked the two**, and `timing_probe` carrying 🟢 on *compile proof alone* is exactly the status-collapse this file was created to prevent. It sat green for eighteen days with a broken decisive metric.
+
+### The repair is in the detector, and that is evidence-backed rather than preferred
+
+I inspected every consumer before proposing anything, because the tempting fix — change what gets transmitted so the stride becomes 1 — is the wrong one. `output_block_number` goes on the wire as LIVE_FRAME bytes [2-3] ([data_sender.cpp:627](../data_sender.cpp#L627)), the Pi decodes it **correctly**, and `state.py` uses it for link staleness. Changing the transmitted value would break a correct consumer and silently redefine the wire under an unchanged `PI_PROTOCOL_VERSION`. **Fix `timingProbe_noteBlock()` to expect the real stride** — derived from existing constants, not a hard-coded 16 — and flag `gap != expected`, since a gap *smaller* than expected is also a finding that `gap > 1` cannot express.
+
+**Not fixed tonight, deliberately.** `26f2bee` is the artifact every 2026-09-27 RESULT-transport claim rests on. Reflashing to repair its own instrumentation mid-matrix would invalidate that chain. Batch it with TODO-61/63/64.
+
+### Consequences recorded rather than worked around
+
+**T1 cannot be adjudicated with this harness.** The three skip metrics are the only criteria the project states absolutely, and the stride is a property of the firmware's timebase — so **run 1, the `_NONE` control, would have failed identically.** The matrix could never have passed as instrumented. **TODO-35 stays open. Phase 9 stays open.**
+
+**Run 2 needs re-running anyway:** its window was **137.785 s** rather than the fixed 120 s (my tool-call latency — the passive read holding the window open returned early on a 32 KiB cap and the resume gap added ~18 s), which already exceeds the differ's 10 % tolerance. Two further deviations recorded: the boot banner was missed (accepted — build stamp, target and session id all came from equivalent captured sources, so §8's "void and retry" is over-strict), and the Pi capture ended ~29 s before `T`, which is provably immaterial because **without flow control the Teensy cannot observe whether the Pi drains.**
+
+**One question did close.** Session 9 drained no RESULT and read `TX room min 2464 B`; the 2026-09-27 session that drained an 8 908 B RESULT read `0 B`. The earlier zero was the RESULT overflowing the 4 096 B ring, not live frames. Established, not conjectured.
+
+**Runs 3 and 4 stay unexecuted and their premise is void** — no `attachCts`/`attachRts` anywhere, RTS/CTS unwired, so stalling the Pi reader starves the Pi while the Teensy transmits on regardless. Live proof: nothing reading `/dev/ttyAMA0` and the Teensy still reported **160 182 live frames sent, 0 dropped**.
+
+### Decision: the renderer proceeds, provisionally
+
+The operator authorised Pi UI development **as a development decision, explicitly not an acceptance waiver**. The T1 gate existed because a renderer embeds frame-rate and latency assumptions T1 could invalidate — and Run 2 *measured* them: 46.440 ms ± 0.089 ms, 21.5 fps, zero drops, 282 µs max call. The gate's purpose is served even though its formal criterion is not met, and the blocker is a firmware defect that must not be flashed mid-matrix. **A working UI must never be cited as evidence T1 passed.**
+
+## 2026-09-27 (2) — **T1 prepared without touching the board: one flash completes all four runs, and the control run is electrically a non-event.** Preparing it found two accounting defects and three decisions that had to be handed back rather than guessed
+
+No flash, no bench action, nothing run. Sheet: [`docs/T1_run_sheet.md`](../docs/T1_run_sheet.md); differ: [`pi/tools/t1_diff.py`](../pi/tools/t1_diff.py). Also a narrow numbering fix: the Phase 10 status section called T1 "step 8" **twice** — it is step 11, and step 8 is the CRC demonstration. Numbering only; no criterion moved.
+
+### ★ The flash sequence, and why the control run goes last
+
+Runs 2, 3 and 4 are all `_PI`, and the board already runs `26f2bee`. So they go **first at zero flash cost**, then one flash to `_NONE` for run 1, then the archived `_PI` hex back. **One flash to complete the matrix, two to end on the known-good image.**
+
+The instinct is to capture the control first because everything is judged against it. That is an **analysis** dependency, not an execution one — nothing in step 11 or `timing_probe.h` requires it — and reversing the order buys something real: **if run 2 fails, the known-good image was never disturbed.** Step 11 says a timing degradation means stop, and stopping with `26f2bee` still on the board means stopping in exactly the state today's RESULT evidence was gathered in.
+
+The cost is drift: if the bench moves between run 4 and run 1, the control is void and the whole matrix with it. Two mitigations, both cheap. Log SOURCE peak dBFS at the start and end of every run. And make flash 2 — the restore to the archived hex, which we want anyway — carry a **run-2-repeat as a drift control**: if it matches the first run 2, the bench did not move and run 1 is valid for all three.
+
+**The `_PI` image is restored by flashing the archived hex, never by rebuilding.** `__DATE__`/`__TIME__` are stamped into the image, so recompiling `26f2bee` yields a different binary with a different hash and the board could no longer be matched to the flashed-artifact record. Its own MANIFEST says "do not rebuild", and `arduino-cli -i <hex>` honours that.
+
+### ✅ The `_NONE` safety review came out clean for a structural reason, not a lucky one
+
+`guitar_rig_analyzer.ino` contains **no `#if DISPLAY_TARGET` guard anywhere.** Every hardware bring-up call runs unconditionally; only `presentation_*()` dispatch differs. So relays stay LOW and de-energised, return stays TS, injection stays false, generator amplitudes stay 0, all four jack pins stay `INPUT_PULLUP`, and the codec/I2S path is identical. Exactly **two** differences, both benign:
+
+- `data_sender.cpp` is compiled out entirely, so `Serial1.begin()` never runs and **Teensy pin 1 stays in reset state, high-Z**, against a Pi RXD0 that holds its own pull-up. **The Pi will receive nothing during run 1, and that must not be read as a fault** — it is the control working.
+- The **EEPROM session-counter write does not happen**, because it lives in `dataSender_init()`. `_NONE` therefore has *one fewer* boot-time side effect than the image already on the board — strictly safer, and the opposite of what I expected to find.
+
+The residual risk is the flashing operation, not the image: a reboot briefly releases every GPIO to reset state before `setup()` reclaims it, which already happens on every power cycle.
+
+### 🔴 Two accounting defects, both found by reading the code that produces the numbers rather than the numbers
+
+**TODO-63 — the T1 window resets acquisition stats but not transport stats.** `timingProbe_reset()` clears the `[T1]` block; `dataSender_resetStats()` runs **only** from `dataSender_init()`. So `[T1]` is window-scoped and `[Link]` is boot-scoped and cumulative, and nothing in the report says so. Executed in one boot, runs 2/3/4 would have had **overlapping transport columns** — run 3's drops including run 2's, and `tx_room_min` stuck at 0 for run 4 once run 3 drove it there. The matrix would have printed figures that did not mean what the matrix says they mean.
+
+**It also explains yesterday's `TX room min: 0 B of 4096 B`.** That was min-since-boot from a session which had already drained a full RESULT and sent 4 846 live frames. The figure was never wrong — it answers a different question than it appears to, and nothing timestamped it against the drain. Recording it as a candidate rather than a conclusion turned out to be the right call for a reason I could not see at the time.
+
+Workaround needs no firmware change: **reboot between every run.** Free, resets `[Link]`, and increments the session id — which is what lets the differ *detect* two runs sharing a boot instead of trusting the operator to remember.
+
+**TODO-64 — `TX room min` prints its never-sampled sentinel as `0`.** The code is `(tx_room_min == 0xFFFFFFFFu) ? 0UL : tx_room_min`, so "never sampled" and "observed zero" print identically — and `0` is the most alarming value the field has, since the line annotates it *"(0 = the Pi is not draining)"*. Currently unreachable in a `_PI` build with traffic, so today's reading was real. But it is **the same mistake the whole architecture exists to prevent**: unknown collapsing into a meaningful value, the rule that produced ROUTER_STATUS's availability mask and the RESULT NaN conventions. One line to fix, deliberately not fixed now — changing the image to improve its own instrumentation mid-acceptance would invalidate the artifact the matrix is being run against.
+
+### The differ refuses to give a verdict, and that is the design
+
+It enforces only what the project states **absolutely**: `blocks_skipped`, `skip_events` and `largest_block_gap` = 0 in every run, "no exceptions", applied to the control too. It also checks the experiment was controlled — equal windows, matching firmware, the control really built `_NONE`, no two runs sharing a boot, and whether runs 3 and 4 actually exercised their conditions (a run 4 with zero abandoned bytes **did not happen**, and says so).
+
+It **will not** judge `block_ms_mean/max/spread` or `loop_us_max` against the control, because **no authority in this project defines "indistinguishable"** and `timing_probe.h` says so deliberately: *"there is no threshold to argue about — the control run is the threshold."* A tool that picked 5 % would be inventing an acceptance criterion and returning a green tick nobody authorised. A test pins that refusal so a future automatic comparative verdict has to be argued for rather than slipped in.
+
+**A smoke test made the case better than the reasoning did.** A 0.2 ms change in `block_ms_max` showed up as **`block_ms_spread +33.3 %`**, because the spread is a small difference of two large numbers. A percentage gate would have failed a healthy run. Both columns are printed for exactly this reason.
+
+**One confound cannot be removed without a firmware change:** the 5 s diagnostic block calls `presentation_printDiagnostics()` unconditionally — one line under `_NONE`, about fourteen under `_PI`. The control therefore does less USB printing than runs 2–4. The bias runs **against** runs 2–4, so if they still match, the conclusion is safe; it is a reason to investigate a marginal failure, never to excuse one.
+
+### 🛑 Three decisions handed back rather than guessed
+
+**D1 — step 11 requires validation Tests 1–4 in run 3, and the standing rule forbids them.** Both step 11 and TODO-35 say the validation suite must run and pass with the Pi stalled, because *"a dead renderer must not be able to fail a measurement."* That is a documented acceptance criterion, so invoking it would not be casual — but it is Phase 9's harness, never runtime-tested, and it blocks the loop by design. Three options offered; my recommendation is to **defer the clause** and substitute a USB-liveness check (`i`, `j`, `k`, `T` all answer while stalled), because the clause is really asking about liveness under backpressure and Tests 1–4 are a heavyweight way to ask it while carrying unvalidated risk of their own. T1 would then close *except* that clause, stated explicitly.
+
+**D2 — run 4 asks for a wire pull inside the measured 102 ms drain, which is not hand-achievable.** Recommended resolution: perform run 4 with the reader **already suspended**, so the 4 096 B TX buffer fills, the 8 908 B RESULT cannot complete, and the drain stays pending for seconds instead of milliseconds. It is a deviation from the literal wording and is recorded as one; `result_bytes_abandoned > 0` is the objective confirmation either way, and the differ flags a zero.
+
+**D3 — where the link is broken is a genuine electrical decision.** **Not at Pi physical pin 10.** It sits directly beside **pin 8, GPIO14/TXD0, a driven 3.3 V output**; a jumper slipping sideways puts the Teensy's TX output against the Pi's TX output — two push-pull drivers fighting, a real damage path for both. Break it mid-cable at a DuPont junction, or at Teensy pin 1, whose neighbour is pin 0 (RX1, unconnected) and therefore a harmless loopback. This was not in any existing document and is the finding I would least like to have discovered during the run.
+
+**Tests: 252 → 276, all passing.** No firmware change, no flash, no bench action, no Phase 10 step closed, Phase 9 untouched.
+
+## 2026-09-27 (1) — **A complete Teensy-authored RESULT crossed the physical link: 8 908 bytes, CRC valid, four 512-bin arrays with their NaN conventions intact.** The 1 598 "discarded bytes" turned out to be 91 bytes into one packet — and chasing them found a real hole in the check that was excusing them
+
+Three artifacts, one bench arc, and the most useful finding came from refusing to accept a number that looked harmless. Firmware `26f2bee` unmodified. **No Phase 9 validation, no `v`, no Tests 1–4, no internal generator, no injection, no relay or route change, no wiring change.** Records: [`2026-09-27-phase10-result-transport.md`](evidence/2026-09-27-phase10-result-transport.md), [`2026-09-27-phase10-armed-timeout-negative-control.md`](evidence/2026-09-27-phase10-armed-timeout-negative-control.md), [`2026-09-27-discarded-bytes-accounted.md`](evidence/2026-09-27-discarded-bytes-accounted.md).
+
+### ★ The primary result
+
+Real external stimulus — battery phone → active USB-C DAC → continuity-verified TRS→TS cable → J4 SOURCE, ~1 kHz sine at **−21.8 dBFS** (above the strict −40 dBFS arm threshold, far below the −0.5 dBFS clip threshold) — then `m`. A single **8 901 B payload / 8 908 B framed** RESULT packet arrived at the Pi and passed CRC. All four canonical arrays decoded at the **512-bin** completed grid, and the **per-array** NaN conventions survived: NaN for unenergised bins in magnitude and phase, NaN at bins 0/511 in group delay by design, and **coherence carrying 0.0 with zero NaN**, because zero coherence is itself meaningful. Nothing became a silent zero; no infinity appeared. `result_valid`, quality grade, 32 averages, coherence 0.798961, valid-bin fraction 0.017467, calibration type + `CALIBRATION_MISSING` warning bit, and **four Teensy-authored insight records** all arrived verbatim.
+
+**The analog result was POOR and that is the expected shape, not a defect.** Narrowband tone in, noise on the return, so 4 of 512 bins were energised. The experiment was about transport. One of the four insights is the firmware *declining* to author advisories because quality was below MARGINAL — the quality gate working, and the refusal itself crossed the wire.
+
+### Two things that look like contradictions and are not, both written down so they stop being re-litigated
+
+**USB saw `IDLE → ARMED → CAPTURE → PROCESSING → RESULT`; the Pi saw `IDLE → CAPTURE → RESULT`.** STATE is a 500 ms sampler and ARMED and PROCESSING were each shorter than one interval. **A receiver must never read the STATE sequence as a complete transition log** — it is a state *observable*, which is exactly what TODO-57 specified.
+
+**`capture.sh` printed its "link fault" warning on a healthy capture.** 2 091 B/s against a ~36 500 B/s expectation, because `presentation_updateLive()` is gated to `IDLE|ARMED` and live frames **stop by design** once a measurement completes. The warning is calibrated for an idle instrument and this one was not idle. Raised as **TODO-62**, and deliberately as a *caveat* rather than a relaxation: that same message caught the `/dev/serial0` device fault on 2026-09-26, and an unqualified false alarm is how you train an operator to ignore the one warning that has already prevented a wrong diagnosis. It nearly happened here — a complete, CRC-valid RESULT was briefly at risk of being written off.
+
+### 🔑 The discarded bytes — and why "probably harmless" was the wrong answer
+
+The replay reported **1 598 bytes discarded** alongside zero CRC failures, zero oversize rejects, zero decode errors, zero end-buffer residue and a complete RESULT. The earlier fixtures reported 1 664 and 304. Rather than reason about it, the scan loop was instrumented to record **every discard event with its absolute offset** and run over all five hardware captures.
+
+**Every capture had exactly ONE discard event and it was at absolute offset 0.** Zero interior loss, zero inter-frame gaps, `consumed + buffered == file length` in all five. The bytes are the tail of the LIVE_FRAME the reader attached inside: 1 598 means the capture opened **91 bytes into one 1 689-byte packet**. 304 means it opened 1 385 bytes in. **The figure is set entirely by where inside a packet the reader happened to attach, and is independent of everything that happened during the capture** — so reading 1 598 > 304 as a worse link would have been exactly backwards. The capture with the *largest* discard is the committed clean fixture.
+
+**The finding is that the check was wrong, not the captures.** `replay.py` compared the *total* against `max_payload_bytes()` = **10 005 B** and called anything under it "explainable by a mid-stream start". Two faults in one line: 10 005 B is not what a mid-stream start can explain (the bound is one *framed* packet, and the check used a *payload* size), and it said nothing about **where** — so up to 10 005 bytes of genuine interior loss would have passed silently under a figure the report itself described as an artefact. Discards are now split leading/interior by position, `replay.py` **fails on any interior discard event**, and `reset()` charges nothing so a reconnect cannot masquerade as a transport fault. `pi/tools/byte_audit.py` closes the accounting and checks inter-frame contiguity — built on the production scanner, not a copy of it, because an audit that reimplements the framing can agree with itself while disagreeing with the receiver.
+
+**Residual curiosity, recorded rather than smoothed over.** All five captures end *exactly* on a frame boundary and one also began on one. For the low-occupancy captures that is expected; for the two full-rate ones it is a ~4 % coincidence, and opening on a sync word is ~1-in-1 689. Leading hypothesis (`INFER`): the RP1 UART RX path delivers in bursts delimited by line idle, so `cat` sees roughly one read per packet, the file starts wherever inside a burst the reader attached, and the in-flight burst is never flushed to a process `timeout` has already killed. One mechanism, both observations. It can only affect the final partial frame, which would otherwise show as `buffered at end > 0` — already reported, already not an error. Ten short captures on the Pi would settle it and it is worth no more attention than that.
+
+### 🔴 A second defect the hardware bytes found, of a kind the tests could not
+
+The STATUS packet carries `"Measuring \xe2\x80\x94 external stimulus"` — a **UTF-8 em dash**, because [guitar_rig_analyzer.ino:560](../guitar_rig_analyzer.ino#L560) contains a literal one, as do ~20 other `presentation_status()` sites and many in `validation.cpp`. The receiver decoded **ASCII**, so every one rendered as three U+FFFD characters. **The Pi was corrupting a human-readable string the Teensy authored correctly.**
+
+**This is the shared-author blind spot again, and the specific mechanism is worth naming:** `tests/vectors.py` wrote the same message with an **ASCII hyphen**, so encoder and decoder agreed with each other and the test passed. The synthetic vectors could not have caught it in principle. That is the second defect the real byte stream has broken open that offline testing was structurally unable to reach, and it is the clearest argument yet for pinning regression tests to captured artifacts rather than to generated ones.
+
+Fixed on the Pi side; `errors="replace"` kept deliberately, because a capped field can truncate a multibyte sequence and a status string must degrade visibly rather than raise into the frame loop. **The firmware side is a contract gap, not a bug, and is left to a decision (TODO-61):** `data_sender.h` never states an encoding. Either state UTF-8 explicitly or restrict transmitted strings to ASCII so a 7-bit font is safe too — and note the RA8875 debug path feeds the same literals to Adafruit GFX, where an em dash has never been observed rendering. **No firmware edit made:** the board runs `26f2bee` and the only source drift from it is a comment, which is worth keeping until there is a reason to reflash.
+
+### The negative control, and a correction to how it was described
+
+The 00:02-local run of 2026-09-27 was spoken of as an *attempted stimulated RESULT*. **It was not — no stimulus was playing after midnight, and that description is withdrawn.** `m` with nothing on the input gave `IDLE → ARMED` → ~10 s arm wait → `ABORTED` with prose `"armed timeout"` → the machine-readable `TIMEOUT` enum **499 ms later** → the latch staying sticky for the remaining 42 s. Peak source **−63.9 dBFS** against peak return **−65.7 dBFS** — within 1.8 dB of each other, both at the noise floor, which is the independent signature of an unplugged input.
+
+**This is the instrument working.** A measurement engine that armed on an absent input would produce a confident result from noise. And the 499 ms lag **reproduces Step A's 502 ms** independently: the prose reason rides the best-effort ABORTED packet, the enum rides the next periodic STATE, and a receiver must not require them to be simultaneous or read the first post-abort `reason_code NONE` as "no reason".
+
+A third artifact from the same boot turned up unmentioned and is now recorded: `phase10-result-attempt.bin`, **4 378 056 B over 120 s at full 36 483 B/s**, containing **no STATUS, no ABORTED, no RESULT** — `m` was never issued inside that window. Its filename records an intention and its bytes record an idle instrument. It is nonetheless the strongest byte-integrity datapoint in the set: 4× the committed fixture, zero errors of every class, zero discarded bytes.
+
+### Session counter: `INFER` → `OBS`
+
+Three boots now appear in preserved artifacts — **4** (three captures on 2026-09-26), **6** (two captures, same id in both), **7** (the RESULT run). **The monotonic session counter increments across real power cycles, which is TODO-56's central claim, and it is now an observation.** Session **5** was never captured, so **a receiver must treat any change as a new session and must not expect +1.** What is still not proven: no reboot has been seen *during* a capture, and no running receiver has recovered across one. Runbook step 10 is untouched.
+
+### What was deliberately NOT concluded
+
+- **`x` was typed into the USB Serial Monitor.** RESULT → IDLE and the return to live view are `MEAS` on USB. The Pi→Teensy direction is **physically disconnected** — pin 0 and GPIO14 both unconnected — so **none of this is Pi→Teensy evidence.** And `x` came *after* the window closed, so the capture holds **zero VIEW packets**; post-`x` recovery over the link is still unestablished, exactly as Step A left it. Pinned as a test so the absence cannot drift into an assumption.
+- **`blocked_by_result` read 0 during a real 102 ms RESULT drain.** This is a *stronger* statement of the same gap than before — a RESULT genuinely staged and drained, and still nothing collided. **Zero is silence, not a pass.** TODO-59's positive contention case remains unexercised, and manufacturing a collision needs a written test plan rather than a convenient poke at the counter.
+- **`TX room min: 0 B of 4096 B`** observed in run-2-like conditions where the T1 matrix does not predict it. Preserved as an open observation. The staged drain filling the UART is the obvious candidate; it is a min-since-boot high-water mark and nothing timestamps it against the drain, so candidate is all it is.
+- **T1 is untouched.** One healthy 5 s window with a Pi attached (block period 46.7 ms vs 46.4 expected, call time max 449 µs) is not a four-run matrix against a `_NONE` control, and the pass condition is the comparison, not the absolute number.
+- **Phase 9 is unchanged and still open.** Phase 10 transport progressing says nothing about it.
+
+**Tests: 228 → 252, all passing, standard library only.** No firmware change, no bench action, and **no Phase 10 runbook step closed** — steps 7 and 10 advanced, step 11 is where the phase actually turns.
+
 ## 2026-09-26 (12) — **Step A: 71 consecutive authoritative ABORTED/TIMEOUT snapshots with ZERO live frames after the abort. TODO-57's justification, on hardware.** The experiment did not follow its plan, and the bytes — not the plan — set the conclusion
 
 First hardware exercise of a measurement-state transition over the link. No wiring change, no stimulus, no generator, no injection, no relay or route change. Firmware `26f2bee` unmodified. Record: [`2026-09-26-phase10-stepA-abort.md`](evidence/2026-09-26-phase10-stepA-abort.md).
