@@ -151,5 +151,83 @@ class TestFrameScanner(unittest.TestCase):
         self.assertEqual(self.scanner.stats.frames_ok, 1)
 
 
+class TestDiscardPosition(unittest.TestCase):
+    """Leading loss is a capture artefact; interior loss is a transport claim.
+
+    Added 2026-09-27. Five real captures were audited and every one had exactly
+    ONE discard event, at offset 0 — so the invariant worth enforcing is
+    positional, and `replay.py` now fails a capture that loses bytes INSIDE the
+    stream even when the total is small. Before this the total alone was checked
+    against 10 005 B, which would have passed a genuine interior loss silently.
+    """
+
+    def setUp(self):
+        self.scanner = FrameScanner()
+
+    def test_leading_garbage_is_classified_as_leading(self):
+        noise = b"\x11" * 40
+        self.scanner.feed(noise + vectors.hello())
+        st = self.scanner.stats
+        self.assertEqual(st.bytes_discarded, 40)
+        self.assertEqual(st.bytes_discarded_leading, 40)
+        self.assertEqual(st.bytes_discarded_interior, 0)
+        self.assertEqual(st.interior_discard_events, 0)
+
+    def test_garbage_after_the_first_frame_is_classified_as_interior(self):
+        noise = b"\x11" * 40
+        self.scanner.feed(vectors.hello() + noise + vectors.hello())
+        st = self.scanner.stats
+        self.assertEqual(st.frames_ok, 2)
+        self.assertEqual(st.bytes_discarded, 40)
+        self.assertEqual(st.bytes_discarded_leading, 0)
+        self.assertEqual(st.bytes_discarded_interior, 40)
+        self.assertEqual(st.interior_discard_events, 1)
+
+    def test_leading_and_interior_loss_are_kept_apart_in_one_stream(self):
+        self.scanner.feed(b"\x11" * 7 + vectors.hello()
+                          + b"\x22" * 5 + vectors.hello())
+        st = self.scanner.stats
+        self.assertEqual(st.bytes_discarded_leading, 7)
+        self.assertEqual(st.bytes_discarded_interior, 5)
+        self.assertEqual(st.bytes_discarded,
+                         st.bytes_discarded_leading
+                         + st.bytes_discarded_interior)
+
+    def test_a_crc_resync_after_a_good_frame_counts_as_interior(self):
+        bad = bytearray(vectors.hello())
+        bad[7] ^= 0xFF                                   # payload, not header
+        self.scanner.feed(vectors.hello() + bytes(bad) + vectors.hello())
+        st = self.scanner.stats
+        self.assertEqual(st.frames_ok, 2)
+        self.assertGreaterEqual(st.crc_failures, 1)
+        self.assertGreater(st.bytes_discarded_interior, 0)
+        self.assertEqual(st.bytes_discarded_leading, 0)
+
+    def test_reset_does_not_invent_interior_loss(self):
+        """A reconnect must not look like a transport fault.
+
+        `reset()` throws away a half-received frame on purpose. Counting those
+        bytes as interior loss would make every link drop report loss the link
+        never caused, and the post-reset stream is a fresh attach, so its
+        leading partial is leading loss again.
+        """
+        stream = vectors.hello() + vectors.live_frame(GEO)
+        self.scanner.feed(stream[:len(vectors.hello()) + 100])
+        self.scanner.reset()
+        self.scanner.feed(b"\x11" * 9 + vectors.hello())
+        st = self.scanner.stats
+        self.assertEqual(st.bytes_discarded_interior, 0)
+        self.assertEqual(st.interior_discard_events, 0)
+        self.assertEqual(st.bytes_discarded_leading, 9)
+
+    def test_the_total_is_still_the_sum(self):
+        """`bytes_discarded` keeps its old meaning so byte accounting holds."""
+        self.scanner.feed(b"\x11" * 3 + vectors.hello() + b"\x22" * 11)
+        st = self.scanner.stats
+        self.assertEqual(st.bytes_discarded,
+                         st.bytes_discarded_leading
+                         + st.bytes_discarded_interior)
+
+
 if __name__ == "__main__":
     unittest.main()

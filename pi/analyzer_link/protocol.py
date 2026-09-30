@@ -127,6 +127,20 @@ def max_payload_bytes(fft_bins: int = DEFAULT_FFT_BINS,
     return result_payload_bytes(fft_bins, insights_max)
 
 
+def max_framed_bytes(fft_bins: int = DEFAULT_FFT_BINS,
+                     insights_max: int = DEFAULT_INSIGHTS_MAX) -> int:
+    """Largest number of bytes one complete packet can occupy on the wire.
+
+    This -- not ``max_payload_bytes()`` -- is the bound on how much a capture
+    can discard by attaching mid-stream: the reader lands inside exactly one
+    packet and loses that packet's remainder, header and CRC included. Used by
+    ``pi/tools/replay.py`` to bound LEADING discard. Added 2026-09-27 when the
+    old check was found to allow 10 005 B of unexamined loss.
+    """
+    return (HEADER_BYTES + max_payload_bytes(fft_bins, insights_max)
+            + CRC_BYTES)
+
+
 # =============================================================================
 # PACKET TYPES  (data_sender.h)
 # =============================================================================

@@ -25,6 +25,18 @@ false syncs are normal, not exceptional. A length field above
 ``max_payload_bytes()`` is therefore treated as a false sync and rejected
 immediately rather than buffered. Without that bound, two noise bytes could
 make the receiver wait on 64 KB that will never arrive.
+
+WHERE A DISCARD HAPPENS MATTERS MORE THAN HOW MANY. A capture opened mid-frame
+must discard the tail of the frame it landed inside, and that is not a defect --
+it is the unavoidable cost of attaching to a running stream. A discard *after*
+the first verified frame is a different claim: bytes that should have been the
+next frame's sync word were not, which is real loss on the wire, in the driver,
+or in the reader. The two used to be summed into one figure and judged against a
+loose bound, so up to one maximum packet of INTERIOR loss could pass as
+"explainable by a mid-stream start". They are counted separately now, so the
+distinction is checked instead of assumed. Established 2026-09-27 against five
+real hardware captures: every one had exactly ONE discard event and it was at
+offset 0.
 """
 
 from __future__ import annotations
@@ -62,12 +74,19 @@ class ScannerStats:
     ``crc_failures`` is the figure runbook step 8 asks for. ``bytes_discarded``
     rising without ``frames_ok`` rising is a physical-layer fault (baud, wiring,
     or — the classic — no common ground), not a protocol fault.
+
+    ``bytes_discarded_leading`` / ``bytes_discarded_interior`` split that total
+    by position, and the interior figure is the one that carries a transport
+    claim. ``bytes_discarded`` stays their sum so existing readers keep working.
     """
     frames_ok: int = 0
     crc_failures: int = 0
     oversize_rejects: int = 0
     bytes_discarded: int = 0
     bytes_in: int = 0
+    bytes_discarded_leading: int = 0
+    bytes_discarded_interior: int = 0
+    interior_discard_events: int = 0
 
 
 class FrameScanner:
@@ -86,6 +105,9 @@ class FrameScanner:
         self._consumed = 0
         self._max_payload = (max_payload if max_payload is not None
                              else protocol.max_payload_bytes())
+        # False until the first CRC-verified frame is emitted. Everything
+        # discarded before that is attach loss; everything after is a finding.
+        self._seen_frame = False
         self.stats = ScannerStats()
 
     # -- geometry -----------------------------------------------------------
@@ -95,6 +117,16 @@ class FrameScanner:
         self._max_payload = max_payload
 
     # -- the scanner --------------------------------------------------------
+
+    def _discard(self, n: int) -> None:
+        """Account for ``n`` dropped bytes and classify them by position."""
+        self.stats.bytes_discarded += n
+        if self._seen_frame:
+            self.stats.bytes_discarded_interior += n
+            self.stats.interior_discard_events += 1
+        else:
+            self.stats.bytes_discarded_leading += n
+        self._consumed += n
 
     def feed(self, data: bytes) -> list[Frame]:
         """Absorb bytes; return every complete, CRC-verified frame found."""
@@ -114,14 +146,12 @@ class FrameScanner:
                 keep = 1 if buf and buf[-1] == protocol.SYNC_BYTES[0] else 0
                 drop = len(buf) - keep
                 if drop > 0:
-                    self.stats.bytes_discarded += drop
-                    self._consumed += drop
+                    self._discard(drop)
                     del buf[:drop]
                 return out
 
             if start > 0:
-                self.stats.bytes_discarded += start
-                self._consumed += start
+                self._discard(start)
                 del buf[:start]
 
             if len(buf) < protocol.HEADER_BYTES:
@@ -134,8 +164,7 @@ class FrameScanner:
                 # Either way this is not a packet. Step over the sync word's
                 # first byte and keep scanning.
                 self.stats.oversize_rejects += 1
-                self.stats.bytes_discarded += 1
-                self._consumed += 1
+                self._discard(1)
                 del buf[:1]
                 continue
 
@@ -152,12 +181,12 @@ class FrameScanner:
                 # See RESYNC POSITION in the module docstring: one byte, not
                 # one packet.
                 self.stats.crc_failures += 1
-                self.stats.bytes_discarded += 1
-                self._consumed += 1
+                self._discard(1)
                 del buf[:1]
                 continue
 
             self.stats.frames_ok += 1
+            self._seen_frame = True
             out.append(Frame(packet_type=packet_type, payload=payload,
                              offset=self._consumed))
             self._consumed += total
@@ -171,9 +200,16 @@ class FrameScanner:
         Call on a link drop. A half-received frame from before the drop cannot
         be completed by bytes from after it, and leaving it in place would let
         a stale prefix corrupt the first frame of the new session.
+
+        The dropped remainder is NOT added to any discard counter. It was not
+        lost by the link and it is not attach loss either -- the caller threw it
+        away deliberately. Counting it as interior loss would make every
+        reconnect look like a transport fault. The post-reset stream is treated
+        as a fresh attach, so its leading partial frame counts as leading loss.
         """
         self._consumed += len(self._buf)
         self._buf.clear()
+        self._seen_frame = False
 
     @property
     def buffered_bytes(self) -> int:

@@ -321,13 +321,29 @@ def replay(raw: bytes, seconds: float | None,
     if st.oversize_rejects:
         problems.append(f"{st.oversize_rejects} oversize length reject(s)")
 
-    # Bytes discarded before the first sync are normal (the capture starts
-    # mid-stream). Anything beyond roughly one maximum packet is not.
-    slack = protocol.max_payload_bytes()
-    if st.bytes_discarded > slack:
+    # --- discarded bytes: judged by POSITION, not by a size bound -----------
+    #
+    # This used to allow any total up to max_payload_bytes() (10 005 B) as
+    # "explainable by a mid-stream start". Two things were wrong with that.
+    # It was far looser than a mid-stream start can actually explain -- the
+    # capture lands inside ONE frame, so at most one framed packet minus a byte
+    # can be attributed to attaching -- and, worse, it said nothing about WHERE
+    # the loss happened, so interior resync loss could hide underneath it.
+    #
+    # Established against five real hardware captures on 2026-09-27: each had
+    # exactly ONE discard event, at absolute offset 0, of 0-1664 B, with zero
+    # inter-frame gaps thereafter. So the invariant to enforce is positional.
+    if st.interior_discard_events:
         problems.append(
-            f"{st.bytes_discarded} bytes discarded, above the {slack} B "
-            f"explainable by a mid-stream start")
+            f"{st.bytes_discarded_interior} byte(s) discarded INSIDE the stream "
+            f"across {st.interior_discard_events} event(s) — loss after the "
+            f"first good frame is a transport finding, not a mid-stream start")
+    lead_slack = protocol.max_framed_bytes()
+    if st.bytes_discarded_leading >= lead_slack:
+        problems.append(
+            f"{st.bytes_discarded_leading} leading bytes discarded, which is "
+            f"more than the {lead_slack} B of one maximum framed packet — a "
+            f"mid-stream start cannot account for that")
 
     res = state.latest_result
     result_obs = None
@@ -379,6 +395,9 @@ def replay(raw: bytes, seconds: float | None,
             "crc_failures": st.crc_failures,
             "oversize_rejects": st.oversize_rejects,
             "bytes_discarded": st.bytes_discarded,
+            "bytes_discarded_leading": st.bytes_discarded_leading,
+            "bytes_discarded_interior": st.bytes_discarded_interior,
+            "interior_discard_events": st.interior_discard_events,
             "buffered_at_end": scanner.buffered_bytes,
         },
         "receiver": {
@@ -470,7 +489,10 @@ def main() -> int:
     print(f"  frames ok        {f['frames_ok']}")
     print(f"  CRC failures     {f['crc_failures']}")
     print(f"  oversize rejects {f['oversize_rejects']}")
-    print(f"  bytes discarded  {f['bytes_discarded']}")
+    print(f"  bytes discarded  {f['bytes_discarded']}"
+          f"  (leading {f['bytes_discarded_leading']}, "
+          f"interior {f['bytes_discarded_interior']} in "
+          f"{f['interior_discard_events']} event(s))")
     print(f"  buffered at end  {f['buffered_at_end']}")
     print()
     rc = r["receiver"]

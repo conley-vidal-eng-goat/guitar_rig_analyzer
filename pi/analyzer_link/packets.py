@@ -48,9 +48,34 @@ class GeometryUnknown(DecodeError):
     """
 
 
+# *** TEENSY-AUTHORED TEXT IS UTF-8, NOT ASCII. ***
+#
+# Found on real hardware bytes 2026-09-27, not by reading the header: the STATUS
+# packet for `m` carries "Measuring \xe2\x80\x94 external stimulus" -- a UTF-8 EM
+# DASH, because guitar_rig_analyzer.ino:560 has a literal em dash in the source
+# string, as do ~20 other presentation_status() call sites. Decoding as ASCII
+# turned every one of them into three U+FFFD replacement characters, so the Pi
+# was corrupting a human-readable string the Teensy authored correctly.
+#
+# The synthesised test vectors could never have caught it: vectors.py wrote
+# "Measuring - external stimulus" with an ASCII hyphen. Exactly the shared-author
+# blind spot the hardware capture exists to break.
+#
+# errors="replace" is kept deliberately. A fixed-width field can truncate mid
+# sequence, and a damaged byte must degrade to a visible replacement character
+# rather than raise -- a status string is presentation, and it must never be able
+# to take down a receiver that is tracking measurement state.
+_TEXT_ENCODING = "utf-8"
+
+
+def _text(raw: bytes) -> str:
+    """Decode a Teensy-authored text field off the wire."""
+    return raw.decode(_TEXT_ENCODING, errors="replace")
+
+
 def _fixed_string(raw: bytes) -> str:
     """Decode a NUL-padded fixed-width wire field."""
-    return raw.split(b"\x00", 1)[0].decode("ascii", errors="replace")
+    return _text(raw.split(b"\x00", 1)[0])
 
 
 # =============================================================================
@@ -583,9 +608,8 @@ def decode_router_status(payload: bytes) -> RouterStatus:
                             "return_source"),
         injection_active=bool(payload[3]),
         monitor_mode=_enum(protocol.MonitorMode, payload[4], "monitor_mode"),
-        description=payload[protocol.ROUTER_FIXED_BYTES:
-                            protocol.ROUTER_FIXED_BYTES + desc_len]
-                    .decode("ascii", errors="replace"),
+        description=_text(payload[protocol.ROUTER_FIXED_BYTES:
+                                  protocol.ROUTER_FIXED_BYTES + desc_len]),
     )
 
 
@@ -614,7 +638,7 @@ def decode_string_payload(payload: bytes) -> str:
         raise DecodeError(
             f"string payload is {len(payload)} B, above the "
             f"{protocol.MAX_STRING_PAYLOAD} B the firmware can send")
-    return payload.decode("ascii", errors="replace")
+    return _text(payload)
 
 
 def decode(frame: Frame, geometry: protocol.Geometry | None = None):

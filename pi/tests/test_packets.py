@@ -393,6 +393,29 @@ class TestEventPackets(unittest.TestCase):
         with self.assertRaises(packets.DecodeError):
             packets.decode_string_payload(b"x" * 201)
 
+    def test_teensy_text_is_utf8(self):
+        """The firmware's own status strings contain a UTF-8 em dash.
+
+        Found on real hardware bytes 2026-09-27, after ASCII decoding had turned
+        `Measuring \u2014 external stimulus` into three replacement characters.
+        The real-byte guard lives in test_result_fixture.py; this is the unit.
+        """
+        msg = "Measuring \u2014 external stimulus"
+        self.assertEqual(packets.decode_string_payload(msg.encode("utf-8")),
+                         msg)
+
+    def test_a_truncated_multibyte_sequence_degrades_instead_of_raising(self):
+        """A status string is presentation and must never wedge a receiver.
+
+        Truncation is real: the em dash is three bytes and the fields have hard
+        caps, so a sequence can be cut. The decode must yield a replacement
+        character and carry on, not raise into the frame loop.
+        """
+        cut = "Measuring \u2014".encode("utf-8")[:-1]
+        out = packets.decode_string_payload(cut)
+        self.assertTrue(out.startswith("Measuring "))
+        self.assertIn("\ufffd", out)
+
 
 class TestStateDecoding(unittest.TestCase):
 
