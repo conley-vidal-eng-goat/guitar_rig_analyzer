@@ -4,6 +4,52 @@ Teensy 4.1 firmware that measures what a guitar rig (pedalboard, amp front-end, 
 
 > **Display architecture (ADR-001, 2026-09-11).** The **Raspberry Pi 5 + 7" Touch Display 2** is the production renderer; the Teensy streams measurement data to it over a binary UART link. The on-board **RA8875** panel is retained as **debug/fallback hardware only**. The governing invariant is **"the Teensy determines truth, the Pi presents truth."** Selected by `DISPLAY_TARGET` in [config.h](config.h). See [docs/adr/ADR-001-display-architecture.md](docs/adr/ADR-001-display-architecture.md) — and read it before doing any display work, because this README described an RA8875-only product until that date.
 
+## Current state — September 2026
+
+The instrument runs. A Teensy 4.1 measures, a Raspberry Pi 5 displays, and the
+Pi boots straight into the live view with no terminal.
+
+| Live view, real UART | Completed measurement |
+|---|---|
+| ![Live transfer function on the Touch Display](ai/evidence/2026-09-30-pi-ui-live-energised.png) | ![Result view rendering a real 512-bin measurement](ai/evidence/2026-09-29-pi-ui-result-view.png) |
+| ~1 kHz tone into `SOURCE`, read live from `/dev/ttyAMA0`. One mark at the stimulus; **126 of 128 bins left blank because the instrument had no measurement for them.** | A real `RESULT` captured off the wire on 2026-09-27 — Teensy-authored quality, coherence, calibration status and insights, rendered verbatim. |
+
+### What is proven on hardware
+
+- **Teensy → Pi transport.** A complete 8 908-byte `RESULT` crossed the physical
+  UART and passed CRC, with all four canonical 512-bin arrays intact —
+  including their **per-array NaN conventions**, so an unmeasured bin stays
+  unmeasured rather than becoming a plausible zero.
+- **6.5 MB of real instrument bytes** replayed with zero CRC failures, zero
+  decode errors and zero interior byte loss. Every discarded byte accounted for
+  by absolute offset.
+- **The Pi renders live telemetry** off the real UART and **boots into it
+  automatically**.
+- **Receive-only by construction.** The Pi opens the port `O_RDONLY`; it cannot
+  transmit even by accident, and the Teensy→Pi direction is the only one wired.
+
+### What is *not* proven, stated deliberately
+
+- **T1 — "transmission must not perturb acquisition" — is not adjudicated.** The
+  first hardware run of the timing harness exposed a defect *in the harness*: it
+  compared an audio-block counter (2.9 ms/tick) against an expected
+  analysis-block stride, reporting 44 490 skipped blocks that never happened.
+  Acquisition was healthy; the instrument measuring it was not. See
+  [the defect record](ai/evidence/2026-09-29-t1-harness-block-stride-defect.md).
+- **`RESULT` carries no per-bin clamp mask**, so a value sitting on the −24 dB
+  rail cannot be distinguished from a measurement. The UI says so on screen
+  rather than guessing.
+- **Phase 9 validation is open.** A working prototype is not a characterised
+  measurement instrument, and this repository does not claim otherwise.
+
+> **Why the second list exists.** Every status in this project is either
+> observed or explicitly marked unproven, and the two are never collapsed. The
+> reasoning trail lives in [`ai/journal.md`](ai/journal.md) (newest first) and
+> the open work in [`ai/todo.md`](ai/todo.md); raw captures and their SHA-256
+> hashes are in [`ai/evidence/`](ai/evidence/). Several findings in this
+> repository were caught *because* a measurement was distrusted until it could
+> be accounted for byte by byte.
+
 ## Overview
 
 Guitar Rig Analyzer is bench-grade embedded firmware for an instrument-signal measurement instrument. The user routes a signal from the instrument through a **SOURCE_NODE** measurement point, through the rig under test, back through a **RETURN_NODE** measurement point, and the firmware computes the per-bin transfer function `H(f) = RETURN / SOURCE` together with coherence γ², group delay, peak levels, and clipping flags. Results are published through a renderer-agnostic **presentation boundary** ([presentation.h](presentation.h)) to whichever display backend the build selects, and can be exported to SD as JSON fingerprints or CSV baselines.
@@ -286,6 +332,19 @@ There is no secret material in this codebase. There is **no LICENSE file** commi
 - **Form-feed (`^L`) characters appearing in files.** Strip with `tr -d '\014' < file > file.new`; they have caused tool issues in past edit sessions.
 
 ## Recent work
+
+**2026-09-26 → 09-30 — Phase 10: the link, the display, and a harness that lied.**
+First real Teensy→Pi captures, then the first `RESULT` across the wire, then a
+production Pi UI that renders it. Three defects worth naming because each was
+found by refusing to accept a number: **1 598 "discarded bytes"** turned out to be
+91 bytes into one packet at the capture boundary — but chasing them exposed a
+receiver check that would have let 10 005 bytes of real loss pass silently;
+**a UTF-8 em dash** in the firmware's own status strings was being mangled by an
+ASCII decoder, invisible to every synthetic test because the test vectors used a
+hyphen; and **T1 Run 2's 44 490 skipped blocks** were a stride mismatch in the
+timing probe, not lost audio. Records under
+[`ai/evidence/`](ai/evidence/), reasoning in [`ai/journal.md`](ai/journal.md).
+
 
 **2026-09-11 — display architecture reconciliation.** An audit found the repository building an RA8875 product while still carrying the Pi 5 design as documentation and dead code: `data_sender` had zero callers, the `USE_PI_DISPLAY` flag the runbook promised existed nowhere in the source, and the as-built drawings reserved the RA8875 while omitting the Pi link entirely. Resolved by [ADR-001](docs/adr/ADR-001-display-architecture.md): the Pi 5 is the production renderer, the RA8875 is debug hardware, and all display access now goes through a renderer-agnostic presentation boundary selected by one build constant. See `ai/todo.md` Track C (TODO-33 … TODO-37) and [docs/pi_link_protocol_audit.md](docs/pi_link_protocol_audit.md).
 
