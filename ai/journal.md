@@ -42,6 +42,16 @@ The real RESULT's four finite bins all read exactly −24.0 dB, the clamp rail, 
 
 **No technical blocker to making this the production launch path.** What is left is autostart, and hiding the desktop icon layer that composites over the fullscreen window on this labwc session.
 
+### Then the tone came back, and the pair is now complete
+
+Verified receive-only first — **SOURCE −22.2 dBFS, confidence 2 %, 4/512 clamped** — then captured the energised live view and a 20 s real-time video. No recorder is installed and installing one was out of scope, so the video is 289 `grim` frames encoded by the ffmpeg that was already there.
+
+**The two screenshots are the whole argument and neither works alone.** Noise floor: `0 finite · 128 NaN`, plot completely empty, and the instrument says why. Energised: `2 finite · 126 NaN`, one mark sitting on the stimulus, 126 bins still honestly absent. The first proves the renderer will not fabricate; the second proves it will not under-report either.
+
+**One thing that looks like a bug and is the contract working.** The frame says 4 of 512 source bins are clamped; the decimated live view says 0 of 128. Source bins 22–25 land in live bins 5 and 6 at 4:1, so each carries `clamped=2, ratio=4`, and `data_sender.h` marks saturation only at `clamped == ratio`. A half-clamped group is drawn as data. Both numbers are right, and the only reason the distinction is visible at all is that protocol v2 puts the per-bin nibbles on the wire — audit finding L1. The RESULT packet still has no equivalent, which is TODO-65.
+
+It also means **runbook step 7 is still unproven**: demonstrating the clamp *rendering* contract needs a fully clamped decimated bin, and this stimulus produces only half-clamped ones.
+
 ## 2026-09-29 (1) — **T1 Run 2 ran, and the harness failed before the instrument did: 44 490 "skipped blocks" that never happened.** A 128-sample audio counter was being read as a 2 048-sample analysis counter. The Pi side had it right all along
 
 First hardware execution of `timing_probe`, and it broke on contact. Firmware `26f2bee` unmodified, session **9**, fresh physical power cycle, only `t` and `T` ever sent. **No flash, no firmware edit, no retry.** Records: [`t1-run2-pi-normal.txt`](evidence/t1-run2-pi-normal.txt), [`2026-09-29-t1-harness-block-stride-defect.md`](evidence/2026-09-29-t1-harness-block-stride-defect.md).
