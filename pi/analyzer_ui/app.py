@@ -95,11 +95,14 @@ class AnalyzerUI:
         self.root.title("Guitar Rig Analyzer")
         self.root.configure(bg=BG)
         self.root.geometry(f"{W}x{H}")
+        self._want_fullscreen = fullscreen
         if fullscreen:
-            self.root.attributes("-fullscreen", True)
-            # The desktop icon layer drew over the canvas on this Pi's
-            # labwc session; -topmost keeps the instrument in front.
-            self.root.attributes("-topmost", True)
+            self._go_fullscreen()
+            # Applying -fullscreen before the window is mapped is silently
+            # ignored under XWayland on this Pi -- one launch in several came
+            # up windowed with the taskbar visible. Re-assert after the window
+            # exists; it is idempotent, so doing it twice costs nothing.
+            self.root.after(120, self._go_fullscreen)
         self.root.bind("<Escape>", lambda _e: self.root.destroy())
 
         self.canvas = tk.Canvas(self.root, width=W, height=H, bg=BG,
@@ -114,6 +117,18 @@ class AnalyzerUI:
             "meter": _f(26, True, mono=True),
         }
         self._hit: list[tuple[int, int, int, int, str]] = []
+
+    def _go_fullscreen(self) -> None:
+        if not self._want_fullscreen:
+            return
+        try:
+            self.root.update_idletasks()
+            self.root.attributes("-fullscreen", True)
+            # The desktop icon layer composites over the canvas on this Pi's
+            # labwc session; -topmost keeps the instrument in front.
+            self.root.attributes("-topmost", True)
+        except tk.TclError:                        # pragma: no cover - teardown
+            pass
 
     # -- input ---------------------------------------------------------------
 
@@ -266,8 +281,8 @@ class AnalyzerUI:
         c.create_text(x0 - 8, y0 - 14, text="dB", anchor="e", fill=MUTED,
                       font=self.fonts["tiny"])
         if subtitle:
-            c.create_text(x1, y0 - 14, text=subtitle, anchor="e", fill=MUTED,
-                          font=self.fonts["tiny"])
+            c.create_text(x1 - 8, y0 + 12, text=subtitle, anchor="e",
+                          fill=MUTED, font=self.fonts["tiny"])
         return fx, fy, (x0, y0, x1, y1)
 
     def _draw_curve(self, segs, colour, width=2) -> None:
@@ -285,7 +300,7 @@ class AnalyzerUI:
     def _census_line(self, box, cen, extra="") -> None:
         x0, _y0, x1, y1 = box
         txt = (f"{cen['elements']} bins · {cen['finite']} finite · "
-               f"{cen['nan']} NaN (not measured)")
+               f"{cen['nan']} NaN")
         if cen["pos_inf"] or cen["neg_inf"]:
             txt += f" · {cen['pos_inf'] + cen['neg_inf']} Inf — FINDING"
         if extra:
@@ -299,7 +314,9 @@ class AnalyzerUI:
                 if s.tf_confidence is not None else "")
         if s.tf_clamped_count is not None:
             conf += f"   ·   {s.tf_clamped_count}/512 clamped"
-        fx, fy, box = self._plot_frame("LIVE TRANSFER FUNCTION", conf)
+        fx, fy, box = self._plot_frame(
+            "LIVE TRANSFER FUNCTION  ·  gaps = not measured",
+            conf)
         if live is None or geo is None:
             self.canvas.create_text((box[0] + box[2]) / 2,
                                     (box[1] + box[3]) / 2,
@@ -335,7 +352,7 @@ class AnalyzerUI:
     def _draw_result_plot(self, s: Snapshot) -> None:
         res, geo = s.result, s.geometry
         fx, fy, box = self._plot_frame(
-            "RESULT — CALIBRATED MAGNITUDE (512-bin grid)",
+            "RESULT MAGNITUDE (512-bin)  ·  gaps = not measured",
             f"{res.n_averages_completed} averages" if res else "")
         if res is None or geo is None:
             self.canvas.create_text((box[0] + box[2]) / 2,

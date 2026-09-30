@@ -12,6 +12,36 @@ How to use this file:
 
 ---
 
+## 2026-09-30 (1) — **The Pi UI is reading the live UART on the physical display.** With no stimulus connected it draws nothing, and says why — which is a better demonstration than a tone would have been
+
+Checkpointed the night's work as three commits, then ran the live smoke test. No flash, no firmware change, no measurement initiated, no analog or routing change. Firmware `26f2bee`, session **9**, unchanged since Run 2. Record: [`2026-09-30-pi-ui-live-uart-smoke-test.md`](evidence/2026-09-30-pi-ui-live-uart-smoke-test.md).
+
+**Ground truth first, deliberately.** Two readers on one tty split the byte stream, so a 5 s `capture.sh` reference was taken *before* the UI touched the port: 182 305 B at 36 461 B/s, session 9, IDLE, TS return, detectors UNKNOWN. Then the UI, then the comparison.
+
+**Everything on the checklist verified.** HELLO established the session with geometry read from the wire rather than hard-coded; `LINK UP`; SOURCE/RETURN updating; `frames ok 100 → 255` in six seconds, which is **25.8 packets/s against the producer's measured 25.6/s**; CRC 0, decode 0, interior discard 0; router TS with every detector UNKNOWN and the ADR-004 note on screen; clean SIGTERM exit; and the device genuinely released — proved by a fresh capture succeeding immediately afterwards, not by the process merely disappearing.
+
+**Receive-only is structural, and now provable.** `/proc/<pid>/fd` shows `lr-x ... -> /dev/ttyAMA0`. `SerialSource` opens `O_RDONLY`, so the UI cannot transmit even by accident. The Pi→Teensy direction is both physically disconnected and impossible from this code.
+
+### The tone was off again, and it made the test better
+
+Source and return within 1 dB of each other at the noise floor — the documented signature of an absent input. So the live transfer function rendered **completely empty**, with the instrument stating `0 finite · 128 NaN · 0 clamped · 128 lifted`.
+
+That is the whole design argument in one screenshot. A renderer willing to interpolate, or to treat "no data" as zero, would have drawn a confident line across an input that was not there. This one draws nothing and explains itself. **What is still owed is the opposite shot** — an energised live TF — and that needs the phone restarted, which is the one thing I cannot do.
+
+### Three layout defects found only by looking at the panel
+
+Text that reads fine in code collided on a 720×1280 portrait panel: the verdict row overlapped itself, the fourth insight was clipped — the one saying advisories are unavailable, exactly the one you must not lose — and the census line ran off the right edge. All three were invisible until the screenshot. **Rendering to a real panel is a test, not a formality.**
+
+Two placement attempts for the "gaps = not measured" note also collided, first with the panel title and then with the subtitle. The fix was structural rather than another nudge: move the subtitle *inside* the plot box so the title row is free whatever its length. Chasing pixels twice was the signal to change the layout instead of the coordinates.
+
+**One real bug surfaced the same way.** `-fullscreen` applied before the window is mapped is silently ignored under XWayland — about one launch in several came up windowed with the taskbar showing. Re-asserting it 120 ms after mapping fixes it. It would never have appeared in a test suite.
+
+### TODO-65 stays visible rather than quietly resolved
+
+The real RESULT's four finite bins all read exactly −24.0 dB, the clamp rail, and RESULT carries no per-bin clamp mask — LIVE_FRAME does. The Pi **does not infer** clamp status. It prints the limitation on the plot, and the −24.0 comparison is a disclosure heuristic that says *"these might be rails and I cannot tell"*, never *"these are rails"*. It gets deleted when the protocol closes the gap, and a test pins the gap so it fails loudly then.
+
+**No technical blocker to making this the production launch path.** What is left is autostart, and hiding the desktop icon layer that composites over the fullscreen window on this labwc session.
+
 ## 2026-09-29 (1) — **T1 Run 2 ran, and the harness failed before the instrument did: 44 490 "skipped blocks" that never happened.** A 128-sample audio counter was being read as a 2 048-sample analysis counter. The Pi side had it right all along
 
 First hardware execution of `timing_probe`, and it broke on contact. Firmware `26f2bee` unmodified, session **9**, fresh physical power cycle, only `t` and `T` ever sent. **No flash, no firmware edit, no retry.** Records: [`t1-run2-pi-normal.txt`](evidence/t1-run2-pi-normal.txt), [`2026-09-29-t1-harness-block-stride-defect.md`](evidence/2026-09-29-t1-harness-block-stride-defect.md).
