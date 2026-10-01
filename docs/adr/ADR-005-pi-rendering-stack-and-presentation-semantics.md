@@ -1,6 +1,6 @@
 # ADR-005 — The production Pi renderer is a kiosk web client, and presentation semantics are a shared contract
 
-**Status:** ✅ **ACCEPTED** · 2026-09-30
+**Status:** ✅ **ACCEPTED** · 2026-09-30 · **amended 2026-09-30** (§1, UI framework)
 **Decided by:** the account holder
 **Supersedes:** the **implicit Tkinter-as-production-renderer assumption** carried by
 `pi/analyzer_ui/`, by TODO-36's renderer language, and by commit `c7e1581`
@@ -24,7 +24,12 @@ matrix, and `docs/visual_design_document.md` (to be imported)
 
 ### 1. The production Pi renderer is a kiosk web client
 
-Chromium in kiosk mode on the Pi 5, rendering a React + three.js/WebGL UI against
+> **AMENDED 2026-09-30, after the first implementation slice.** This section
+> originally said *"a React + three.js/WebGL UI"*, naming a UI framework it had no
+> reason to decide. The binding decision is **browser / WebGL + three.js**; the UI
+> framework is **deliberately unspecified**. See §1a.
+
+Chromium in kiosk mode on the Pi 5, rendering a three.js/WebGL UI against
 the 7" Touch Display 2 at **720×1280 portrait** (measured 2026-09-29 by `wlr-randr`,
 DSI-2, transform normal, scale 1.0 — see [`app.py:3`](../../pi/analyzer_ui/app.py#L3)).
 
@@ -36,6 +41,27 @@ interpolation at a stated coefficient, and a pixel ratio capped at 1 for the emb
 GPU. Porting them to Tk 2D or Python GL would convert Phase 10 integration work into
 a graphics rewrite, and the rewrite would be judged against no specification but
 itself.
+
+### 1a. The UI framework is deliberately unspecified
+
+**Binding:** browser, WebGL, three.js, 720×1280 portrait. **Not binding:** which
+UI framework, if any, wraps it.
+
+The first implementation (TODO-67 slice 1) uses **native ES modules** with no
+framework and no build step, because no framework-specific requirement exists yet:
+the client is a single visualization driven by one authoritative payload, and its
+entire state is the array of classified bands the Pi sends. React would have added
+a toolchain without yet adding capability.
+
+**React is not rejected.** The committed concepts are written as React components,
+and React may be introduced whenever real UI complexity justifies it — multiple
+coordinated views, routing between screens, shared interactive state, a settings
+surface. That is an implementation decision at the time, not a reversal of this ADR.
+
+Recorded because the implementation deliberately differs from this ADR's original
+wording. An accepted ADR that disagrees with the code is worse than one that never
+specified the detail: the next reader cannot tell which is the decision and which
+is the drift.
 
 ### 2. The Tkinter renderer is retained as the reference/debug renderer
 
@@ -318,6 +344,7 @@ that T1 passed.
 | 6 | First three.js view against real frames | 🔴 TODO-67 |
 | 7 | Kiosk autostart; disconnect/reconnect survival | 🔴 TODO-67 |
 | 8 | Web client becomes production default | 🔴 gated on §2's four conditions |
+| 8a | **MEASURED bar rendering visually validated** | 🔴 **open evidence debt** — see below |
 | 9 | `INJECTION_LOST` propagation | 🔴 TODO-66 — **not Phase 10** |
 
 Step 3 precedes step 6 deliberately. The pathological RESULT — **4 finite bins of 512,
@@ -326,6 +353,20 @@ contract, and it already exists as pinned hardware evidence
 (`ai/evidence/phase10-result-1khz.bin`, SHA-256 asserted by
 [`test_result_fixture.py`](../../pi/tests/test_result_fixture.py)). The contract is
 proven against real bytes before any GPU work begins.
+
+**🔺 OPEN EVIDENCE DEBT: the MEASURED bar path has never been seen.** Both pinned
+fixtures classify to **zero** MEASURED bands — the RESULT is 4 indeterminate of 512,
+the idle capture is 128 unmeasured of 128. So slice 1 proves the renderer *refuses
+to draw what it must not*, and proves nothing about how it draws what it should.
+Bar heights, side assignment, the cold/warm ramps, coverage-driven thickness and
+frame easing have unit tests and **no visual confirmation**.
+
+**This is not closed with synthetic data.** Generating a plausible high-coverage
+frame to exercise the bars would produce a convincing screenshot of a measurement
+that never happened, which is the precise failure this ADR exists to prevent — and
+a screenshot, once in `ai/evidence/`, outlives the caveat attached to it. The debt
+stays open until the instrument produces a genuine measurement that establishes
+measured coverage across the band.
 
 ---
 
