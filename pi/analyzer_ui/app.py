@@ -19,6 +19,10 @@ a few hundred canvas items repainted at 20 Hz is nothing for a Pi 5.
   - It will not show a control as working when the command path does not exist.
     Pi -> Teensy is physically disconnected, so command buttons render disabled
     and say so.
+  - It will not decide for itself what a bin means. Classification comes from
+    `analyzer_link.presentation_semantics`, which the web renderer consumes too
+    (ADR-005 §4). This module asks "may I draw this as a measurement?" and never
+    re-derives the answer from coverage nibbles or from a value.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 
 from analyzer_link import protocol
+from analyzer_link import presentation_semantics as ps
 
 from . import plotting
 from .engine import Engine
@@ -298,15 +303,33 @@ class AnalyzerUI:
                 c.create_line(*flat, fill=colour, width=width, capstyle="round")
 
     def _census_line(self, box, cen, extra="") -> None:
+        """The honest-status readout, worded by the shared contract.
+
+        Takes a ``presentation_semantics.Census`` so this line and the web
+        renderer's cannot drift into describing the same frame differently.
+        """
         x0, _y0, x1, y1 = box
-        txt = (f"{cen['elements']} bins · {cen['finite']} finite · "
-               f"{cen['nan']} NaN")
-        if cen["pos_inf"] or cen["neg_inf"]:
-            txt += f" · {cen['pos_inf'] + cen['neg_inf']} Inf — FINDING"
+        txt = cen.text()
         if extra:
             txt += f" · {extra}"
         self.canvas.create_text(x0, y1 + 32, text=txt, anchor="w",
                                 fill=WARN, font=self.fonts["mono_s"])
+
+    def _draw_indeterminate(self, segs) -> None:
+        """Bins whose class cannot be established from the packet (TODO-65).
+
+        Drawn as hollow markers on a thin dashed guide — deliberately NOT the
+        solid confident curve a MEASURED span gets. The value is present and is
+        shown; what is withheld is the assertion that it is a measurement.
+        """
+        c = self.canvas
+        for seg in segs:
+            if len(seg) > 1:
+                flat = [v for pt in seg for v in pt]
+                c.create_line(*flat, fill=WARN, width=1, dash=(3, 3))
+            for x, y in seg:
+                c.create_oval(x - 4, y - 4, x + 4, y + 4, outline=WARN,
+                              fill="", width=2)
 
     def _draw_live_plot(self, s: Snapshot) -> None:
         live, geo = s.live, s.geometry
@@ -329,25 +352,30 @@ class AnalyzerUI:
                                       geo.decim_ratio)
             return fx.to_px(hz) if fx.in_range(hz) else None
 
-        lifted = set(plotting.pen_lift_indices(live.coverage))
-        clamped_ix = {i for i, cov in enumerate(live.coverage)
-                      if cov.ratio and cov.clamped >= cov.ratio}
+        # Classification is the shared contract's job, not this renderer's.
+        # LIVE_FRAME carries per-bin coverage, so every bin resolves concretely
+        # to MEASURED / CLAMPED / UNMEASURED — no INDETERMINATE arises here.
+        sem = ps.classify_live(live.tf_db, live.coverage)
 
         def ok(i, _v):
-            return i not in lifted and i not in clamped_ix
+            return sem[i].cls.is_drawable_as_measurement
 
         segs = plotting.segments(live.tf_db, x_of, fy.clamp_px, plottable=ok)
         self._draw_curve(segs, ACCENT)
 
-        for x, y in plotting.clamped_marks(live.tf_db, live.coverage, x_of,
-                                           fy.clamp_px):
+        for b in sem:
+            if b.cls is not ps.BinClass.CLAMPED:
+                continue
+            x = x_of(b.index)
+            if x is None:
+                continue
+            y = fy.clamp_px(b.value)
             self.canvas.create_line(x - 5, y - 5, x + 5, y + 5, fill=WARN,
                                     width=2)
             self.canvas.create_line(x - 5, y + 5, x + 5, y - 5, fill=WARN,
                                     width=2)
 
-        extra = f"{len(clamped_ix)} clamped · {len(lifted)} lifted"
-        self._census_line(box, plotting.census(live.tf_db), extra)
+        self._census_line(box, ps.census(sem))
 
     def _draw_result_plot(self, s: Snapshot) -> None:
         res, geo = s.result, s.geometry
@@ -365,10 +393,30 @@ class AnalyzerUI:
             hz = plotting.result_bin_hz(i, geo.sample_rate, geo.fft_bins)
             return fx.to_px(hz) if fx.in_range(hz) else None
 
-        segs = plotting.segments(res.tf_cal_mag_db, x_of, fy.clamp_px)
-        self._draw_curve(segs, SRC, width=3)
-        self._census_line(box, plotting.census(res.tf_cal_mag_db),
-                          f"{len(segs)} span(s)")
+        # *** THE BEHAVIOUR THE SHARED CONTRACT CHANGED. ***
+        # This plot used to draw every finite bin as a solid curve. RESULT
+        # carries no per-bin clamp mask (TODO-65), so a finite bin here is
+        # INDETERMINATE: present, but unclassifiable. It is drawn as hollow
+        # markers rather than as data. On the real 2026-09-27 RESULT that is
+        # four markers at ~1 kHz and 508 empty locations.
+        sem = ps.classify_result(res.tf_cal_mag_db)
+
+        def drawable(i, _v):
+            return sem[i].cls.is_drawable_as_measurement
+
+        def indeterminate(i, _v):
+            return sem[i].cls is ps.BinClass.INDETERMINATE
+
+        measured = plotting.segments(res.tf_cal_mag_db, x_of, fy.clamp_px,
+                                     plottable=drawable)
+        self._draw_curve(measured, SRC, width=3)
+
+        unknown = plotting.segments(res.tf_cal_mag_db, x_of, fy.clamp_px,
+                                    plottable=indeterminate)
+        self._draw_indeterminate(unknown)
+
+        self._census_line(box, ps.census(sem),
+                          f"{len(measured) + len(unknown)} span(s)")
 
         # *** PROTOCOL GAP, stated on the face of the instrument. ***
         # LIVE_FRAME carries per-bin coverage nibbles and a frame-level
@@ -376,8 +424,13 @@ class AnalyzerUI:
         # NEITHER, so nothing in this packet distinguishes a measured -24.0 dB
         # from the clamp rail. Refusing to say so would reproduce TODO-29 on the
         # RESULT surface, so the plot admits it instead of looking confident.
-        rail = [v for v in res.tf_cal_mag_db
-                if plotting.is_plottable(v) and abs(v + 24.0) < 0.05]
+        # Context for the operator, computed AFTER classification and never
+        # feeding it. ADR-005 §6: the -24.0 coincidence is reportable, never a
+        # classification input. TODO-65 requires this block deleted outright
+        # once RESULT carries a clamp mask.
+        rail = [b.value for b in sem
+                if b.cls is ps.BinClass.INDETERMINATE
+                and abs(b.value + 24.0) < 0.05]
         if rail:
             live_note = ""
             if s.tf_clamped_count is not None:
