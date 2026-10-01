@@ -234,3 +234,38 @@ Pi attached.
 solve for the array length sits *after* the arrays. `decode_result()` raises
 `GeometryUnknown` rather than guessing. With the re-announcement in place the
 wait is now bounded by about a second instead of by a Teensy reboot.
+
+---
+
+# `pi/web/` — the web renderer (TODO-67)
+
+`python3 -m web.server --fixture <capture>` serves a classified frame at
+`/api/frame` and the client at `/`. See
+[ADR-005](../docs/adr/ADR-005-pi-rendering-stack-and-presentation-semantics.md).
+
+**The browser is given nothing to reinterpret.** `/api/frame` carries bands that
+`presentation_semantics` has already classified — no coverage nibbles, no raw TF
+array, no non-finite value. `value` is present only when a band is MEASURED. The
+client performs no DSP, no measurement and no grading, and `getUserMedia` is
+prohibited and CI-enforced (`tests/test_web_payload.py`).
+
+## Vendored dependency
+
+`web/static/vendor/three.module.js` is committed rather than fetched.
+
+| | |
+|---|---|
+| Package | `three` |
+| Version | **0.169.0** |
+| Source | `npm pack three@0.169.0`, from the `build/three.module.js` of that tarball |
+| Upstream | https://threejs.org/ · https://github.com/mrdoob/three.js |
+| License | MIT — full text in [`web/static/vendor/three.LICENSE`](web/static/vendor/three.LICENSE) |
+| Size | ~1.3 MB |
+
+**Why it is in git.** The instrument must render with no internet, no CDN, no npm
+and no deploy-time download — it is a panel on a pedalboard, not a web app. Pinning
+the file also freezes the exact version the visualization was tested against, so a
+rendering change can never arrive from an upstream release nobody chose.
+
+Updating it means replacing the file, re-running the suite, and re-capturing the
+evidence screenshots, because the pinned renders are version-specific.

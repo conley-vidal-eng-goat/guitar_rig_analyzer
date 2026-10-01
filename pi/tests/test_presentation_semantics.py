@@ -243,10 +243,17 @@ class TestAgainstTheRealResult(unittest.TestCase):
 
     def test_onto_a_48_segment_ring_nothing_becomes_measured(self):
         """The committed radial visuals resample 512 bins onto 48 segments. The
-        ring must stay almost entirely dark: 1 segment holding an
-        unclassifiable value, 47 holding nothing. A surface mesh that
-        interpolated across them would render 508 undefined locations as smooth
-        terrain -- which is what §4 of the ADR is about.
+        ring must stay almost entirely dark. A surface mesh that interpolated
+        across them would render 508 undefined locations as smooth terrain --
+        which is what §4 of the ADR is about.
+
+        NOTE: the grouping here is a deliberately naive linear one, because this
+        test is about the RULE -- that nothing is promoted to MEASURED -- and a
+        simple mapping keeps the rule legible. The production mapping is
+        log-frequency and lives in `web/payload.py`; under it these same four
+        bins straddle a band boundary and land on TWO bands, pinned by
+        test_web_payload.test_each_of_the_four_source_bins_pins_to_an_exact_band.
+        The counts differ; the rule does not.
         """
         ring = ps.resample(self.bins, 48, group_of=lambda i: min(i * 48 // 512, 47))
         c = ps.census(ring)

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Guitar Rig Analyzer — Tone Fingerprint</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #04070b; color: #d8e4f0;
+               font-family: "DejaVu Sans", system-ui, sans-serif; overflow: hidden; }
+  #stage { position: absolute; inset: 0; }
+  #hud { position: absolute; left: 0; right: 0; top: 0; padding: 14px 16px;
+         pointer-events: none; }
+  #hud h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .08em;
+            text-transform: uppercase; color: #9fb3c8; }
+  #census { margin-top: 4px; font-family: "DejaVu Sans Mono", monospace;
+            font-size: 12px; color: #d29922; }
+  #authority { margin-top: 2px; font-family: "DejaVu Sans Mono", monospace;
+               font-size: 11px; color: #6b7f94; }
+  #legend { position: absolute; left: 16px; bottom: 14px; font-size: 11px;
+            line-height: 1.7; pointer-events: none; color: #8b9bad; }
+  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 7px;
+        vertical-align: -1px; border-radius: 2px; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="hud">
+    <h1>Tone Fingerprint — Split</h1>
+    <div id="census">connecting…</div>
+    <div id="authority"></div>
+  </div>
+  <div id="legend">
+    <div><span class="sw" style="background:#4cc9f0"></span>measured · attenuated (left, below ring)</div>
+    <div><span class="sw" style="background:#ff7b00"></span>measured · boosted (right, above ring)</div>
+    <div><span class="sw" style="background:transparent;border:2px solid #d29922"></span>value present, not established — no direction asserted</div>
+    <div><span class="sw" style="background:#0d1117;border:1px solid #21262d"></span>unmeasured — nothing drawn</div>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
