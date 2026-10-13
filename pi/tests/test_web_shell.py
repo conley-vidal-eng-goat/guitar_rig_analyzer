@@ -350,5 +350,162 @@ class TestAbsenceIsNeverFormattedAsANumber(unittest.TestCase):
         self.assertIn('replace(/[&<>"\']/g', self.ui)
 
 
+# =============================================================================
+# LAB — A PRINTER WITH NO OPINIONS
+# =============================================================================
+#
+# LAB is the screen that shows the instrument's own words. The risk is not that
+# it renders badly; it is that it quietly becomes a second author — inferring a
+# severity, appending a unit, completing a truncated sentence, or turning an
+# absent field into a clean-looking result. These are source-level guards in the
+# style of the rest of this file, because this code only runs in a browser.
+
+
+class TestLabAuthorsNothing(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (STATIC / "view_lab.js").read_text()
+        cls.code = _strip_comments(cls.src)
+
+    def test_severity_is_read_from_the_field_not_derived(self):
+        """*** THE CENTRAL GUARD. *** Severity is the Teensy's grade. A renderer
+        that chose it from how large `magnitude` is would be re-grading a
+        measurement, which is the authority boundary broken in the direction
+        that looks most reasonable at the time."""
+        self.assertIn("SEVERITY[ins.severity]", self.code)
+        self.assertNotRegex(self.code, r"magnitude\s*[<>]")
+        self.assertNotRegex(self.code, r"Math\.abs\s*\(\s*\w*\.?magnitude")
+
+    def test_no_threshold_is_compared_against_a_measured_value(self):
+        """Any `value > number` in this file would be a judgement. The only
+        comparisons permitted are against a length or an array index."""
+        for m in re.finditer(r"[<>]=?\s*-?\d+(\.\d+)?", self.code):
+            ctx = self.code[max(0, m.start() - 40):m.end()]
+            self.assertRegex(
+                ctx, r"length|\.length\s*[<>=]|index|i\s*[<>]",
+                f"view_lab.js compares a value against a literal: {ctx!r}")
+
+    def test_the_mode_distinction_survives_in_the_renderer(self):
+        """MEASUREMENT vs ADVISORY is a distinction the Teensy went to the
+        trouble of authoring (protocol.InsightMode). Styling them identically
+        erases it."""
+        self.assertIn("MEASUREMENT", self.code)
+        self.assertIn("ADVISORY", self.code)
+        css = (STATIC / "shell.css").read_text()
+        self.assertIn(".badge.mode-measurement", css)
+        self.assertIn(".badge.mode-advisory", css)
+
+    def test_severity_is_not_carried_by_colour_alone(self):
+        """The brief forbids it and a 7-inch panel at arm's length is where hue
+        fails first. Every severity carries a glyph and a word as well."""
+        for sev in ("ALERT", "WARNING", "INFO"):
+            self.assertRegex(self.code, rf"{sev}:\s*{{[^}}]*glyph[^}}]*word")
+        self.assertIn("badge-glyph", self.code)
+
+    def test_an_unknown_enum_is_not_coerced_to_a_default(self):
+        """A newer firmware's severity must not be shown as INFO. Downgrading an
+        unrecognised warning to a pleasantry is the worst available failure."""
+        self.assertIn("unknown severity", self.code)
+        self.assertIn("unknown mode", self.code)
+
+    def test_no_unit_is_appended_to_the_magnitude(self):
+        """insights_engine.cpp:170 puts a dimensionless coherence in the same
+        slot that elsewhere holds dB. The unit is not on the wire."""
+        self.assertNotRegex(self.code, r"magnitude[^\n]*unit:\s*[\"']dB")
+        self.assertIn("unit not transmitted", self.code)
+
+    def test_a_broadband_insight_is_never_captioned_zero_hz(self):
+        self.assertIn("broadband", self.code)
+        self.assertNotRegex(self.code, r"frequency_hz[^\n]*\?\?\s*0")
+
+    def test_the_renderer_does_not_complete_a_truncated_detail(self):
+        """The sender cuts detail to 64 bytes mid-word. Repairing it here would
+        make this file a co-author of a measurement statement."""
+        self.assertNotIn("…", _strip_comments(self.src).replace("—", ""))
+        self.assertNotRegex(self.code, r"\.detail[^\n]*(slice|substring|trim)\(")
+
+    def test_insight_strings_reach_innerhtml_only_through_esc(self):
+        """Firmware-supplied text. Every one of them is escaped."""
+        for field in ("ins.title", "ins.detail"):
+            self.assertRegex(self.code, rf"esc\({re.escape(field)}\)")
+        self.assertNotRegex(self.code, r"\$\{ins\.(title|detail)\}")
+
+    def test_the_provenance_and_warning_strings_are_escaped_too(self):
+        self.assertRegex(self.code, r"esc\(w\)")
+        self.assertRegex(self.code, r"text\(cal\.provenance")
+
+    def test_empty_insights_and_missing_insights_say_different_things(self):
+        """*** REQUIREMENT 4. *** An empty list is the instrument stating it
+        authored none. A missing key is a transport that did not carry the
+        field, which is not a statement about the measurement."""
+        self.assertIn("Array.isArray(insights)", self.code)
+        self.assertIn("insights.length === 0", self.code)
+        self.assertIn("None authored", self.src)
+        self.assertIn("not carried by this transport", self.src)
+
+    def test_a_missing_block_renders_as_unavailable_not_as_a_clean_result(self):
+        for guard in ("if (!c)", "if (!cal)"):
+            self.assertIn(guard, self.code)
+
+    def test_calibration_missing_is_visible_and_does_not_imply_a_procedure_ran(self):
+        """*** REQUIREMENT 3. *** `type` names a SLOT. Printing INTERNAL_LOOPBACK
+        without saying nothing was loaded reads as a calibration that happened."""
+        self.assertIn("CALIBRATION_MISSING", self.code)
+        self.assertIn("names an empty slot", self.src)
+        self.assertRegex(self.src, r"type \(slot\)")
+
+    def test_the_warning_bits_are_shown_by_name_not_as_a_count(self):
+        self.assertIn("warn-chip", self.code)
+        self.assertNotRegex(self.code, r"warnings\.length\s*\+")
+
+    def test_lab_never_fetches(self):
+        """The one-data-source rule, restated for the enlarged view."""
+        for token in ("fetch(", "XMLHttpRequest", "WebSocket", "EventSource"):
+            self.assertNotIn(token, self.code)
+
+    def test_lab_computes_no_measurement(self):
+        """No FFT, no averaging, no re-derivation of a Teensy verdict. The one
+        arithmetic operation permitted is a fraction to a percentage, which is
+        a presentation transform of a single authored scalar (ADR-005 section 7)."""
+        for token in ("AudioContext", "AnalyserNode", "getUserMedia",
+                      "Math.log10", "Math.sqrt", "reduce("):
+            self.assertNotIn(token, self.code)
+
+    def test_the_two_kinds_of_gap_are_distinguished(self):
+        """A transport gap is Pi work. A firmware gap needs a protocol version:
+        the 138-byte insight entry is fully spent, so action[] and data_quality
+        have no room. Listing them together would misdirect the fix."""
+        self.assertIn("firmware", self.code)
+        self.assertIn("transport", self.code)
+        self.assertIn("action[]", self.src)
+        self.assertIn("data_quality", self.src)
+        self.assertIn("138", self.src)
+
+
+class TestLabPreservesTheOtherScreens(unittest.TestCase):
+    """Step B touches LAB and the stylesheet. Nothing else may move."""
+
+    def test_live_tone_and_the_fingerprint_are_untouched_by_lab(self):
+        lab = _strip_comments((STATIC / "view_lab.js").read_text())
+        for foreign in ("createSpectrum", "createFingerprint", "THREE",
+                        "spectrum-host", "tone-stage"):
+            self.assertNotIn(foreign, lab)
+
+    def test_lab_still_exports_the_factory_the_shell_imports(self):
+        lab = (STATIC / "view_lab.js").read_text()
+        main = (STATIC / "main.js").read_text()
+        self.assertIn("export function createLabView(root)", lab)
+        self.assertIn("createLabView", main)
+
+    def test_lab_declares_no_lifecycle_it_does_not_need(self):
+        """LAB holds no GPU context and no timer, so it must not claim an
+        activate/deactivate contract that would imply it does."""
+        lab = _strip_comments((STATIC / "view_lab.js").read_text())
+        self.assertNotIn("activate()", lab)
+        self.assertNotIn("requestAnimationFrame", lab)
+
+
+
 if __name__ == "__main__":
     unittest.main()

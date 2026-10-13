@@ -338,3 +338,130 @@ html, body {
 #spec-foot .rows dd { text-align: left; font-family: inherit; font-size: 12px;
                       color: var(--muted); line-height: 1.5; }
 #spec-foot .rows dd .num { font-family: "DejaVu Sans Mono", monospace; }
+
+/* ---- LAB: insights, provenance, calibration -----------------------------
+ * The brief forbids colour as the sole carrier of severity, and a 7-inch panel
+ * read at arm's length is exactly where hue fails first. So every severity is
+ * encoded THREE times — a glyph, a word, and a colour — and the glyph and word
+ * survive a greyscale print, a colourblind reader and a sun-washed screen.
+ */
+
+.insight {
+  border: 1px solid var(--hairline);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 11px 13px;
+  margin-bottom: 10px;
+}
+.insight:last-of-type { margin-bottom: 12px; }
+
+.insight-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 10px;
+  letter-spacing: .09em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.badge-glyph { font-size: 9px; line-height: 1; }
+
+/* Severity. Colour is the third signal, never the only one. */
+.sev-alert   { color: var(--coral); }
+.sev-warning { color: var(--amber); }
+.sev-info    { color: var(--muted); }
+.sev-unknown { color: var(--unknown); }
+
+.insight.sev-alert   { border-left-color: var(--coral); }
+.insight.sev-warning { border-left-color: var(--amber); }
+.insight.sev-info    { border-left-color: var(--faint); }
+.insight.sev-unknown { border-left-color: var(--unknown); }
+
+/* Mode. MEASUREMENT and ADVISORY are semantically different and the protocol
+ * requires them to stay distinguishable — a filled chip vs an outlined one,
+ * plus the word itself. */
+.badge.mode-measurement {
+  color: var(--accent);
+  background: rgba(56, 214, 245, .10);
+}
+.badge.mode-advisory {
+  color: var(--violet);
+  background: transparent;
+  border-style: dashed;
+}
+
+.insight-title {
+  margin: 0 0 5px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--text);
+}
+
+.insight-detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.insight-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 11px;
+  color: var(--faint);
+}
+.meta-broadband { font-style: italic; }
+
+/* The magnitude carries no unit because the wire carries none. The caveat is
+ * printed WITH the number rather than in a footnote, so the two cannot be
+ * separated by scrolling. */
+.meta-unitless {
+  font-family: "DejaVu Sans", system-ui, sans-serif;
+  font-style: italic;
+  color: var(--unknown);
+  margin-left: 4px;
+}
+
+/* A calibration warning bit, named. Never a bare count. */
+.warn-chip {
+  display: inline-block;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 10px;
+  letter-spacing: .05em;
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 0 0 3px 4px;
+}
+
+/* Which KIND of gap: a transport gap is Pi work, a firmware gap needs a
+ * protocol version. Showing them in one undifferentiated list implied the
+ * first, which would misdirect whoever tries to close them. */
+.gap-kind {
+  display: inline-block;
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 7px;
+  vertical-align: 1px;
+}
+.gap-transport { color: var(--faint);  border: 1px solid var(--hairline); }
+.gap-firmware  { color: var(--violet); border: 1px solid var(--violet); }
+
+/* The gap list is label-left, reason-right and the reasons are long. */
+#views .view[data-view="lab"] .rows { grid-template-columns: auto 1fr; }
+#views .view[data-view="lab"] .rows dd { text-align: right; }
