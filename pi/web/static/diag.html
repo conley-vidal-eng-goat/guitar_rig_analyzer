@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>GRA — display &amp; GPU diagnostics</title>
+<!--
+  DIAGNOSTICS ONLY. This page is not part of the instrument UI and is not
+  reachable from it. It exists to answer ADR-005 §2's first condition — can
+  Chromium render WebGL on this Pi, in this orientation, with working touch —
+  and nothing on it is a measurement.
+
+  *** IT TOUCHES NO MEASUREMENT PATH. ***
+  It never calls /api/frame, never decodes a packet, and reports only what the
+  browser says about itself: the GL strings the driver returns, the viewport the
+  compositor gives it, and the cadence requestAnimationFrame actually delivers.
+
+  The frame rate here is the cadence of a trivial scene. It is an upper bound on
+  what the instrument UI can reach, NOT a measurement of it. The real number
+  comes from running the fingerprint and is recorded separately.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; min-height: 100%; background: #04070b; color: #d8e4f0;
+               font-family: "DejaVu Sans", system-ui, sans-serif; }
+  body { padding: 18px 16px 40px; box-sizing: border-box; }
+  h1 { margin: 0 0 2px; font-size: 16px; font-weight: 600; letter-spacing: .09em;
+       text-transform: uppercase; color: #9fb3c8; }
+  .sub { margin: 0 0 18px; font-size: 12px; color: #6b7f94; line-height: 1.5; }
+  section { margin-bottom: 18px; border: 1px solid #253047; border-radius: 8px;
+            padding: 12px 14px; background: #0a0e16; }
+  h2 { margin: 0 0 9px; font-size: 11px; letter-spacing: .12em;
+       text-transform: uppercase; color: #8b9bad; font-weight: 600; }
+  dl { margin: 0; display: grid; grid-template-columns: 11.5em 1fr; gap: 5px 10px; }
+  dt { color: #6b7f94; font-size: 12px; }
+  dd { margin: 0; font-family: "DejaVu Sans Mono", monospace; font-size: 12px;
+       color: #d8e4f0; word-break: break-word; }
+  .ok   { color: #55E5B0; }
+  .warn { color: #FFBF50; }
+  .bad  { color: #FF6474; }
+  #fps { font-size: 34px; font-variant-numeric: tabular-nums; color: #38D6F5; }
+  #pad { height: 190px; border: 1px dashed #253047; border-radius: 8px;
+         display: flex; align-items: center; justify-content: center;
+         text-align: center; font-size: 13px; color: #6b7f94;
+         touch-action: none; user-select: none; }
+  #pad.hit { border-color: #55E5B0; color: #d8e4f0; }
+  canvas { display: block; width: 100%; height: 72px; border-radius: 6px; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word;
+        font-family: "DejaVu Sans Mono", monospace; font-size: 10.5px;
+        color: #8b9bad; line-height: 1.45; }
+</style>
+</head>
+<body>
+  <h1>Display &amp; GPU diagnostics</h1>
+  <p class="sub">Not part of the instrument UI. Nothing here is a measurement —
+     these are the browser's statements about itself.</p>
+
+  <section>
+    <h2>WebGL</h2>
+    <dl id="gl"></dl>
+  </section>
+
+  <section>
+    <h2>Display &amp; orientation</h2>
+    <dl id="display"></dl>
+  </section>
+
+  <section>
+    <h2>Touch</h2>
+    <dl id="touch"></dl>
+    <div id="pad" style="margin-top:10px">tap and drag here</div>
+  </section>
+
+  <section>
+    <h2>Frame cadence <span style="color:#6b7f94;font-weight:400;text-transform:none;letter-spacing:0">— trivial scene; an upper bound, not the UI's rate</span></h2>
+    <div id="fps">–</div>
+    <canvas id="load"></canvas>
+  </section>
+
+  <section>
+    <h2>Report</h2>
+    <pre id="report">collecting…</pre>
+  </section>
+
+<script type="module">
+const report = {};
+const put = (id, rows) => {
+  document.getElementById(id).innerHTML = rows.map(
+    ([k, v, cls]) => `<dt>${k}</dt><dd${cls ? ` class="${cls}"` : ""}>${v}</dd>`
+  ).join("");
+};
+
+// --- WebGL -------------------------------------------------------------------
+const canvas = document.getElementById("load");
+let gl = canvas.getContext("webgl2");
+let glVersion = "WebGL 2";
+if (!gl) { gl = canvas.getContext("webgl"); glVersion = gl ? "WebGL 1" : "none"; }
+
+const glRows = [];
+if (!gl) {
+  glRows.push(["context", "UNAVAILABLE — no hardware or software GL", "bad"]);
+  report.webgl = null;
+} else {
+  const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+  const vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : "(masked)";
+  const renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "(masked)";
+  // SwiftShader/llvmpipe mean Chromium fell back to CPU rendering. On the Pi
+  // that is a FAILURE of this check, not a pass with a caveat: it would make
+  // every later frame-rate number meaningless.
+  const software = /swiftshader|llvmpipe|softpipe|software/i.test(renderer);
+  report.webgl = { version: glVersion, vendor, renderer, software,
+                   maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE) };
+  glRows.push(
+    ["version", glVersion, "ok"],
+    ["unmasked vendor", vendor],
+    ["unmasked renderer", renderer, software ? "bad" : "ok"],
+    ["acceleration", software ? "SOFTWARE — GPU not in use" : "hardware (by renderer string)",
+     software ? "bad" : "ok"],
+    ["max texture", gl.getParameter(gl.MAX_TEXTURE_SIZE)],
+    ["max renderbuffer", gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)],
+  );
+}
+put("gl", glRows);
+
+// --- display -----------------------------------------------------------------
+const portrait = window.innerHeight > window.innerWidth;
+const expected = window.innerWidth === 720 && window.innerHeight >= 1180;
+report.display = {
+  viewport: [window.innerWidth, window.innerHeight],
+  screen: [screen.width, screen.height],
+  dpr: window.devicePixelRatio,
+  orientation: screen.orientation ? screen.orientation.type : "(unreported)",
+  portrait,
+};
+put("display", [
+  ["viewport", `${window.innerWidth} × ${window.innerHeight} CSS px`,
+   expected ? "ok" : "warn"],
+  ["screen", `${screen.width} × ${screen.height}`],
+  ["device pixel ratio", window.devicePixelRatio,
+   window.devicePixelRatio === 1 ? "ok" : "warn"],
+  ["orientation", screen.orientation ? screen.orientation.type : "(unreported)"],
+  ["portrait", portrait ? "yes" : "NO — expected portrait", portrait ? "ok" : "bad"],
+  ["target", "720 × 1280, DSI-2, scale 1.0 (wlr-randr, 2026-09-29)"],
+]);
+
+// --- touch -------------------------------------------------------------------
+const pointsSupported = navigator.maxTouchPoints || 0;
+report.touch = { maxTouchPoints: pointsSupported, events: [] };
+const touchRows = () => put("touch", [
+  ["max touch points", pointsSupported, pointsSupported > 0 ? "ok" : "warn"],
+  ["pointer events", "PointerEvent" in window ? "supported" : "absent",
+   "PointerEvent" in window ? "ok" : "bad"],
+  ["observed", report.touch.events.length
+    ? report.touch.events.join("  ·  ") : "none yet — tap the pad below",
+    report.touch.events.length ? "ok" : "warn"],
+]);
+touchRows();
+
+const pad = document.getElementById("pad");
+let dragFrom = null;
+const note = (s) => {
+  if (!report.touch.events.includes(s)) report.touch.events.push(s);
+  touchRows(); emit();
+};
+pad.addEventListener("pointerdown", (e) => {
+  pad.classList.add("hit");
+  dragFrom = [e.clientX, e.clientY];
+  note(`${e.pointerType} down`);
+  pad.setPointerCapture(e.pointerId);
+});
+pad.addEventListener("pointermove", (e) => {
+  if (!dragFrom) return;
+  const dx = e.clientX - dragFrom[0], dy = e.clientY - dragFrom[1];
+  if (Math.hypot(dx, dy) > 24) note(`${e.pointerType} drag`);
+});
+pad.addEventListener("pointerup", (e) => {
+  pad.classList.remove("hit");
+  dragFrom = null;
+  note(`${e.pointerType} up`);
+});
+
+// --- frame cadence -----------------------------------------------------------
+// A trivial clear-and-draw loop. This measures what requestAnimationFrame
+// actually delivers on this compositor, which bounds the UI from above. It is
+// NOT a GPU throughput benchmark and must never be quoted as the UI's frame rate.
+const fpsEl = document.getElementById("fps");
+let frames = 0, since = performance.now(), worst = Infinity, settled = [];
+
+function tick(now) {
+  if (gl) {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    const t = now / 1000;
+    gl.clearColor(0.02 + 0.03 * Math.sin(t), 0.04, 0.07 + 0.03 * Math.cos(t), 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+  frames++;
+  if (now - since >= 1000) {
+    const fps = Math.round((frames * 1000) / (now - since));
+    fpsEl.textContent = `${fps} fps`;
+    fpsEl.className = fps >= 50 ? "ok" : fps >= 25 ? "warn" : "bad";
+    worst = Math.min(worst, fps);
+    settled.push(fps);
+    if (settled.length > 10) settled.shift();
+    report.cadence = { latest: fps, worst, samples: settled.slice() };
+    emit();
+    frames = 0; since = now;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// --- report ------------------------------------------------------------------
+report.userAgent = navigator.userAgent;
+report.collectedAt = new Date().toISOString();
+const reportEl = document.getElementById("report");
+function emit() {
+  const text = JSON.stringify(report, null, 2);
+  reportEl.textContent = text;
+  window.__diag = report;          // retrievable by an automated check
+}
+emit();
+</script>
+</body>
+</html>
