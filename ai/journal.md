@@ -12,6 +12,101 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (3) — **The FFT presentation contract: a magnitude spectrum is not a transfer function, and treating it like one would blank real measurements.** Contract only; no spectrum drawn
+
+`presentation_semantics.classify_spectrum()` and `resample_peak()`, with tests.
+**No payload change, no UI change, no firmware change, no bench action.** The
+scope fence (`TestFftScopeFence`) still passes, which is the point: the rule
+lands before anything draws.
+
+### The question, and why it was not obvious
+
+`fft_source[]`/`fft_return[]` have no coverage nibbles, so the open question was
+*what does UNMEASURED mean in a magnitude spectrum?* The tempting answer — reuse
+the TF's coverage, since it is right there — is wrong, and it is wrong in the
+direction that feels careful.
+
+Read from the firmware rather than assumed:
+
+| Source | Says |
+|---|---|
+| `audio_engine.h:107` | "Averaged FFT magnitudes (linear, 0.0–1.0)" |
+| `data_sender.h:274` | transmitted "decimated, **linear magnitude**" |
+| `data_sender.cpp:247` | `decimateMax` — **MAXIMUM**, skipping NaN |
+| `audio_capture.cpp:778` | `accum * inv`, `inv = 1.0/FFT_AVERAGE_COUNT`, a compile-time constant, emitted only once the accumulator is full |
+
+The last line settles it: **NaN is not reachable in these arrays.**
+`decimateMax`'s NaN handling is defensive, not a live signal.
+
+### The decision
+
+**A finite magnitude is MEASURED, including exactly zero.** `tf_db` divides by
+the source, so it has a genuine pen-lift — below `TF_SOURCE_GATE` there is
+nothing to divide by and the firmware says NaN. A magnitude has no denominator
+and no gate. **A quiet bin is a measurement of quietness.** Blanking it would
+turn a measurement into an absence, which breaks the governing invariant in the
+direction that looks conservative and is not.
+
+**The coverage nibbles must not be applied.** They are documented against `tf_db`
+alone; the valid nibble counts bins energised enough for a TF. Borrowing them
+would blank good spectrum bins wherever the TF happened to be unavailable.
+
+**No spectrum bin is ever CLAMPED or INDETERMINATE.** No rail is applied to these
+arrays, and a magnitude needs no metadata to be interpretable — using
+INDETERMINATE here would make it the generic uncertainty bucket ADR-005 §6
+forbids.
+
+**The sign is not inspected.** A negative magnitude is impossible and would mean
+the bytes are wrong, but reading the value to pick the class is TODO-29 with a
+new label. A decode fault is an error, not a class.
+
+### `resample_peak` — the second reduction must not undo the first
+
+The firmware decimates by MAXIMUM and recorded why: *"one bin at 0.5 among three
+at 0.001 means 0.126, a 12 dB under-report."* The Pi reduces a **second** time.
+Had it averaged, it would flatten at the display exactly what the firmware was
+careful to preserve on the wire — the operator would see a smaller peak than the
+instrument measured, which is a measurement claim, not a drawing choice.
+
+`resample()` grew a `value_of` hook and still defaults to the mean, so the
+transfer-function ring is untouched. **The combining rule can never change a
+class** — `combine()` still owns that — so no choice of `value_of` can
+manufacture coverage.
+
+### 🔺 Three things the real bytes said that no amount of reasoning would have
+
+**1. Exact zeros are real.** The 2026-09-26 idle capture contains **3 bins at
+exactly 0.0** in `fft_source` and 2 in `fft_return`. So `log10(0) = -inf` is a
+live hazard in the first frame anyone plots, not a theoretical one. Whatever
+display floor a dB axis uses must be a **named drawing choice**, never presented
+as a measured level.
+
+**2. The same frame is total absence as a TF and fully measured as a spectrum.**
+128/128 UNMEASURED for `tf_db`; 128/128 MEASURED for `fft_source`. Both correct,
+and the pair is now a test. That contrast is the clearest statement of why these
+two arrays needed different rules.
+
+**3. A 48-band log ring is the wrong axis for this spectrum.** Resampled onto the
+ring's 48 log bands, **21 of 48 have no source bin at all** — the transmitted
+bins are linearly spaced at 172.3 Hz, so nothing exists below about 172 Hz to
+fill the bottom third of a 20 Hz–20 kHz log axis. The contract handles it
+honestly (`NO_SOURCES` → UNMEASURED, nothing drawn), but the right answer is not
+to resample at all: **plot the 128 transmitted bins directly on a log axis**, one
+point per real bin, which at 720 px is about 5.4 px per point. `resample_peak`
+remains for displays that genuinely must reduce, such as the waterfall's 96.
+
+### Also worth not conflating
+
+The idle capture's loudest bin is `2.747e-4` (≈ −71.2 dB), while the instrument's
+own `peak_source_dbfs` reads **−63.9 dBFS**. These are different quantities — a
+per-bin averaged magnitude versus a time-domain peak — and a UI that put them on
+the same axis would invite the reader to treat the difference as a measurement.
+
+### Next
+
+Payload and renderer, after review. The fence test is written to be deleted in
+the commit that forwards these arrays, not before.
+
 ## 2026-10-13 (2) — **Four screens on the panel at 60 fps.** The viewport fix landed, and testing it surfaced a worse defect: a GPU failure was taking down the three screens that need no GPU
 
 Shell and TODO-80 fix in `cc7b704`; Pi validation in

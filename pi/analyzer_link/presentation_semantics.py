@@ -94,6 +94,7 @@ class Reason(enum.Enum):
     NO_CLAMP_METADATA = "packet carries no per-bin clamp mask (TODO-65)"
     NO_SOURCES = "no source location maps here"
     COMBINED = "resolved from several source locations"
+    FINITE_MAGNITUDE = "finite magnitude; a spectrum carries its own meaning"
 
 
 @dataclass(frozen=True)
@@ -200,6 +201,66 @@ def classify_result(values) -> tuple[BinSemantics, ...]:
     return tuple(out)
 
 
+def classify_spectrum(values) -> tuple[BinSemantics, ...]:
+    """Classify a MAGNITUDE SPECTRUM — `fft_source[]` or `fft_return[]`.
+
+    *** THE EVIDENCE IS DIFFERENT FROM tf_db, AND THAT IS THE WHOLE POINT. ***
+
+    Established from the firmware, not assumed:
+
+      - `audio_engine.h:107` — "Averaged FFT magnitudes (linear, 0.0-1.0). Mean
+        of FFT_AVERAGE_COUNT consecutive raw FFT frames, per bin."
+      - `data_sender.h:274` — transmitted "decimated, linear magnitude".
+      - `data_sender.cpp:247` `decimateMax()` — MAXIMUM over the source bins,
+        skipping NaN; a group emits NaN only when EVERY source bin was NaN.
+      - `audio_capture.cpp:778` — `accumulator * inv`, where `inv` is
+        `1.0 / FFT_AVERAGE_COUNT`, a compile-time constant, and the block is only
+        emitted once the accumulator is full. **So NaN is not reachable here on
+        the current firmware.** `decimateMax`'s NaN handling is defensive.
+
+    Three consequences, each of which is a deliberate refusal:
+
+    **1. A finite magnitude is MEASURED, including zero.** A quiet bin is a real
+    measurement of quietness. This is where a spectrum differs fundamentally from
+    a transfer function: `tf_db` divides by the source, so it has a genuine
+    pen-lift — below `TF_SOURCE_GATE` there is nothing to divide by and the
+    instrument says NaN. A magnitude has no denominator and no gate. Marking a
+    low bin UNMEASURED would turn a measurement into absence, which is the
+    governing invariant broken in the less obvious direction.
+
+    **2. The coverage nibbles MUST NOT be applied here.** They are documented
+    against `tf_db` alone (`data_sender.h`, "HOW A RECEIVER MUST RENDER tf_db"):
+    the valid nibble counts source bins energised enough for a TF, and the
+    clamped nibble counts TF saturation rails. Neither says anything about
+    whether a magnitude was measured. Borrowing them would blank perfectly good
+    spectrum bins wherever the TF happened to be unavailable.
+
+    **3. No bin here is ever CLAMPED or INDETERMINATE.** No rail is applied to
+    these arrays — the `[TF_DB_MIN-6, TF_DB_MAX+6]` clamp is on the TF. And
+    INDETERMINATE means *a value is present but the metadata needed to classify
+    it is absent*; a magnitude needs no metadata to be interpretable, so using it
+    here would make it the generic uncertainty bucket ADR-005 §6 forbids.
+
+    *** WHAT THIS FUNCTION DELIBERATELY DOES NOT INSPECT. ***
+    The sign. A negative magnitude is physically impossible and would mean the
+    bytes are wrong, but classification reads metadata, never values — the moment
+    it starts judging whether a number looks plausible it is TODO-29 again. A
+    decode fault is an error, not a class.
+    """
+    out: list[BinSemantics] = []
+    for i, v in enumerate(values):
+        if not _finite(v):
+            cls, reason = BinClass.UNMEASURED, Reason.NOT_FINITE
+        else:
+            cls, reason = BinClass.MEASURED, Reason.FINITE_MAGNITUDE
+        out.append(BinSemantics(
+            index=i, value=v, cls=cls, reason=reason, source_count=1,
+            measured_count=1 if cls is BinClass.MEASURED else 0,
+            unmeasured_count=1 if cls is BinClass.UNMEASURED else 0,
+        ))
+    return tuple(out)
+
+
 def classify_result_with_coverage(values, coverage) -> tuple[BinSemantics, ...]:
     """Forward path for when TODO-65 closes and RESULT carries a clamp mask.
 
@@ -266,17 +327,51 @@ def combine(group: list[BinSemantics], *, index: int, value: float) -> BinSemant
     )
 
 
+def _mean_of_measured(group: list[BinSemantics]) -> float:
+    """Arithmetic mean over MEASURED members only, or NaN.
+
+    A mean that included a rail or an absent member would be a number the
+    instrument never produced, so it is not computed.
+    """
+    vals = [b.value for b in group if b.cls is BinClass.MEASURED]
+    return sum(vals) / len(vals) if vals else float("nan")
+
+
+def _max_of_measured(group: list[BinSemantics]) -> float:
+    """Maximum over MEASURED members only, or NaN. For magnitude spectra.
+
+    *** WHY A SPECTRUM MUST NOT BE AVERAGED, IN THE FIRMWARE'S OWN WORDS. ***
+
+    `data_sender.h` chose MAXIMUM for the live FFT decimation and recorded why:
+    *"An arithmetic mean buries narrow peaks -- one bin at 0.5 among three at
+    0.001 means 0.126, a 12 dB under-report, which for a spectrum display is the
+    wrong default (audit finding L2)."*
+
+    The Pi reduces a second time, 128 transmitted bins onto a display axis. If
+    that second stage averaged, it would undo at the display exactly what the
+    firmware was careful to preserve on the wire, and a resonance the instrument
+    went out of its way to transmit would arrive flattened. The operator would
+    see a smaller peak than the instrument measured, which is a measurement
+    claim, not a drawing choice.
+    """
+    vals = [b.value for b in group if b.cls is BinClass.MEASURED]
+    return max(vals) if vals else float("nan")
+
+
 def resample(bins: tuple[BinSemantics, ...], targets: int,
-             *, group_of) -> tuple[BinSemantics, ...]:
+             *, group_of, value_of=_mean_of_measured) -> tuple[BinSemantics, ...]:
     """Map classified source bins onto ``targets`` display locations.
 
     ``group_of(i) -> int | None`` assigns source bin ``i`` to a target, or drops
     it. The caller owns the frequency mapping (log ring, linear waterfall); this
     function owns only the rule that the mapping cannot invent coverage.
 
-    The representative value of a combined location is the mean of its MEASURED
-    members, or NaN when it has none. A mean over clamped or absent members would
-    be a fabricated number, so it is not computed.
+    ``value_of`` picks the representative value of a combined location from its
+    MEASURED members. It defaults to the mean, which is right for a transfer
+    function; a magnitude spectrum must use ``resample_peak`` instead, and
+    ``_max_of_measured`` says why. **Changing the combining rule never changes
+    the CLASS** -- `combine()` owns that, so no choice of ``value_of`` can
+    manufacture coverage.
     """
     buckets: list[list[BinSemantics]] = [[] for _ in range(targets)]
     for i, b in enumerate(bins):
@@ -286,10 +381,19 @@ def resample(bins: tuple[BinSemantics, ...], targets: int,
 
     out: list[BinSemantics] = []
     for t, grp in enumerate(buckets):
-        vals = [b.value for b in grp if b.cls is BinClass.MEASURED]
-        value = sum(vals) / len(vals) if vals else float("nan")
-        out.append(combine(grp, index=t, value=value))
+        out.append(combine(grp, index=t, value=value_of(grp)))
     return tuple(out)
+
+
+def resample_peak(bins: tuple[BinSemantics, ...], targets: int,
+                  *, group_of) -> tuple[BinSemantics, ...]:
+    """Peak-preserving resample, for magnitude spectra. See ``_max_of_measured``.
+
+    This mirrors the firmware's own `decimateMax`, so both reduction stages
+    answer the same question: *what is the largest magnitude anywhere under this
+    display location?*
+    """
+    return resample(bins, targets, group_of=group_of, value_of=_max_of_measured)
 
 
 # =============================================================================

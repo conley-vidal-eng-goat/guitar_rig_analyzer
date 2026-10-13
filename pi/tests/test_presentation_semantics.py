@@ -304,5 +304,144 @@ class TestAgainstTheRealLiveFrames(unittest.TestCase):
         self.assertTrue(reasons <= {ps.Reason.PEN_LIFT, ps.Reason.NOT_FINITE})
 
 
+# =============================================================================
+# MAGNITUDE SPECTRA — fft_source[] / fft_return[]
+# =============================================================================
+
+class TestSpectrumClassification(unittest.TestCase):
+    """A spectrum is NOT a transfer function, and the contract must not treat it
+    like one.
+
+    `tf_db` divides by the source, so it has a real pen-lift: below
+    TF_SOURCE_GATE there is nothing to divide by. A magnitude has no denominator
+    and no gate, so a quiet bin is a measurement of quietness. Blanking it would
+    turn a measurement into absence -- the governing invariant broken in the
+    direction that looks conservative and is not.
+    """
+
+    def test_a_finite_magnitude_is_measured(self):
+        bins = ps.classify_spectrum([0.5, 0.001, 0.25])
+        self.assertTrue(all(b.cls is ps.BinClass.MEASURED for b in bins))
+
+    def test_zero_is_a_measurement_of_silence_not_an_absence(self):
+        """The one that matters. Digital silence is a real reading."""
+        bins = ps.classify_spectrum([0.0])
+        self.assertIs(bins[0].cls, ps.BinClass.MEASURED)
+        self.assertEqual(bins[0].value, 0.0)
+        self.assertTrue(bins[0].cls.is_drawable_as_measurement)
+
+    def test_nan_is_unmeasured(self):
+        bins = ps.classify_spectrum([float("nan")])
+        self.assertIs(bins[0].cls, ps.BinClass.UNMEASURED)
+        self.assertIs(bins[0].reason, ps.Reason.NOT_FINITE)
+
+    def test_a_spectrum_is_never_clamped_or_indeterminate(self):
+        """No rail is applied to these arrays -- the clamp is on the TF. And a
+        magnitude needs no metadata to be interpretable, so INDETERMINATE here
+        would be the generic uncertainty bucket ADR-005 §6 forbids."""
+        bins = ps.classify_spectrum([0.0, 1.0, 0.5, float("nan"), -0.0, 1e-30])
+        for b in bins:
+            self.assertNotIn(b.cls, (ps.BinClass.CLAMPED, ps.BinClass.INDETERMINATE))
+
+    def test_the_sign_is_not_inspected(self):
+        """A negative magnitude is physically impossible, and classification
+        still must not judge it: reading the value to decide the class is
+        TODO-29 wearing a new label. A decode fault is an error, not a class."""
+        bins = ps.classify_spectrum([-0.3])
+        self.assertIs(bins[0].cls, ps.BinClass.MEASURED)
+
+    def test_it_takes_no_coverage_argument_at_all(self):
+        """The nibbles are documented against tf_db alone. Making them
+        unpassable is stronger than documenting that they must not be passed."""
+        import inspect
+        params = list(inspect.signature(ps.classify_spectrum).parameters)
+        self.assertEqual(params, ["values"])
+
+
+class TestPeakPreservingResample(unittest.TestCase):
+    """The firmware decimates the live FFT by MAXIMUM and recorded why. The Pi
+    reduces a SECOND time, and must not undo that at the display."""
+
+    def test_the_firmwares_own_counterexample(self):
+        """data_sender.h: 'one bin at 0.5 among three at 0.001 means 0.126, a
+        12 dB under-report, which for a spectrum display is the wrong default'."""
+        bins = ps.classify_spectrum([0.5, 0.001, 0.001, 0.001])
+        peak = ps.resample_peak(bins, 1, group_of=lambda i: 0)
+        self.assertAlmostEqual(peak[0].value, 0.5)
+
+        mean = ps.resample(bins, 1, group_of=lambda i: 0)
+        self.assertAlmostEqual(mean[0].value, 0.12575)
+        self.assertGreater(
+            20 * math.log10(peak[0].value / mean[0].value), 11.9,
+            "the mean buries the peak by about 12 dB, as the firmware recorded")
+
+    def test_resample_still_defaults_to_the_mean(self):
+        """Changing the default would silently alter the transfer-function ring."""
+        bins = ps.classify_spectrum([1.0, 3.0])
+        self.assertAlmostEqual(
+            ps.resample(bins, 1, group_of=lambda i: 0)[0].value, 2.0)
+
+    def test_the_combining_rule_cannot_change_a_class(self):
+        """combine() owns the class. No choice of value_of may manufacture
+        coverage -- that separation is what makes the peak rule safe."""
+        bins = ps.classify_spectrum([float("nan"), 0.4])
+        for fn in (ps.resample, ps.resample_peak):
+            out = fn(bins, 1, group_of=lambda i: 0)
+            self.assertIs(out[0].cls, ps.BinClass.MEASURED)
+            self.assertEqual(out[0].source_count, 2)
+            self.assertEqual(out[0].measured_count, 1)
+            self.assertAlmostEqual(out[0].coverage, 0.5)
+
+    def test_a_group_with_nothing_measured_is_unmeasured_and_nan(self):
+        bins = ps.classify_spectrum([float("nan"), float("nan")])
+        out = ps.resample_peak(bins, 1, group_of=lambda i: 0)
+        self.assertIs(out[0].cls, ps.BinClass.UNMEASURED)
+        self.assertTrue(math.isnan(out[0].value))
+
+    def test_a_target_with_no_sources_is_unmeasured(self):
+        bins = ps.classify_spectrum([0.2])
+        out = ps.resample_peak(bins, 2, group_of=lambda i: 0)
+        self.assertIs(out[1].cls, ps.BinClass.UNMEASURED)
+        self.assertIs(out[1].reason, ps.Reason.NO_SOURCES)
+
+
+class TestSpectrumAgainstTheRealIdleCapture(unittest.TestCase):
+    """Real bytes, 30 s idle, 2026-09-26. The contrast with the TF is the point:
+    the same frame is 128/128 UNMEASURED as a transfer function and fully
+    MEASURED as a spectrum, and both statements are correct."""
+
+    @classmethod
+    def setUpClass(cls):
+        eng = Engine(FixtureSource(IDLE_BIN, realtime=False))
+        eng.pump()
+        cls.live = eng.snapshot().live
+
+    def test_the_idle_spectrum_is_entirely_measured(self):
+        c = ps.census(ps.classify_spectrum(self.live.fft_source))
+        self.assertEqual(c.elements, 128)
+        self.assertEqual(c.measured, 128)
+        self.assertEqual(c.unmeasured, 0)
+
+    def test_the_same_frame_is_total_absence_as_a_transfer_function(self):
+        tf = ps.census(ps.classify_live(self.live.tf_db, self.live.coverage))
+        self.assertEqual(tf.measured, 0)
+        self.assertEqual(tf.unmeasured, 128)
+
+    def test_no_bin_of_the_real_capture_is_nan(self):
+        """Confirms the firmware reading: inv is a compile-time constant and the
+        block only emits once the accumulator is full, so NaN is unreachable
+        here. decimateMax's NaN handling is defensive, not a live signal."""
+        for arr in (self.live.fft_source, self.live.fft_return):
+            self.assertTrue(all(math.isfinite(v) for v in arr))
+
+    def test_the_idle_spectrum_is_quiet_but_not_silent(self):
+        """Reported, not asserted as a threshold: these are the real numbers a
+        renderer has to put on an axis."""
+        lo = min(self.live.fft_source)
+        hi = max(self.live.fft_source)
+        self.assertGreaterEqual(lo, 0.0)
+        self.assertLess(hi, 1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
