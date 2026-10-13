@@ -289,5 +289,342 @@ class TestSpectraOnTheWire(unittest.TestCase):
         json.dumps(self.out, allow_nan=False)
 
 
+# =============================================================================
+# TEENSY-AUTHORED DETAIL: insights, capture provenance, calibration state
+# =============================================================================
+#
+# These assertions exist because the browser is now the surface an operator
+# reads this instrument through. Every value below was authored on the Teensy;
+# the only thing being tested is that the transport did not change it, lose it,
+# invent it, or attach a unit to it that the wire never carried.
+
+
+@unittest.skipUnless(RESULT_BIN.is_file(), "RESULT fixture not present")
+class TestInsightsAreForwardedNotAuthored(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        s = _snap(RESULT_BIN)
+        cls.result = s.result
+        cls.p = payload.result_payload(s.result, s.geometry)
+
+    def test_every_authored_insight_reaches_the_browser(self):
+        """Four on the pinned capture. None dropped, none added, same order."""
+        self.assertEqual(len(self.p["insights"]), 4)
+        self.assertEqual(len(self.p["insights"]), len(self.result.insights))
+
+    def test_title_and_detail_are_byte_for_byte_what_the_teensy_wrote(self):
+        for sent, got in zip(self.result.insights, self.p["insights"]):
+            self.assertEqual(got["title"], sent.title)
+            self.assertEqual(got["detail"], sent.detail)
+
+    def test_a_detail_truncated_by_the_sender_is_not_repaired(self):
+        """`data_sender` cuts detail to char[64] mid-word. Completing it here
+        would make this file a co-author of a measurement statement."""
+        detail = self.p["insights"][1]["detail"]
+        self.assertEqual(detail, "Results show raw hardware TF \u2014 channel "
+                                 "asymmetry is not remov")
+        self.assertFalse(detail.endswith("removed."))
+
+    def test_mode_and_severity_are_carried_by_name_not_by_number(self):
+        """MEASUREMENT vs ADVISORY must stay distinguishable in any renderer
+        (protocol.InsightMode). An integer would invite a renderer to compare
+        or sort it; a name can only be printed or matched."""
+        for got in self.p["insights"]:
+            self.assertIn(got["mode"], ("MEASUREMENT", "ADVISORY"))
+            self.assertIn(got["severity"], ("INFO", "WARNING", "ALERT"))
+
+    def test_severity_is_the_teensys_grade_and_is_not_re_derived(self):
+        """The ALERT belongs to 'Measurement quality' because the firmware
+        graded it from result_quality, not because its magnitude is largest."""
+        got = self.p["insights"]
+        self.assertEqual([g["severity"] for g in got],
+                         [i.severity.name for i in self.result.insights])
+        self.assertEqual(got[0]["severity"], "ALERT")
+        self.assertEqual(got[0]["title"], "Measurement quality")
+
+    def test_a_broadband_insight_is_not_given_a_frequency_of_zero_hz(self):
+        """insights_engine.h:115 -- "Relevant frequency, or 0 if broadband".
+        All four on this capture are broadband. '@ 0 Hz' is a location the
+        instrument never claimed."""
+        for got in self.p["insights"]:
+            self.assertIsNone(got["frequency_hz"])
+
+    def test_the_not_applicable_magnitude_sentinel_becomes_absence(self):
+        """0.0 is overloaded (insights_engine.h:116). The two insights that
+        carry no magnitude must not read as a measured zero."""
+        got = self.p["insights"]
+        self.assertIsNone(got[1]["magnitude"])      # No calibration applied
+        self.assertIsNone(got[2]["magnitude"])      # Advisory unavailable
+
+    def test_a_real_magnitude_survives(self):
+        self.assertAlmostEqual(self.p["insights"][3]["magnitude"], -24.0)
+
+    def test_the_magnitude_slot_is_not_always_db(self):
+        """*** THE REASON THE PAYLOAD KEY IS NOT `magnitude_db`. ***
+
+        insights_engine.cpp:170 passes `r.mean_coherence` into the struct's
+        `magnitude_db` field for the quality insight. The value below is a
+        dimensionless coherence, and a renderer printing it as "0.80 dB" would
+        be asserting a unit that was never transmitted.
+        """
+        got = self.p["insights"][0]
+        self.assertEqual(got["title"], "Measurement quality")
+        self.assertAlmostEqual(got["magnitude"], self.result.mean_coherence)
+        self.assertAlmostEqual(got["magnitude"], 0.79896, places=5)
+        self.assertNotIn("magnitude_db", got)
+
+    def test_the_unit_is_only_ever_stated_in_the_teensys_own_prose(self):
+        """Both numbers are restated, with their correct units, inside the
+        authored detail strings -- which is why withholding an ambiguous
+        numeric field loses nothing."""
+        self.assertIn("Coherence: 0.80", self.p["insights"][0]["detail"])
+        self.assertIn("-24.0 dB", self.p["insights"][3]["detail"])
+
+    def test_an_empty_insight_list_is_a_statement_not_a_missing_field(self):
+        """`insight_count` is an explicit wire byte and packets.py validates it
+        against the payload length, so a Result with no insights means the
+        instrument authored none. The key is always present; a renderer may
+        therefore say "none authored" and can never say it for missing data."""
+        import dataclasses
+        none_authored = dataclasses.replace(self.result, insights=())
+        s = _snap(RESULT_BIN)
+        p = payload.result_payload(none_authored, s.geometry)
+        self.assertIn("insights", p)
+        self.assertEqual(p["insights"], [])
+
+    def test_nothing_in_the_browser_payload_can_author_an_insight(self):
+        """The PER-BIN arrays an insight would have to be computed from are
+        still absent, so the browser cannot synthesise one even if asked to.
+
+        Checked as keys, not as substrings. "coherence" legitimately occurs
+        twice in this payload -- as `mean_coherence`, a scalar verdict the
+        Teensy graded and the transport has always carried, and inside the
+        authored prose "Coherence: 0.80". Neither lets anything be recomputed.
+        Step C will add classified coherence; until then these stay absent.
+        """
+        def keys(o):
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    yield k
+                    yield from keys(v)
+            elif isinstance(o, list):
+                for v in o:
+                    yield from keys(v)
+
+        present = set(keys(self.p))
+        for leaked in ("coherence", "group_delay_ms", "tf_cal_phase_rad",
+                       "tf_cal_mag_db", "S_xx_db", "S_yy_db"):
+            self.assertNotIn(leaked, present)
+        self.assertIn("mean_coherence", present)
+
+
+@unittest.skipUnless(RESULT_BIN.is_file(), "RESULT fixture not present")
+class TestCaptureProvenance(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        s = _snap(RESULT_BIN)
+        cls.result = s.result
+        cls.p = payload.result_payload(s.result, s.geometry)
+
+    def test_the_conditions_of_the_capture_are_carried_verbatim(self):
+        c = self.p["capture"]
+        self.assertEqual(c["estimator"], "H1")
+        self.assertEqual(c["stimulus"], "EXTERNAL")
+        self.assertEqual(c["fft_mode"], "MODE_LIVE")
+        self.assertEqual(c["window_function"], "HANN")
+        self.assertEqual(c["fft_size"], 1024)
+        self.assertEqual(c["timestamp_ms"], 225178)
+        self.assertEqual((c["capture_start_block"], c["capture_end_block"]),
+                         (77308, 77580))
+        self.assertEqual((c["source_node_ch"], c["return_node_ch"]), (0, 1))
+        self.assertEqual(c["line_in_level"], 5)
+
+    def test_fft_size_is_not_the_array_length(self):
+        """packets.py: fft_size is the FFT length actually used; the spectra are
+        always fft_bins long. Confusing them misreports the resolution."""
+        self.assertEqual(self.p["capture"]["fft_size"], 1024)
+        self.assertEqual(self.p["source_bins"], 512)
+
+    def test_line_in_level_is_present_because_audit_R6_requires_it(self):
+        """Without it a receiver A/Bs two captures taken at different input
+        gains and presents the difference as a rig difference."""
+        self.assertIn("line_in_level", self.p["capture"])
+
+    def test_clipping_is_reported_as_counts_and_as_the_teensys_own_flag(self):
+        c = self.p["capture"]
+        self.assertEqual((c["clip_source_count"], c["clip_return_count"]), (0, 0))
+        self.assertIs(c["clip_detected"], False)
+        self.assertIs(c["clip_detected"], bool(self.result.clip_detected))
+
+    def test_enums_are_names_so_a_renderer_cannot_do_arithmetic_on_them(self):
+        c = self.p["capture"]
+        for key in ("estimator", "stimulus", "fft_mode", "window_function"):
+            self.assertIsInstance(c[key], str)
+
+    def test_the_instruments_own_coverage_grade_is_carried(self):
+        """valid_bin_fraction is the Teensy saying it established 2% of the
+        analysis band. The Pi must never recompute it from the ring census."""
+        self.assertAlmostEqual(self.p["authority"]["valid_bin_fraction"],
+                               self.result.valid_bin_fraction)
+        self.assertAlmostEqual(self.p["authority"]["valid_bin_fraction"],
+                               0.017467, places=6)
+
+
+@unittest.skipUnless(RESULT_BIN.is_file(), "RESULT fixture not present")
+class TestCalibrationState(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        s = _snap(RESULT_BIN)
+        cls.p = payload.result_payload(s.result, s.geometry)
+
+    def test_the_warning_bits_are_expanded_to_names(self):
+        self.assertEqual(self.p["calibration"]["warnings"],
+                         ["CALIBRATION_MISSING"])
+
+    def test_the_provenance_string_is_the_firmwares_own_words(self):
+        self.assertEqual(self.p["calibration"]["provenance"],
+                         "none \u2014 no calibration loaded")
+
+    def test_the_calibration_type_is_carried_even_when_none_was_applied(self):
+        """INTERNAL_LOOPBACK names the slot, not a calibration that ran. The
+        renderer needs both this and authority.calibration_applied to say
+        anything true, which is why neither is dropped."""
+        self.assertEqual(self.p["calibration"]["type"], "INTERNAL_LOOPBACK")
+        self.assertFalse(self.p["authority"]["calibration_applied"])
+
+    def test_calibration_applied_is_not_duplicated_into_the_new_block(self):
+        """One field, one home: two copies can desync under a later edit."""
+        self.assertNotIn("applied", self.p["calibration"])
+
+
+@unittest.skipUnless(IDLE_BIN.is_file(), "idle fixture not present")
+class TestLiveFlagsReachTheBrowser(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        s = _snap(IDLE_BIN)
+        cls.live = s.live
+        cls.p = payload.live_payload(s.live, s.geometry)
+
+    def test_the_clip_flags_are_carried(self):
+        """A clip invalidates a reading while the reading still looks
+        plausible, so it must travel beside the peaks it qualifies."""
+        a = self.p["authority"]
+        self.assertIs(a["source_clip"], False)
+        self.assertIs(a["return_clip"], False)
+        self.assertIs(a["source_clip"], bool(self.live.source_clip))
+        self.assertIs(a["return_clip"], bool(self.live.return_clip))
+
+    def test_a_false_clip_flag_is_a_statement_not_an_absence(self):
+        """False means the instrument reported no clipping. It must be a
+        boolean, never null and never missing, or a renderer cannot tell
+        "no clip" from "not reported"."""
+        for key in ("source_clip", "return_clip", "tf_persistence_active"):
+            self.assertIsInstance(self.p["authority"][key], bool)
+
+    def test_tf_persistence_is_carried_because_it_qualifies_the_tf(self):
+        self.assertIs(self.p["authority"]["tf_persistence_active"], True)
+
+    def test_the_block_counter_is_carried_as_the_only_freshness_signal(self):
+        self.assertEqual(self.p["authority"]["output_block_number"],
+                         self.live.output_block_number)
+
+    def test_a_result_payload_carries_no_live_flags(self):
+        """Peak levels and clip flags are LIVE_FRAME fields. A RESULT has none,
+        and the last live value must not be shown as if it were part of it."""
+        s = _snap(RESULT_BIN)
+        rp = payload.result_payload(s.result, s.geometry)
+        for key in ("source_clip", "return_clip", "peak_source_dbfs",
+                    "output_block_number"):
+            self.assertNotIn(key, rp["authority"])
+
+
+@unittest.skipUnless(RESULT_BIN.is_file(), "RESULT fixture not present")
+class TestBackwardCompatibility(unittest.TestCase):
+    """*** THE EXISTING RENDERERS MUST NOT NOTICE THIS COMMIT. ***
+
+    LIVE, TONE and the fingerprint read the payload by key name. Every key that
+    shipped before the insight/provenance work is pinned here by name and by
+    type, so a later tidy-up cannot rename or re-type one without failing.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        rs = _snap(RESULT_BIN)
+        cls.rp = payload.result_payload(rs.result, rs.geometry)
+        ls = _snap(IDLE_BIN)
+        cls.lp = payload.live_payload(ls.live, ls.geometry)
+
+    def test_the_result_top_level_keys_are_a_superset_of_what_shipped(self):
+        for key in ("kind", "bands", "source_bins", "census_source",
+                    "census_bands", "segments", "authority"):
+            self.assertIn(key, self.rp)
+        self.assertEqual(self.rp["kind"], "result")
+
+    def test_the_live_top_level_keys_are_a_superset_of_what_shipped(self):
+        for key in ("kind", "spectra", "bands", "source_bins", "census_source",
+                    "census_bands", "segments", "authority"):
+            self.assertIn(key, self.lp)
+        self.assertEqual(self.lp["kind"], "live")
+
+    def test_the_original_result_authority_fields_are_unchanged(self):
+        a = self.rp["authority"]
+        self.assertEqual(a["firmware_version"], "0.6.0")
+        self.assertIs(a["result_valid"], True)
+        self.assertEqual(a["result_quality"], "POOR")
+        self.assertEqual(a["n_averages_completed"], 32)
+        self.assertIsInstance(a["mean_coherence"], float)
+        self.assertIs(a["calibration_applied"], False)
+
+    def test_the_original_live_authority_fields_are_unchanged(self):
+        a = self.lp["authority"]
+        self.assertIsInstance(a["peak_source_dbfs"], float)
+        self.assertIsInstance(a["peak_return_dbfs"], float)
+        self.assertIsInstance(a["tf_confidence"], float)
+        self.assertIsInstance(a["tf_clamped_count"], int)
+        self.assertEqual(a["measurement_state"], "IDLE")
+
+    def test_the_ring_the_fingerprint_draws_is_untouched(self):
+        """TONE reads segments[] and the two censuses. Byte-identical shape."""
+        self.assertEqual(len(self.rp["segments"]), 48)
+        self.assertEqual(len(self.lp["segments"]), 48)
+        for seg in self.rp["segments"] + self.lp["segments"]:
+            self.assertEqual(set(seg), {"i", "hz", "cls", "value",
+                                        "coverage", "sources", "counts"})
+
+    def test_the_spectra_live_reads_are_untouched(self):
+        sp = self.lp["spectra"]
+        self.assertEqual(set(sp), {"unit", "reference", "reference_note",
+                                   "nyquist_hz", "geometry", "src", "ret",
+                                   "census_src", "census_ret"})
+        self.assertEqual(len(sp["src"]), 128)
+
+    def test_a_result_still_carries_no_spectrum(self):
+        self.assertNotIn("spectra", self.rp)
+
+    def test_both_payloads_are_still_strict_json(self):
+        json.loads(json.dumps(self.rp, allow_nan=False))
+        json.loads(json.dumps(self.lp, allow_nan=False))
+
+    def test_no_new_field_is_a_512_element_array(self):
+        """The no-raw-arrays guard, restated over the enlarged payload: the
+        browser still cannot reconstruct a per-bin class from what it is sent.
+        insights is bounded by insights_max (12)."""
+        def arrays(o):
+            if isinstance(o, list):
+                yield o
+                for v in o:
+                    yield from arrays(v)
+            elif isinstance(o, dict):
+                for v in o.values():
+                    yield from arrays(v)
+        self.assertTrue(all(len(a) <= 48 for a in arrays(self.rp)))
+        self.assertTrue(all(len(a) <= 128 for a in arrays(self.lp)))
+
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 
 from analyzer_link import presentation_semantics as ps
+from analyzer_link import protocol
 
 # The committed design's ring: 48 bands, 20 Hz at the bottom, 20 kHz at the top.
 RING_BANDS = 48
@@ -180,6 +181,150 @@ def _ring(bins, sample_rate: int, fft_bins: int, bands: int):
     return ps.resample(bins, bands, group_of=group_of)
 
 
+# =============================================================================
+# TEENSY-AUTHORED INSIGHTS, CAPTURE PROVENANCE AND CALIBRATION STATE
+# =============================================================================
+#
+# *** EVERYTHING IN THIS SECTION IS FORWARDING, NOT AUTHORSHIP. ***
+#
+# The Teensy writes the insight text, grades its own severity and decides its
+# mode. This file copies those bytes to the browser and does nothing else to
+# them -- no re-ranking, no re-wording, no severity inferred from a magnitude,
+# no insight synthesised from the arrays. `insights_engine.cpp` is the author
+# and `view_lab.js` is a printer (ADR-001, ADR-005 section 3).
+#
+# The Tk renderer has printed these verbatim since the first result view
+# (`analyzer_ui/app.py`); until this commit the web renderer did not carry them
+# at all, which made the browser the LESS informative of the two surfaces.
+#
+# *** AN EMPTY LIST IS A MEASUREMENT. A MISSING ONE CANNOT REACH HERE. ***
+#
+# `insight_count` is an explicit byte on the wire (`data_sender.h`, RESULT
+# layout) and `packets.py` validates the declared count against both
+# `insights_max` and the total payload length before building a Result. So a
+# decoded Result with `insights == ()` means the instrument authored ZERO
+# insights -- a statement -- and a truncated or over-long insight section raises
+# DecodeError and never becomes a Result at all. The renderer is therefore
+# entitled to say "none authored" and must never say it for missing data,
+# because missing data does not arrive.
+
+
+def _insight_frequency(hz: float) -> float | None:
+    """`frequency_hz`, or None when the firmware's broadband sentinel is set.
+
+    *** 0.0 IS NOT A FREQUENCY HERE, AND THE FIRMWARE SAYS SO. ***
+
+      insights_engine.h:115   "Relevant frequency, or 0 if broadband"
+      insights_engine.cpp:26  "Broadband insights carry frequency_hz = 0."
+      insights_engine.cpp:537 prints the frequency only `if (ins.frequency_hz > 0)`
+
+    Forwarding the raw 0.0 would let a renderer label a broadband quality
+    advisory "@ 0 Hz", which is a location the instrument never claimed. Null
+    is the same decision the firmware's own printer makes, not a new one.
+    """
+    if not (isinstance(hz, (int, float)) and math.isfinite(hz)) or hz <= 0.0:
+        return None
+    return hz
+
+
+def _insight_magnitude(value: float) -> float | None:
+    """The insight's magnitude slot, or None when the not-applicable sentinel is set.
+
+    *** THE WIRE CANNOT DISTINGUISH "NOT APPLICABLE" FROM A TRUE ZERO. ***
+
+    `insights_engine.h:116` reads "Relevant magnitude, or 0 if not applicable",
+    so exactly 0.0 is overloaded. That ambiguity is a protocol limitation of the
+    same family as TODO-65's missing clamp mask, and it is resolved the way this
+    project resolves those: refuse to assert either reading.
+
+    Null is chosen over the raw 0.0 because the two errors are not symmetric.
+    Printing "0.0" beside "No calibration applied" asserts a broadband
+    measurement that was never taken. Withholding the number loses nothing,
+    because **the Teensy restates every magnitude it considers meaningful inside
+    its own `detail` string** -- "Broadband mean TF: -24.0 dB." carries the
+    -24.0 in prose, and that string is forwarded untouched.
+    """
+    if not (isinstance(value, (int, float)) and math.isfinite(value)) or value == 0.0:
+        return None
+    return value
+
+
+def _insight(ins) -> dict:
+    """One insight, forwarded. `title` and `detail` are never edited.
+
+    The firmware's char[64] fields are NUL-padded and may already be truncated
+    mid-word by the sender (`data_sender.h`). They are passed on exactly as
+    decoded: re-wrapping or completing them would make this file a co-author.
+    """
+    return {
+        "mode": ins.mode.name,
+        "severity": ins.severity.name,
+        "frequency_hz": _insight_frequency(ins.frequency_hz),
+        # *** DELIBERATELY NOT NAMED `magnitude_db`. THE UNIT IS NOT ON THE WIRE. ***
+        #
+        # The struct field is called `magnitude_db`, and for "Signal level
+        # decrease" it really is dB. But `insights_engine.cpp:170` passes
+        # `r.mean_coherence` -- a dimensionless 0..1 ratio -- into the same slot
+        # for "Measurement quality". The decoded 0.799 on the pinned fixture is
+        # that coherence, not 0.799 dB.
+        #
+        # So the unit is a function of WHICH INSIGHT produced the value, and the
+        # wire does not carry it. A payload key ending in `_db` would hand the
+        # renderer a unit the instrument never transmitted, and `view_lab.js`
+        # would print it in good faith. The only authoritative statement of the
+        # unit is the Teensy's own `detail` sentence, which is forwarded intact.
+        # Pinned by test_the_magnitude_slot_is_not_always_db.
+        "magnitude": _insight_magnitude(ins.magnitude_db),
+        "title": ins.title,
+        "detail": ins.detail,
+    }
+
+
+def _calibration(result) -> dict:
+    """Calibration identity and its warning bits, by name.
+
+    `calibration_applied` is NOT repeated here: it already rides in
+    `authority` and has since the first payload. One field, one home.
+    """
+    bits = int(result.calibration_warnings)
+    return {
+        "type": result.calibration_type.name,
+        "warnings": [w.name for w in protocol.CalibrationWarning if bits & int(w)],
+        "provenance": result.calibration_provenance,
+    }
+
+
+def _capture(result) -> dict:
+    """The conditions the measurement was taken under, verbatim.
+
+    `line_in_level` is here for the reason `data_sender.h` gives: without it a
+    receiver will A/B two captures taken at different input gains and present
+    the difference as a rig difference (audit finding R6). None of these is a
+    judgement -- they are the settings the instrument recorded about itself.
+
+    `fft_size` is the FFT length actually used and is NOT the array length; the
+    spectra are always `fft_bins` long. `packets.py` says so and a renderer that
+    confused the two would misreport the resolution.
+    """
+    return {
+        "estimator": result.estimator.name,
+        "stimulus": result.stimulus.name,
+        "fft_mode": result.fft_mode.name,
+        "window_function": result.window_function.name,
+        "fft_size": result.fft_size,
+        "timestamp_ms": result.timestamp_ms,
+        "capture_start_block": result.capture_start_block,
+        "capture_end_block": result.capture_end_block,
+        "source_node_ch": result.source_node_ch,
+        "return_node_ch": result.return_node_ch,
+        "line_in_level": result.line_in_level,
+        "clip_source_count": result.clip_source_count,
+        "clip_return_count": result.clip_return_count,
+        "clip_detected": bool(result.clip_detected),
+        "generator_active": bool(result.generator_active),
+    }
+
+
 def result_payload(result, geometry, *, bands: int = RING_BANDS) -> dict:
     """A RESULT, classified and reduced to the ring.
 
@@ -197,6 +342,10 @@ def result_payload(result, geometry, *, bands: int = RING_BANDS) -> dict:
         "segments": [_segment(b, bands) for b in ring],
         # Teensy-authored, carried verbatim. The browser prints these; it must
         # never compute, re-grade or second-guess any of them (ADR-001).
+        #
+        # ADDITIVE ONLY. Every key that was here before this commit is still
+        # here, spelled and typed the same way, because `view_tone.js`,
+        # `view_live.js` and `fingerprint_split.js` read this object by name.
         "authority": {
             "firmware_version": result.firmware_version,
             "result_valid": result.result_valid,
@@ -204,7 +353,15 @@ def result_payload(result, geometry, *, bands: int = RING_BANDS) -> dict:
             "n_averages_completed": result.n_averages_completed,
             "mean_coherence": result.mean_coherence,
             "calibration_applied": bool(result.calibration_applied),
+            # Sibling of mean_coherence: the Teensy's own count of how much of
+            # the analysis band it could establish. 0.0175 on the pinned
+            # fixture -- the instrument grading its own coverage as 2%.
+            "valid_bin_fraction": result.valid_bin_fraction,
         },
+        "capture": _capture(result),
+        "calibration": _calibration(result),
+        # A LIST, ALWAYS PRESENT. Empty means the instrument authored none.
+        "insights": [_insight(i) for i in result.insights],
     }
 
 
@@ -250,11 +407,23 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS) -> dict:
         "census_source": _census(ps.census(source)),
         "census_bands": _census(ps.census(ring)),
         "segments": [_segment(b, bands) for b in ring],
+        # ADDITIVE ONLY -- see the note on the RESULT authority block.
         "authority": {
             "peak_source_dbfs": live.peak_source_dbfs,
             "peak_return_dbfs": live.peak_return_dbfs,
             "tf_confidence": live.tf_confidence,
             "tf_clamped_count": live.tf_clamped_count,
             "measurement_state": live.measurement_state.name,
+            # Flag bits the receiver has always decoded and the transport has
+            # always dropped. A clip is the one live condition that invalidates
+            # a reading while the reading still looks plausible, so it belongs
+            # beside the peaks it qualifies.
+            "source_clip": bool(live.source_clip),
+            "return_clip": bool(live.return_clip),
+            "tf_persistence_active": bool(live.tf_persistence_active),
+            # The audio block counter's low 16 bits -- the ONLY freshness signal
+            # on the wire, and not a wall clock. `packets.py`: gaps are dropped
+            # frames, which is expected, and must not be rendered as an error.
+            "output_block_number": live.output_block_number,
         },
     }
