@@ -147,10 +147,18 @@ PROFILE="$(mktemp -d /tmp/gra-kiosk.XXXXXX)"
 echo "[web] $($CHROMIUM --version 2>/dev/null || echo 'chromium: version unknown')"
 echo "[web] launching kiosk at $URL"
 
+# --password-store=basic is NOT cosmetic. Without it, Chromium's first run on a
+# fresh profile asks gnome-keyring for a secret store, which raises a modal
+# "Choose password for new keyring" dialog ON TOP OF THE KIOSK WINDOW and pops
+# the on-screen keyboard. Observed on this Pi, 2026-10-12, first launch. The page
+# never becomes visible and no keyboard is attached to dismiss it. This flag is
+# what stands between a kiosk that boots and one that hangs on a password prompt.
 exec "$CHROMIUM" \
   --ozone-platform=wayland \
   --kiosk "$URL" \
   --user-data-dir="$PROFILE" \
+  --password-store=basic \
+  --use-mock-keychain \
   --window-size=720,1280 \
   --force-device-scale-factor=1 \
   --no-first-run \

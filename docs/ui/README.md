@@ -223,8 +223,8 @@ Recorded so that their absence reads as a decision rather than an oversight.
 | # | Step | State |
 |---|---|---|
 | 0 | Import the design sources and reconcile them — **this commit** | 🟢 done 2026-10-12 |
-| 1 | **Prove Chromium on the physical Pi 5 + Touch Display 2.** Minimal launcher over SSH; no keyboard on the Pi; do **not** replace the Tk autostart. Record startup, WebGL renderer string, orientation, touch, frame rate | 🔴 **next** |
-| 2 | Four-tab shell + tokens + status strip; TONE is today's fingerprint unchanged | 🔴 |
+| 1 | **Prove Chromium on the physical Pi 5 + Touch Display 2.** Minimal launcher over SSH; no keyboard on the Pi; do **not** replace the Tk autostart. Record startup, WebGL renderer string, orientation, touch, frame rate | 🟡 **mostly done 2026-10-12** — hardware WebGL 2 (V3D), portrait, full panel, 60 fps, 369 tests green on the Pi. [Record](../../ai/evidence/2026-10-12-pi-chromium-first-run.md). **Touch delivery still untested** (needs a finger), and the serial path, autostart and reconnect are untouched |
+| 2 | Four-tab shell + tokens + status strip; TONE is today's fingerprint unchanged. **Must fix TODO-80 with it** | 🔴 **next** |
 | 3 | `presentation_semantics` extension for the FFT arrays and coherence — own commit, own tests, contract before renderer | 🔴 |
 | 4 | LIVE: meters, SOURCE/RETURN spectrum, TF strip | 🔴 |
 | 5 | Bench: live capture with the guitar running, on the Pi | 🔴 |
@@ -263,3 +263,4 @@ fixture replay is fine; an unlabelled one in `ai/evidence/` is not.
 | 1 | SOURCE blue vs cut-cyan legibility on the physical panel (§3.2) | Two-River |
 | 2 | What `UNMEASURED` means in `fft_source[]` / `fft_return[]` — those arrays carry **no coverage nibbles**; the coverage array belongs to `tf_db[]`. A new classification rule is needed, and it belongs in `presentation_semantics.py` with tests, not in a renderer | Step 3, then LIVE |
 | 3 | Whether TODO-65 (RESULT per-bin clamp mask) can close before 2026-11-01. Until it does, every finite RESULT bin is INDETERMINATE and the LAB transfer-function curve is mostly mask | LAB's usefulness |
+| 4 | **Settled 2026-10-12, and it constrains every layout here.** The kiosk gets the full 720 × 1280, **but only after a resize event** — a one-shot `innerWidth`/`innerHeight` read at load returns **668 × 392** and never corrects. The shell must lay out from a live viewport, never a sampled one. See TODO-80 | Step 2 |

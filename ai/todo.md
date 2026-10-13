@@ -17,6 +17,24 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-80 — The renderer sizes its camera from a viewport that does not exist yet, so the ring is fitted to 668×392 and shown at 720×1280 🔴 **found 2026-10-12 on the first Pi browser run; CANNOT reproduce on macOS**
+
+**What.** [`fingerprint_split.js`](../pi/web/static/fingerprint_split.js) reads `container.clientWidth` / `clientHeight` **once**, inside `createFingerprint()`, and derives both the camera `aspect` and `cameraDistance` from them. There is no `resize` handler.
+
+**Why that is wrong on this hardware.** Chromium's Wayland surface is created at a provisional size and resized when the compositor assigns the output. Measured on the panel, 2026-10-12:
+
+```
+at load     668 x 392        on resize   720 x 1280        +2s / +6s   720 x 1280
+```
+
+So the module fits the ring to **668 × 392** and the compositor then displays it at **720 × 1280**. Visible in [`2026-10-12-pi-web-fingerprint-fixture.png`](evidence/2026-10-12-pi-web-fingerprint-fixture.png) as a ring that is small, vertically off-centre and ringed by dead space.
+
+**🔺 The comment in that file is correct and the code is wrong.** It already reasons that the ring "must fit the NARROW axis. On 720x1280 portrait that is the horizontal one, so a distance tuned on a landscape mock crops the ring." The arithmetic honours that faithfully — from numbers that are not the panel's. **A macOS window is sized before first paint, so no amount of desktop testing can surface this.**
+
+**Scope fence.** This is not only the fingerprint's bug. **The four-tab shell must take the same rule: no layout may be computed from a one-shot viewport read.** Fix both together rather than patching one module.
+
+**Proof:** on the physical panel, the ring fits the 720-px width with the camera distance recomputed after the resize, and a deliberate output change (or a `--window-size` other than the panel's) re-fits rather than cropping.
+
 ### TODO-78 — Re-baseline SOURCE_NODE and RETURN_NODE under the corrected C10 topology 🔴 [bench] **every level on this board was measured under an unintended load that no longer exists**
 **Why:** until 2026-10-12, C10 sat between RETURN_NODE and **U4 pin 1 — a servoed op-amp output** whose closed-loop Z<sub>out</sub> is milliohms. That is an unintended shunt on RETURN_NODE of ≈**1.59 kΩ at 1 kHz** (≈13.3 kΩ at 120 Hz). The corrected topology presents ≈**101.6 kΩ**. **RETURN_NODE was loaded ~64× heavier than intended at 1 kHz for the whole of its measured life, including Action 125.** Journal 2026-10-12 (1).
 **What follows, and what does not:**
@@ -1775,7 +1793,9 @@ Implemented in `trySendBestEffort()`, which **all six** best-effort packet types
 | Kiosk autostart replacing the Tk autostart (`d4eca26`) | 🔴 not written. **Do not replace the Tk autostart until ADR-005 §2's four conditions hold** |
 | Disconnect/reconnect survival | 🔴 `link.stale` exists in the payload; the client ignores it |
 
-**🔺 NO BROWSER HAS EVER RUN ON THE PI.** The slice-1 screenshots were headless Chrome on macOS with SwiftShader. Chromium startup, the WebGL renderer string, DSI portrait orientation, touch delivery, frame rate and the `--serial /dev/ttyAMA0` path (implemented, never run) are all unvalidated on the physical hardware. **This is the next step and it is a bench step** — see `docs/ui/README.md` §5.
+**✅ CHROMIUM NOW VALIDATED ON THE HARDWARE — 2026-10-12, 23:35–23:52 PDT.** [`evidence/2026-10-12-pi-chromium-first-run.md`](evidence/2026-10-12-pi-chromium-first-run.md). Chromium 152 renders the client on the panel at **60 fps** (worst 1 s sample 45) on **hardware WebGL 2 — `ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1)`, not SwiftShader**; portrait, scale 1, full 720×1280; 369 tests green on the Pi; the fixture renders to the same census as the macOS record. **Two hardware-only defects were found and one is still open — see TODO-80.** The other, a gnome-keyring modal that blocked the first launch with no keyboard to dismiss it, is fixed in `run_web.sh`.
+
+**🔺 STILL UNVALIDATED:** autostart (not written), `--serial /dev/ttyAMA0` (never run — the Tk UI holds the port, so every frame so far is a **recorded fixture** with the Teensy not measuring), disconnect/reconnect, long-run stability beyond ~25 s, and **touch delivery** — the capability is reported (10 points, PointerEvent) but nobody has touched the panel, because the session was entirely over SSH. **ADR-005 §2: one of four conditions met.**
 
 **Interface architecture decided 2026-10-12:** four tabs — LIVE / TONE / LAB / INFO — persistent bottom navigation at 720×1280, frameworkless (vanilla ES modules + three.js + Canvas2D, no React, no build step, per ADR-005 §1a). **Navigation switches views; it must not imply control**, because the Pi→Teensy direction does not exist (TODO-35).
 

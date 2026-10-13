@@ -12,6 +12,103 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (1) — **Chromium runs on the Pi's real GPU at 60 fps — and the first launch never reached the page.** Two hardware-only defects found in seventeen minutes, neither of which can reproduce on macOS
+
+**Bench observations 2026-10-12, 23:35–23:52 PDT**, written up after midnight.
+Full record: [`evidence/2026-10-12-pi-chromium-first-run.md`](evidence/2026-10-12-pi-chromium-first-run.md).
+
+**No firmware change, no protocol change, no wiring change, no measurement
+initiated.** The Pi's own repository checkout was not modified and the Tk UI ran
+undisturbed on **pid 1514** before, during and after.
+
+### Why this came before any UI building
+
+ADR-005 §2 names four conditions, and the first is that the Pi can boot into
+Chromium. **No browser had ever run on this Pi.** The 2026-09-30 slice-1
+screenshots were headless Chrome on macOS with SwiftShader, which says nothing
+about Broadcom V3D. Building four tabs on an unvalidated runtime would have been
+the one risk that does not shrink with time, so it went first. Seventeen minutes
+of hardware returned two defects that months of macOS work could not have.
+
+### 🔴 Defect 1 — the first launch stopped on a password dialog
+
+Chromium's first run on a fresh profile asked gnome-keyring for a secret store and
+raised a modal **"Choose password for new keyring"** over the kiosk window, with
+`squeekboard` popped over the lower half of the panel. The page never appeared.
+
+**There is no keyboard attached to this Pi.** As a kiosk failure this is total, and
+it is exactly the class of thing that only exists on the target: a fresh profile,
+a desktop keyring daemon, no input device. Fixed with `--password-store=basic
+--use-mock-keychain`, carrying a comment that says what it prevents — a later
+contributor tidying "redundant" flags would silently restore it.
+
+### 🔴 Defect 2 — the renderer sizes itself from a viewport that does not exist yet
+
+The more interesting one. A probe page sampling the viewport repeatedly reported:
+
+```
+at load     668 x 392        on resize   720 x 1280        +6s   720 x 1280
+```
+
+Chromium's Wayland surface is created at a provisional size and resized when the
+compositor assigns the output. **A script that reads `innerWidth`/`innerHeight`
+once at load gets 668 × 392 and never corrects.**
+
+`fingerprint_split.js` does precisely that: `container.clientWidth/clientHeight`
+read once in `createFingerprint()`, with camera aspect *and* distance derived from
+them, and no resize handler. So on the panel it fits the ring to 668 × 392 and
+displays it at 720 × 1280 — the small, vertically off-centre ring in the
+screenshot.
+
+**The comment in that file is correct and the code is wrong.** It already reasons
+that the ring must fit the narrow axis of a portrait panel, and the arithmetic does
+that faithfully — from numbers that are not the panel's. A macOS window is sized
+before first paint, so this cannot reproduce there. **The rule for the tab shell:
+no layout may be computed from a one-shot viewport read.**
+
+### ✅ What passed
+
+**Hardware WebGL 2**: `ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1)`, not
+SwiftShader — the diagnostics page is written to treat a software renderer string
+as a failure rather than a pass with a caveat, because every frame-rate number
+taken afterwards would otherwise be meaningless. **60 fps sustained** over 25 s
+with the real renderer, worst 1-second sample 45. Portrait, scale 1, full panel.
+**369 tests green on the Pi.** And the fixture rendered to the same census as the
+macOS record — `0 measured · 4 indeterminate · 508 unmeasured` reducing to two
+amber markers and no bars.
+
+**An earlier run of the suite reported 44 failures. That was my incomplete rsync,
+not a Pi defect** — the firmware drift guards read the C++ headers from the
+repository root and I had synced only `pi/`. Recorded because "44 failures on the
+Pi" is exactly the kind of number that gets repeated without its cause.
+
+### What the next session must not conclude from this
+
+**One of ADR-005 §2's four conditions is met, not four.** Autostart was not
+written and not tested. The serial path has still never been run — the Tk UI holds
+`/dev/ttyAMA0`, so every frame here came from a **recorded fixture**, with the
+Teensy not measuring. Disconnect/reconnect untested. **Touch delivery untested**:
+the capability is reported (10 points, PointerEvent supported) but nobody touched
+the panel, because the whole session was over SSH. That one needs a person and a
+finger.
+
+**The Tk UI remains what ships**, and the 🔺 MEASURED evidence debt is exactly
+where it was — this fixture classifies to zero MEASURED bands, so the bars, the
+colour ramps, the coverage thickness and the easing are still visually unconfirmed,
+and this run made no attempt to close that with generated data.
+
+**This is not T1 evidence.** A working WebGL UI at 60 fps is not evidence that T1
+passed, and the two tracks stay independent.
+
+### Method note worth keeping
+
+Code was staged in a **scratch directory** on the Pi, not its repository checkout —
+which sits at `ce682cd` with 16 modified and 30 untracked files, having been fed by
+rsync rather than git for some time. Touching it would have made a mess that was
+not mine to make. The scratch tree is one `rm -rf` to remove, the Chromium profiles
+were ephemeral, and the FPS probe lived only in the scratch copy of `main.js`,
+which now hashes identically to the repository's.
+
 ## 2026-10-12 (2) — **The UI specification was never in the repository.** Three design documents, written months apart against two different display targets, are now imported, ranked and reconciled — and the reconciliation found a colour conflict inside the specification itself
 
 **Documentation only. No firmware change, no protocol change, no bench action, no
