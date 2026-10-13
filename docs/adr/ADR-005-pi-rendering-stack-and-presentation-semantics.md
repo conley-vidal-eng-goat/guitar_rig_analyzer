@@ -337,7 +337,7 @@ that T1 passed.
 | Step | Item | State |
 |---|---|---|
 | 1 | Record this decision | 🟡 this document, PROPOSED |
-| 2 | Import `visual_design_document.md` as the UI spec of record | 🔴 TODO-67 |
+| 2 | Import `visual_design_document.md` as the UI spec of record | 🟢 **done 2026-10-12** — [`docs/visual_design_document.md`](../visual_design_document.md), RA8875 sections marked demoted in its import header. Sources reconciled in [`docs/ui/README.md`](../ui/README.md) |
 | 3 | `presentation_semantics.py` + tests against the 4-finite/508-undefined RESULT | 🔴 TODO-68 |
 | 4 | Tk renderer refactored onto the shared contract (proves it on known-good code) | 🔴 TODO-68 |
 | 5 | UI transport: `analyzer_link` → browser | 🔴 TODO-67 |

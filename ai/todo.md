@@ -1764,7 +1764,21 @@ Implemented in `trySendBestEffort()`, which **all six** best-effort packet types
 **Acceptance fixture:** the pinned 2026-09-27 hardware RESULT — **4 finite bins of 512, all on the −24.0 dB rail, 508 undefined** (`ai/evidence/phase10-result-1khz.bin`, SHA-256 asserted). Proven against real bytes before any GPU work.
 **Proof:** the Tk renderer refactored onto the layer with its behaviour unchanged, and the existing suite green. Refactoring the **known-good** renderer onto the abstraction is what demonstrates the abstraction is renderer-independent — building the web client on an unproven contract would prove nothing.
 
-### TODO-67 — Web client: kiosk Chromium renderer and the UI transport 🔴 **ADR-005 §1. Gated on TODO-68, and does NOT inherit a waived T1**
+### TODO-67 — Web client: kiosk Chromium renderer and the UI transport 🟡 **TRANSPORT + FIRST VISUAL BUILT 2026-09-30; DESIGN SOURCES IMPORTED AND RECONCILED 2026-10-12. ADR-005 §1. Does NOT inherit a waived T1**
+**Progress against the five clauses of *What*, as of 2026-10-12:**
+
+| Clause | State |
+|---|---|
+| Import `visual_design_document.md` (v1.2) as the UI specification of record | 🟢 **DONE 2026-10-12** — [`docs/visual_design_document.md`](../docs/visual_design_document.md), body byte-identical, RA8875 sections marked demoted. Seven permitted JSX concepts in [`docs/ui/concepts/`](../docs/ui/concepts/); `VortexTunnel.jsx` excluded with its reason recorded. The October design brief imported as a **second, non-binding input**, and all three sources reconciled in [`docs/ui/README.md`](../docs/ui/README.md) |
+| UI transport from `analyzer_link` to the browser | 🟢 `pi/web/server.py` + `payload.py`, 500 ms poll on `/api/frame`, classified bands only |
+| Committed Pi visuals against real frames | 🟡 `ToneFingerprintSplit` ported and rendering real fixture bytes. `WaterfallSpectrum3D` not started. **🔺 The MEASURED bar path has still never been rendered** — both pinned fixtures classify to zero MEASURED bands |
+| Kiosk autostart replacing the Tk autostart (`d4eca26`) | 🔴 not written. **Do not replace the Tk autostart until ADR-005 §2's four conditions hold** |
+| Disconnect/reconnect survival | 🔴 `link.stale` exists in the payload; the client ignores it |
+
+**🔺 NO BROWSER HAS EVER RUN ON THE PI.** The slice-1 screenshots were headless Chrome on macOS with SwiftShader. Chromium startup, the WebGL renderer string, DSI portrait orientation, touch delivery, frame rate and the `--serial /dev/ttyAMA0` path (implemented, never run) are all unvalidated on the physical hardware. **This is the next step and it is a bench step** — see `docs/ui/README.md` §5.
+
+**Interface architecture decided 2026-10-12:** four tabs — LIVE / TONE / LAB / INFO — persistent bottom navigation at 720×1280, frameworkless (vanilla ES modules + three.js + Canvas2D, no React, no build step, per ADR-005 §1a). **Navigation switches views; it must not imply control**, because the Pi→Teensy direction does not exist (TODO-35).
+
 **🛑 THIS DOES NOT RE-OPEN T1 ON EASIER TERMS.** TODO-36 authorised renderer development on 2026-09-29 as *"a development decision, NOT an acceptance waiver"*, with the matrix incomplete behind TODO-39. **A web renderer inherits that gate unchanged** ([ADR-005](../docs/adr/ADR-005-pi-rendering-stack-and-presentation-semantics.md) §*Sequencing*). A polished WebGL UI is **not** evidence that T1 passed, and must never be cited as such. Renderer technology and T1 acceptance are independent evidence tracks.
 **What:** import `visual_design_document.md` (v1.2) as the UI specification of record; a UI transport from `analyzer_link` to the browser; the committed Pi visuals (`ToneFingerprintSplit.jsx`, `WaterfallSpectrum3D.jsx`) against real frames; kiosk autostart replacing the Tk autostart (`d4eca26`, reversible with one `rm`); disconnect/reconnect survival.
 **📌 Scope fences from ADR-005 §9.** `ToneFingerprintSurface.jsx` is a **candidate**, not committed — it needs a design-document section before it is built. `VortexTunnel.jsx` is **excluded from production**: `getUserMedia` creates a second measurement/input path outside the Teensy authority boundary, so the instrument would be visualising the room with nothing on screen to say so.

@@ -12,6 +12,114 @@ How to use this file:
 
 ---
 
+## 2026-10-12 (2) — **The UI specification was never in the repository.** Three design documents, written months apart against two different display targets, are now imported, ranked and reconciled — and the reconciliation found a colour conflict inside the specification itself
+
+**Documentation only. No firmware change, no protocol change, no bench action, no
+measurement initiated, no code under `pi/` touched.**
+
+### Why this was the first thing to do
+
+ADR-005 was accepted on 2026-09-30 and its *Consequences* section required
+importing `visual_design_document.md` as the UI specification of record. **That
+never happened.** The specification, and the nine JSX concepts the ADR reasons
+about by name, sat in `~/Downloads` for twelve days while a renderer was built
+against them. ADR-005 §1a exists because the implementation had already drifted
+from the ADR's wording once; leaving the spec outside version control is the same
+failure with a longer fuse.
+
+A second document then appeared: a 36.7 KB production UI design brief, assembled
+outside the repository with a package of twenty reference images. **Two
+specifications, neither in version control, never compared.** The import is
+worthless without the comparison, so the comparison is the substance of this
+commit: [`docs/ui/README.md`](../docs/ui/README.md).
+
+### What was imported, and the one thing that was not
+
+Seven JSX concepts, the v1.2 specification, the October brief and nineteen
+reference images — all byte-for-byte, with the originals left in place and each
+original's SHA-256 recorded in an import header. Both Markdown bodies are verifiable
+as unmodified with a one-line `tail | shasum`.
+
+**`VortexTunnel.jsx` was deliberately not imported.** It calls
+`navigator.mediaDevices.getUserMedia({audio: true})` into an `AudioContext`
+analyser at `fftSize = 256` — a second measurement path outside the Teensy
+authority boundary, which ADR-005 §9 excludes from production and
+`test_web_payload.py` CI-enforces against. Importing it would place a
+`getUserMedia` call in this repository for no gain. **The two images that inspired
+it were imported.** The aesthetic was never the problem; the input path is.
+
+`display_concept.jsx` was also left out as a superseded v1 that no section of the
+specification references.
+
+### 🔺 The reconciliation found a conflict *inside* the specification of record
+
+Not between the two documents — **within v1.2 itself.**
+
+| v1.2 section | Boost | Cut |
+|---|---|---|
+| §1 Radial Tone Fingerprint (2D) | blue → green (**cool**) | yellow → red (**warm**) |
+| §1c Split Tone Fingerprint (3D) | orange → gold (**warm**) | cyan (**cool**) |
+
+**The same instrument, opposite colour semantics, in one document.** The shipping
+renderer implements §1c, and so do the committed legend and both evidence
+screenshots. §1c wins on three grounds: it is the later section, it is the only one
+targeting 720×1280, and changing it now would silently relabel published evidence.
+Recorded rather than quietly resolved, because the next reader will otherwise
+re-derive it from §1 and get the opposite answer.
+
+The October brief's palette does not conflict with either: it specifies chrome and
+surfaces, not measurement semantics. Resolution was therefore by **what a colour
+means**, not by which document is newer — semantic colours from shipping code,
+chrome from the brief, SOURCE/RETURN channel identities from v1.2.
+
+### What the reference images are for, and why six wrong ones were kept
+
+ADR-005's *governing invariant* uses the render screens as its worked
+counter-example — *"RIG HEALTH: 90%", "Evaluation: MEDIUM", "Rig Match: 89%" and
+"Recommendation: Add input buffer" are all Teensy-owned judgements. Rendering them
+is fine. Computing them on the Pi is not.* **The ADR named pictures that lived
+outside version control.** They are in now, each one's standing recorded, so the
+example is checkable instead of remembered.
+
+One of the six is not a counter-example at all: the *3D Radial Tone Fingerprint*
+render is the direct visual ancestor of `fingerprint_split.js`. The ancestry is
+worth having on the record.
+
+### The architectural finding that shapes everything after this
+
+**The Teensy→Pi link is receive-only.** `ByteSource` exposes `read()` and `close()`;
+`app.py:19` has said since 2026-09-29 that Pi→Teensy is physically disconnected.
+TODO-35 carries the direction as outstanding.
+
+**So the interface can navigate between views of one stream, and cannot command the
+instrument.** This is the structural reason the six-tile `MENU` render cannot be
+built as drawn — independently of whether the measurements behind its tiles exist,
+every tile implies an action the Pi cannot take. Four tabs were chosen over the
+brief's seven destinations on the same reasoning: three of the seven need storage,
+audio playback or a command path, and shipping them as shells would be the
+fabrication rule broken at the navigation layer instead of the pixel layer.
+
+### What the next session should know
+
+1. **No browser has ever run on this Pi.** The slice-1 screenshots were headless
+   Chrome on macOS with SwiftShader. That is the next step, it is a bench step, and
+   it comes **before** any further UI work — building screens on an unvalidated
+   runtime is the one risk that does not shrink with time.
+2. **The Tk autostart stays.** ADR-005 §2's four conditions are unmet.
+3. **The MEASURED evidence debt is unchanged and inherited.** Both pinned fixtures
+   classify to zero MEASURED bands. No screen in this UI may be demonstrated,
+   screenshotted or filmed on synthetic measurements presented as real — a labelled
+   fixture replay is fine, an unlabelled one in `ai/evidence/` is not.
+4. **T1 is not re-opened.** A polished WebGL UI is not evidence that T1 passed.
+   Renderer technology and T1 acceptance are independent evidence tracks, and this
+   commit changes neither.
+5. **Tone vocabulary is firmware work, not UI work, and not November work.** Every
+   mapping from spectrum to *warm* or *honky* is a semantic judgement, and those
+   live on the Teensy. What is already on the wire and unrendered is
+   `Result.insights[]` — Teensy-authored MEASUREMENT vs ADVISORY entries with
+   severity, frequency, magnitude, title and detail. Rendering those verbatim is the
+   whole of the legitimate work in this area before the deadline.
+
 ## 2026-10-12 (1) — **A guitar is now audible through the analyzer into a real amplifier.** The Amp Out buffer never worked because the input coupling capacitor was on the op-amp's *output*; one relocated cap closed a four-jack inline path that had been dead since it was built
 
 **Session closed after this entry.** Work switches to the Pi UI; no firmware, no
