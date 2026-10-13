@@ -12,6 +12,101 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (2) — **Four screens on the panel at 60 fps.** The viewport fix landed, and testing it surfaced a worse defect: a GPU failure was taking down the three screens that need no GPU
+
+Shell and TODO-80 fix in `cc7b704`; Pi validation in
+[`evidence/2026-10-13-pi-shell-four-tabs.md`](evidence/2026-10-13-pi-shell-four-tabs.md).
+
+**No firmware change, no protocol change, no wiring change, no measurement
+initiated.** Tk UI undisturbed on pid 1514; both autostart files byte-unchanged.
+
+### The fix, and what it was actually a case of
+
+TODO-80 was a one-shot viewport read. The fix is small — size became a function
+called from a `ResizeObserver` instead of a constant captured at construction —
+but the general rule is the one worth keeping: **on this platform a measurement
+of the display is not a fact, it is a reading that can change.** The shell was
+built under the same rule, so nothing in `shell.css` fixes a panel dimension and
+a test asserts that `720px` and `1280px` appear nowhere as layout sizes.
+
+### 🔺 The defect that mattered more, found by accident
+
+The first headless check of the shell came back **completely empty** — no status
+strip, no cards, no tabs populated. The cause was not the shell. With
+`--disable-gpu`, three.js throws when it cannot create a context, the scene was
+being constructed eagerly during view creation, and the throw propagated out
+before `main.js` ran. **LIVE, LAB and INFO rendered nothing, though not one of
+them needs a GPU.**
+
+That is exactly backwards. The measurement readouts are the part that must
+survive a graphics failure. A WebGL context is the single most fragile thing in
+this stack — it depends on a driver, a compositor and a GPU that this project has
+had working for precisely one day — and it had been wired so that losing it lost
+everything.
+
+Now the scene is built lazily on first activation, inside a guard, and a failure
+is contained to TONE, which says so and says the instrument is unaffected. **The
+general lesson: a decorative subsystem must never be on the critical path of the
+one that carries the measurements**, and "decorative" here means the thing the
+whole UI is named after.
+
+Worth noting how it was found: not by design review, but because `--disable-gpu`
+is the default in headless and the check came back blank. The macOS headless
+environment that is useless for GPU evidence turned out to be a good fault
+injector for GPU absence.
+
+### What the screens say when they have nothing to say
+
+The three new tabs carry almost no data, because the transport does not forward
+much yet, and the decision was to **state each gap where an operator will look**
+rather than leave a blank. LAB lists the eight fields the Teensy measures and the
+Pi decodes that `/api/frame` does not forward — `coherence[]`, phase, group
+delay, `insights[]`, capture settings — with the reason attached. LIVE explains
+in two sentences why there is no spectrum. INFO says in words that this is a
+display and not a control surface.
+
+That last one is the one I would defend hardest. **A screen with no buttons does
+not communicate that commands are impossible** — it reads as a screen whose
+buttons have not been built yet. The link is physically receive-only, and the
+operator is entitled to know that rather than infer it.
+
+### The scope fence is a test, not a comment
+
+No spectrum was built. `fft_source[]`/`fft_return[]` carry no coverage nibbles —
+the coverage array belongs to `tf_db[]` — so there is no rule yet for what
+UNMEASURED means in a magnitude spectrum, and a renderer inventing one is the
+drift ADR-005 §4 exists to stop. `TestFftScopeFence` fails the moment those
+arrays reach either the payload or any client file. It is written to be **deleted
+in the same commit that adds the rule to `presentation_semantics.py`**, not
+before.
+
+### Measurements
+
+**60 fps (min 51)** on TONE with the full shell, up from min 45 before — I did
+not isolate the cause, so that is an observation and not an attribution.
+
+The inactive-view pause was measured rather than asserted: Chromium's total CPU
+across all processes, from `/proc`, over 15 s — **30.4 % of one core on TONE,
+9.4 % on LAB**. Both figures are inflated by the scratch FPS probe, which is a
+60 Hz loop running on every tab and is not in the committed client, so the honest
+reading is the difference: about **21 points of CPU released** when the
+fingerprint is not visible. Pausing cancels the frame request rather than
+returning early inside the loop, which is what makes that recoverable at all.
+
+### ⚠️ What the next session must not assume
+
+**Nobody has touched the panel.** The Goodix capacitive touchscreen is present
+and the browser reports ten touch points, but **no finger has tapped a tab.** The
+four screenshots were taken by overriding the default tab in the scratch copy of
+`main.js` and relaunching. So every screen is proven to render; **a tap is not
+proven to switch them.** No input-synthesis tool is installed and the session was
+entirely over SSH. This one needs a person.
+
+Everything else is where it was. One of ADR-005 §2's four conditions is met, the
+Tk UI still ships, the serial path has still never run, and the 🔺 MEASURED bar
+debt is untouched — this fixture classifies to zero MEASURED bands and no attempt
+was made to close that with generated data.
+
 ## 2026-10-13 (1) — **Chromium runs on the Pi's real GPU at 60 fps — and the first launch never reached the page.** Two hardware-only defects found in seventeen minutes, neither of which can reproduce on macOS
 
 **Bench observations 2026-10-12, 23:35–23:52 PDT**, written up after midnight.

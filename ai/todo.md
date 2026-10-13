@@ -17,7 +17,11 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
-### TODO-80 — The renderer sizes its camera from a viewport that does not exist yet, so the ring is fitted to 668×392 and shown at 720×1280 🔴 **found 2026-10-12 on the first Pi browser run; CANNOT reproduce on macOS**
+### TODO-80 — The renderer sizes its camera from a viewport that does not exist yet, so the ring is fitted to 668×392 and shown at 720×1280 🟢 **FIXED 2026-10-13 in `cc7b704`, confirmed on the panel. Found 2026-10-12 on the first Pi browser run; CANNOT reproduce on macOS**
+
+**Fix:** size is a function, not a construction-time constant — called on construction, from a `ResizeObserver`, from `window.resize`, and again whenever TONE is shown after being hidden. A zero-sized container is refused rather than used (a `display:none` container measures 0×0, and fitting to that bakes a NaN into the camera matrix). Pinned by `test_web_shell.TestViewportIsNeverSampledOnce`. Evidence: [`2026-10-13-pi-shell-four-tabs.md`](evidence/2026-10-13-pi-shell-four-tabs.md).
+
+**🔺 Left deliberately unchanged:** fitting the ring to the *narrow* axis is what the committed design specifies, so on a portrait panel it occupies roughly 580×250 px of a 720×1105 area. That is the specification behaving correctly, not a defect; whether it is the best use of a portrait panel is a separate tuning question.
 
 **What.** [`fingerprint_split.js`](../pi/web/static/fingerprint_split.js) reads `container.clientWidth` / `clientHeight` **once**, inside `createFingerprint()`, and derives both the camera `aspect` and `cameraDistance` from them. There is no `resize` handler.
 
@@ -1789,7 +1793,7 @@ Implemented in `trySendBestEffort()`, which **all six** best-effort packet types
 |---|---|
 | Import `visual_design_document.md` (v1.2) as the UI specification of record | 🟢 **DONE 2026-10-12** — [`docs/visual_design_document.md`](../docs/visual_design_document.md), body byte-identical, RA8875 sections marked demoted. Seven permitted JSX concepts in [`docs/ui/concepts/`](../docs/ui/concepts/); `VortexTunnel.jsx` excluded with its reason recorded. The October design brief imported as a **second, non-binding input**, and all three sources reconciled in [`docs/ui/README.md`](../docs/ui/README.md) |
 | UI transport from `analyzer_link` to the browser | 🟢 `pi/web/server.py` + `payload.py`, 500 ms poll on `/api/frame`, classified bands only |
-| Committed Pi visuals against real frames | 🟡 `ToneFingerprintSplit` ported and rendering real fixture bytes. `WaterfallSpectrum3D` not started. **🔺 The MEASURED bar path has still never been rendered** — both pinned fixtures classify to zero MEASURED bands |
+| Committed Pi visuals against real frames | 🟡 `ToneFingerprintSplit` ported and rendering real fixture bytes **on the panel at 60 fps inside a four-tab shell (2026-10-13, `cc7b704`)**. `WaterfallSpectrum3D` not started. **🔺 The MEASURED bar path has still never been rendered** — both pinned fixtures classify to zero MEASURED bands |
 | Kiosk autostart replacing the Tk autostart (`d4eca26`) | 🔴 not written. **Do not replace the Tk autostart until ADR-005 §2's four conditions hold** |
 | Disconnect/reconnect survival | 🔴 `link.stale` exists in the payload; the client ignores it |
 
