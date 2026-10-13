@@ -12,6 +12,970 @@ How to use this file:
 
 ---
 
+## 2026-10-12 (1) — **A guitar is now audible through the analyzer into a real amplifier.** The Amp Out buffer never worked because the input coupling capacitor was on the op-amp's *output*; one relocated cap closed a four-jack inline path that had been dead since it was built
+
+**Session closed after this entry.** Work switches to the Pi UI; no firmware, no
+further hardware. **PASS on one claim only: an audible, guitar-responsive signal
+traverses the complete inline path.** Nothing here is calibrated.
+
+### The fault — found on paper, confirmed by the repair
+
+The 2026-10-12 read-only wiring audit established from the confirmed coordinates
+that **C10, the 0.1 µF input coupling capacitor, was connected to U4 pin 1 — the
+op-amp *output* — not pin 3, the input.** Column 24 A–E is pin 1; pin 3 is col 26.
+
+That single error accounted for all three null observations with nothing left over:
+
+| Observation | Mechanism |
+|---|---|
+| No waveform at **U4 pin 3** | Its only connection was R10 to OPA_BIAS. No signal source at all |
+| No waveform at **U4 pin 1** | A servoed output. Closed-loop Z<sub>out</sub> ≈ open-loop ÷ loop gain (~10⁴ at 1 kHz) ⇒ milliohms. Injecting through C10's 1.59 kΩ is ~100 dB of attenuation |
+| No waveform at **J8** | Downstream of pin 1 through C11 |
+
+**The repair confirms the diagnosis.** Moving that one capacitor produced signal
+where four weeks of DC validation had produced none.
+
+### 🔺 Why eight weeks of DC checks could not have caught it
+
+**A coupling capacitor blocks DC in either position.** Pin 3 = 0.876 V and
+pin 1 = 0.876 V are the *expected* readings in both the correct and the faulty
+wiring. Every DC measurement taken on 2026-09-30, 2026-10-08 and since was
+consistent with a circuit that could never pass audio.
+
+The DC checkpoint was not merely insufficient — it was **blind to this fault class
+by construction.** Journal 2026-10-08 (1) warned that the DC pass "is the same
+class of evidence that looked healthy on U1 while U1 was out of spec." That was
+the right warning aimed at the wrong fault.
+
+**The generalisable rule:** a validation step that cannot distinguish pass from
+fail is not a weak test, it is **not a test.** Before recording a gate as met, ask
+what reading the fault would have produced. If it is the same reading, the gate is
+decorative.
+
+### PHYS — what was physically changed (Action set, 2026-10-12)
+
+C10's leads could not span col 28 → col 26 directly, so it was **relocated rather
+than re-seated**, and bridged with a new jumper:
+
+| # | Change | Tier |
+|---|---|---|
+| 1 | **C10 (0.1 µF ceramic) relocated to `28b` – `29b`** | `PHYS` |
+| 2 | **RETURN_NODE jumper re-seated `16d` → `28a`** — the *existing* jumper, moved from `23a` | `PHYS` |
+| 3 | **New jumper `29a` → `26d`**, reaching U4 pin 3 at `26e` | `PHYS` |
+| — | U4 feedback jumper `24a`–`25a` and C11 output cap **unchanged** | `PHYS` |
+
+**Resulting nets — this supersedes the topology in evidence §1:**
+
+```
+RETURN_NODE = K2 pin 3 (POLE 1 COM), col 16 A–E
+  ├────────────────────────────────→ U3 LINE IN R        (untouched, still measuring)
+  └── jumper 16d → 28a
+        col 28 A–E ── C10 0.1 µF ── col 29 A–E ── jumper 29a → 26d
+                                                    col 26 A–E = U4 pin 3 (+IN A, 26e)
+                                                      └── R10 100 kΩ → OPA_BIAS 0.876 V
+  pin 1 (col 24 A–E) ── jumper 24a→25a ── pin 2        unity follower
+  pin 1 ── C11 10 µF (+ 24c / − 21c) ── col 21 A–E ── R11 100 kΩ → GND
+                                          col 21 ──→ J8 TIP ; SLEEVE → GND
+```
+
+**Col 23 A–E is now vacated** — the jumper left `23a` and C10 left `23b`/`24b`.
+**Col 23 F–J is untouched** and still carries C9's decoupling return to GND. The
+two were never the same node; the trench separates them.
+
+### ⚠️ New adjacency hazard, created by this repair
+
+**Col 28 A–E now carries RETURN_NODE, and col 27 A–E is U4 pin 4 — GND.** They are
+immediately adjacent. A one-column slip anywhere in that region shorts the selected
+return to ground and kills the measurement path. The old layout had no live signal
+next to pin 4. **Anyone working cols 26–29 should know this before they reach in.**
+
+### MEAS / OBS — what the repair produced
+
+| # | Observation | Tier |
+|---|---|---|
+| 1 | **RIGOL DHO804: guitar-responsive waveform at J8**, correlated with strumming | `MEAS` |
+| 2 | **J8 DC output near 0 V** | `MEAS` |
+| 3 | J8 connected to the guitar amplifier's instrument input | `PHYS` |
+| 4 | **Amplifier powered at low volume: the rig audibly runs through the analyzer** | `OBS` |
+
+**Observation 1 is the load-bearing one, and it survives TODO-75.** TODO-75 blocks
+*amplitude* claims at J8 because the ≈58 mV_pp earlier trace was only ~1.8× an
+unrecorded ≈32 mV_pp probe floor. **A strum-correlated waveform is a different kind
+of claim.** A static noise floor does not change in time with the stimulus, so
+correlation with strumming is evidence of signal regardless of where the floor sits.
+**TODO-75 still gates every number.** It no longer gates the existence claim.
+
+### What this establishes, stated at its true strength
+
+**The complete inline path passes audible signal:** guitar → J4 Instrument In →
+U1 → J5 Rig Send → Headrush → J6 Rig Return → K2 NC → `16a` COM → C10 → U4
+channel A → C11 → J8 Amp Out → guitar amplifier. Four jacks, two buffers, one
+relay contact, one external rig, end to end.
+
+**This is the first time any version of the instrument's full intended function has
+been demonstrated.** It is worth saying plainly before the caveats.
+
+### What this does NOT establish — read before citing the PASS
+
+- **Not calibrated.** The Phase 9 validation suite has never run; TODO-43's two
+  full-scale bases still disagree by ~18 dB.
+- **No precision-measurement accuracy claim.** Nothing here touches TF accuracy.
+- **No distortion performance.** THD was not measured, at any level, anywhere.
+- **Not comprehensive validation.** TODO-69 steps 3 and 5 are untouched, and the
+  buffer's flatness, unity gain across the band and behaviour under real
+  amplifier load are all unmeasured.
+- **No amplitude claim at J8**, per TODO-75.
+- **"Audible and correct-sounding" is `OBS`** — a human ear at low volume, not an
+  instrument. It is the right evidence for the claim being made and the wrong
+  evidence for any other.
+
+### ⚠️ TODO-70's leak path exists as of today — and did not exist on 2026-10-11
+
+Journal 2026-10-11 (2) recorded *"TODO-70 is now live for the first time"* on the
+grounds that return signal finally existed. **That was premature, and the reason is
+this entry's fault.** The predicted leak runs **pin 3 → R10 → OPA_BIAS → R5 → U1
+pin 3**. With C10 on pin 1, **pin 3 carried no signal**, so nothing was injected
+into OPA_BIAS. Pin 2 is a high-impedance input and offered no path either.
+
+**A TODO-70 controlled test run before today would have returned a false null** —
+and the record would then have concluded the leak was absent on evidence that could
+not have detected it. **It became live on 2026-10-12.** The test is now valid, and
+it is the highest-value measurement available.
+
+**Fifth instance of the pattern 2026-10-11 (2) catalogued** — a reading, or here a
+planned reading, invalidated by an unrecorded condition. The condition this time was
+a wiring error nobody had observed.
+
+### ⚠️ RETURN_NODE's load changed today. Re-baseline before quoting the gap
+
+The faulty wiring put C10 between RETURN_NODE and a milliohm output — an
+unintended shunt of **≈1.59 kΩ at 1 kHz** (≈13.3 kΩ at 120 Hz). The corrected
+topology presents **≈101.6 kΩ**. RETURN_NODE was loaded ~64× heavier than intended
+at 1 kHz for the whole of its measured life.
+
+**So RETURN should now read higher**, bounded by the Headrush's output impedance,
+which is unrecorded: ≈0.02 dB at 100 Ω, ≈0.6 dB at 600 Ω, ≈4 dB at 2 kΩ.
+
+- **Re-baseline SOURCE and RETURN. Do not read a level change as a regression.**
+- **The 8.8 dB SOURCE−RETURN gap in 2026-10-11 (2) was measured under that
+  unintended load** — a second reason, independent of the calibration caveat
+  already on it, not to treat it as insertion loss.
+- The shunt was frequency-dependent, so it imposed a mild low-pass on RETURN. For a
+  typical line output that is under ~0.6 dB across 120 Hz–1 kHz against **15.7 dB**
+  of measured tilt, so **2026-10-11 (2)'s rig-shaped response is mostly real.**
+  Bounded, not dismissed.
+
+### ❓ It sounded right, and TODO-76 says that is the surprising result
+
+TODO-76 states: *"A thin, hissing, bass-light guitar is the expected pass. A clean
+one is the surprising result and should be investigated, not celebrated."* The
+prediction comes from TODO-19 (~145–160 Hz corner, low E down ~6 dB), TODO-23
+(~100 kΩ input impedance) and TODO-40 (~40 mV_pp floor).
+
+**It was reported as running properly.** Two candidate explanations, neither verified:
+
+1. **The Headrush masks it.** TODO-76's prediction is about the analyzer's *front
+   end*. What reaches J8 has been through an amp-and-cab simulation with its own
+   output stage and voicing, which would substantially hide a thin source.
+2. **The front-end predictions overstate the degradation** — in which case TODO-19
+   and TODO-23 are less severe in practice than their arithmetic implies.
+
+**Cheap discriminator:** A/B the same guitar directly into the amplifier versus
+through the analyzer, same settings, back to back. Added to TODO-76's open items.
+**Not resolved here, and the PASS does not depend on it.**
+
+### Provenance of the original error — one thing I cannot establish
+
+**Established:** the as-built had C10 on col 24 A–E. **Established:** the
+2026-09-30 build report described it as *"from row 23 A–E / selected RETURN_NODE →
+OPA1642 pin 3"* — i.e. the report named the correct destination.
+
+**Not established:** whether the bench instruction that produced the build named a
+wrong coordinate, or named the right one and it was mis-executed. The two have
+different fixes — the first is an instruction defect, the second is a verification
+gap — and **I will not guess which.** One line from whoever wrote the original
+instruction settles it.
+
+### 📌 My own documentation failure, named
+
+[`evidence/2026-10-08-ampout-buffer-dc-checkpoint.md`](evidence/2026-10-08-ampout-buffer-dc-checkpoint.md)
+§1 row 9 recorded `col 23 A–E → pin 3` as **`PHYS` placement**. It was a builder
+report, so it should have read `RPT`. The section preamble says "builder-reported at
+the bench" while the rows claim `PHYS` — **the exact merged placement/value error
+the C1/`BC103` lesson exists to prevent, committed in the document that cites that
+lesson.**
+
+That tag is why the error survived: journal 2026-10-08 (1), (2), (3), TODO-69 and
+TODO-70 all reasoned from "C10 → pin 3" as though it were observed. **A false
+`PHYS` does more damage than an honest `NYV`**, because nothing downstream
+re-examines it. Corrections appended to those records; originals left standing.
+
+### Documentation now owed
+
+`docs/asbuilt/netlist.md` **Part III** has grown: U4, J8, C9–C11, R10–R11, and now
+the col 28/29 hop. Still deliberately not written — the file has uncommitted
+in-flight edits. **ADR-006** (Amp Out is an analog branch, not a codec round-trip)
+and the `J8`/`U4`/`AMP_OUT` naming ratification remain parked. The runbook still
+stops at Phase 10 with no phase for this hardware.
+
+### What the next session should know
+
+1. **The instrument works end to end, audibly, and is not calibrated.** Both halves.
+2. **Run TODO-70's controlled test first.** It is newly valid, cheap and decisive,
+   and every transfer-function number depends on the answer.
+3. **Re-baseline SOURCE/RETURN** before quoting any gap.
+4. **Ask what reading the fault would produce** before recording a gate as met.
+
+## 2026-10-11 (2) — **The measurement loop closes for the first time with a real rig in it: RETURN rose 33.3 dB and all 512 TF bins came off the clamp rail.** Three physical changes and a power-state correction landed together, so which one was load-bearing is not established
+
+**What is established:** the path **guitar → J4 → U1 → J5 Rig Send → Headrush →
+J6 Rig Return → K2 NC → LINE IN R** passes signal, measured on both channels
+simultaneously. **What is not:** calibration accuracy, J8 Amp Out functionality,
+or which repair mattered. Firmware untouched throughout — `Build: Sep 26 2026
+16:36:53 v0.6.0` (`26f2bee`), read-only serial capture.
+
+### MEASURED — Action 125, 12 consecutive blocks, uptime 288–343 s, session 42
+
+| Channel | Highest peak | Raw counts | Mean | Previous |
+|---|---|---|---|---|
+| **SOURCE_NODE** | **−15.5 dBFS** | **5 501** | −19.7 | −11.1 (Action 112) |
+| **RETURN_NODE** | **−24.3 dBFS** | **1 997** | −25.8 | −57.6, floor |
+
+**RETURN rose +33.3 dB — a 46× amplitude increase.** The SOURCE−RETURN gap fell
+from **48.1 dB to 8.8 dB**.
+
+Corroborated at sample level: RETURN's `[RAWDUMP]` blocks now carry structured
+oscillating waveforms to **±1 525 counts**, time-correlated with SOURCE. The same
+field never exceeded **±37 counts** in Action 112. Two independent paths through
+the firmware agree, as they did on the input side.
+
+### 🔺 The strongest evidence is not a level — it is the clamp going quiet
+
+**`TF clamped bins: 0 of 512`, in all twelve blocks.** Action 112 had 23–48 bins
+railed with every spot-check printing `RAIL[-24.0dB]`. The spot-checks now return
+real numbers:
+
+| Bin | Mean | Range |
+|---|---|---|
+| 120 Hz | **−1.1 dB** | −4.3 … +5.9 |
+| 500 Hz | **−14.0 dB** | −16.7 … −8.1 |
+| 1 kHz | **−16.8 dB** | −19.8 … −11.1 |
+
+Near-unity at 120 Hz falling steeply through the midrange — a **rig-shaped**
+response, which is what an amp-and-cab simulation should look like. **The C1/R5
+high-pass cancels out of this ratio** (it sits upstream of the SOURCE tap), so the
+shape is the rig and not TODO-19.
+
+**Why this is better evidence than the dBFS figures.** TODO-29 built the
+`RAIL[...]` marker and the clamped-bin count specifically so a clamp could never
+again masquerade as a measurement. That instrumentation went from 48 railed bins
+to zero **with no firmware change and no parameter touched** — a prediction
+recorded in TODO-74 before the measurement, and met.
+
+### ⛔ SECOND-ORDER CORRECTION to journal 2026-10-11 (1) — read this with that entry
+
+The correction block in **2026-10-11 (1)** stated that an open `57a` lead
+*"collapses three faults into one"* and explains Action 112's RETURN floor,
+Action 114's dead Headrush meter and Action 115's missing J5 waveform
+simultaneously. **That claim is now unsupported, and for a reason unrelated to the
+wire.**
+
+**Actions 114 and 115 were taken with the Teensy OFF** (builder-reported,
+2026-10-11). With no power, U1 has no supply, so there is nothing at col 48 to
+reach Rig Send **regardless of the `57a` conductor's state**. Those two
+observations are therefore **void as signal-path tests** — not wrong, but
+uninformative. They never constrained anything.
+
+- ✅ **Action 112's RETURN floor remains valid** — it was a powered serial capture.
+- ❌ **Actions 114 and 115 are withdrawn as evidence**, in either direction.
+- ⛔ **The "one fault explains three observations" framing is withdrawn.** Only one
+  of the three was a real observation, so there was never a three-way coincidence
+  to explain. The earlier entry's reasoning was sound on its premises; the
+  premises included two readings taken in an invalid condition.
+
+**This is the fourth time on this board that an unrecorded condition has
+invalidated a reading** (the `col 30` jumper's unlogged removal and re-fit, the
+J6/J5 transposition, the unknown J5 disconnection time, and now an unrecorded
+power state). The pattern is consistent and the fix is procedural:
+**record the power state and the conductor positions *in the same line as the
+measurement*, not in a separate status block that can drift from it.**
+
+### What changed physically — and why attribution is withheld
+
+Between the failing state and Action 125, **three** changes plus one correction
+landed:
+
+| # | Change | Tier |
+|---|---|---|
+| 1 | **J5 Rig Send TIP lead reseated at `57b`** (col 57 A–E = K1 pole 1 COM, as TODO-71 specified) | `PHYS` |
+| 2 | **Rig Send / Rig Return connections corrected** — the two had been transposed | `PHYS` |
+| 3 | **XLR pin 1 repaired** | `PHYS` |
+| — | Teensy powered ON for the test, where Actions 114/115 ran unpowered | `OBS` |
+
+**Which of these was load-bearing is not established.** This is the same situation
+as the J4 recovery in 2026-10-11 (1), and it gets the same treatment: the measured
+facts are recorded, the causal attribution is not. A single-variable sequence would
+have told us; four simultaneous changes cannot.
+
+**Not a criticism of the bench work** — getting a dead loop alive is worth more
+than a clean attribution of which of four things did it. It is recorded because a
+future reader will otherwise assume the `57b` reseat was the fix, and the record
+does not support that.
+
+### Actions 119–124, as reported
+
+| Action | Observation | Tier |
+|---|---|---|
+| ~120 | J5 TIP destination confirmed from the record: col 57 A–E = K1 pole 1 COM, pin 3 | `MEAS`, documentary |
+| — | Lead reseated at **`57b`** — inside the `57b`–`57e` free-hole range, since K1 pin 3 occupies `57a` | `PHYS` |
+| 124 | **Headrush input meter responds to strumming, Teensy powered** | `OBS` — PASS |
+
+**Action 124 is `OBS`, not `MEAS`.** A meter responding is a coarse indicator; it
+establishes that signal arrives, not its level or quality. Action 125 is what
+measures the result.
+
+### What is NOT established — four limits, with their numbers
+
+1. **TF confidence is 7–12 %, straddling the 10 % threshold, and five of twelve
+   blocks fell BELOW it.** Per `netlist.md` §14's own caveat, that demonstrates
+   **validity, not quality** — a decaying non-stationary strum is close to the
+   least informative stimulus available.
+2. **5 kHz and 10 kHz still read `---`** — no qualifying data in those bins.
+   §14 caveat 3 applies verbatim: that is **not evidence of roll-off**, however
+   much the 120 → 500 → 1 k trend invites the inference.
+3. **Nothing about J8 Amp Out.** The Amp Out branch taps the same `16a` node but
+   has never passed audio, and TODO-75's grounded-probe floor is still unrecorded,
+   so no amplitude there is interpretable yet.
+4. **Not calibrated.** The Phase 9 validation suite has never run, and TODO-43's
+   two full-scale bases still disagree by ~18 dB. **The 8.8 dB gap is a pair of
+   peak readings, not a calibrated insertion loss.**
+
+### ⚠️ TODO-70 is now live for the first time, and this data cannot settle it
+
+The predicted **RETURN→SOURCE leak** through the shared OPA_BIAS node required
+return signal to exist. It now does. The prediction is **−55 dB at 1 kHz with an
+instrument plugged in**, worse at low frequency.
+
+**Some fraction of the SOURCE reading could be leak rather than guitar, and this
+capture cannot separate them.** Both channels were driven simultaneously, which is
+exactly the condition under which the two are indistinguishable. Run TODO-70's
+controlled test — a known tone into Rig Return TS with **nothing** connected to
+Instrument In — **before the 8.8 dB gap is treated as a rig figure.** A leak would
+inflate SOURCE and therefore understate the loss.
+
+### What the next session should know
+
+1. **The loop passes signal. It is not calibrated and J8 is untested.** TODO-76
+   stays open deliberately.
+2. **TODO-70's controlled test is now the highest-value measurement available** —
+   it is cheap, it is decisive, and every subsequent transfer-function number
+   depends on the answer.
+3. **TODO-75 before any Amp Out amplitude.** The ≈58 mV_pp is still ~1.8× an
+   unrecorded probe floor.
+4. **Record power state and conductor positions inline with measurements.** Four
+   invalidations on this board now trace to the same procedural gap.
+
+---
+
+## 2026-10-11 (1) — **The guitar input path is measurably restored: SOURCE reached −11.1 dBFS, 30.4 dB above the failed capture and within 1.0 dB of the historical reference.** The loss did not disappear, it moved downstream — and the J6 Rig Return TIP lead is out of the breadboard
+
+> ## ⛔ CORRECTION — 2026-10-11, later the same day. Read this before anything below it
+>
+> **The disconnected flying lead is J5 Rig Send TIP, not J6 Rig Return TIP.** The
+> builder had the two jacks transposed when reporting it, and corrected it on
+> review. Its destination is **column 57, A–E strip** = **K1 pole 1 COM, pin 3**
+> (`MEAS`; `netlist.md` §12.1/§12.3, `tools/gen_schematic.py:521`, both schematic
+> SVGs, and hazard **H-1**'s two-state measurement of this exact conductor on
+> 2026-09-21). Tracked as **TODO-71**, retitled.
+>
+> **This collapses three faults into one.** The sections below treat the Rig Send
+> null (Action 115) and the Rig Return floor as separate problems and warn against
+> conflating them. That warning was correct given what was known, and the wrong
+> conclusion was avoided — but the premise was wrong: **an open `57a` lead
+> produces all three observations necessarily.** Nothing reaches the Headrush, so
+> nothing is processed, so nothing returns. SOURCE −11.1 dBFS · no waveform at
+> J5 TIP · RETURN at ≈−60 dBFS is one fault seen from three places.
+>
+> **TODO-72's candidate #1 is the one that was right** — *"the COM→tip wire at
+> `57a` is off or intermittent, the same conductor H-1 lifted and restored."*
+>
+> **J6 is NOT established as good.** The claim that it was disconnected is
+> withdrawn, but no one has measured J6 either. Its last positive evidence is
+> Phase 7 / 2026-09-19. Treat J6 as **`NYV`**, not confirmed.
+>
+> **Still not claimed:** that reconnecting `57a` fixes the loop. Nothing has been
+> reconnected, re-measured or tested. The passages below are retained unedited per
+> the never-delete rule, with ⛔ pointers on the two that name the wrong jack.
+
+Three faults are in play in this entry and they are kept apart deliberately: the
+**input** path (now measured good), the **Rig Send** output (an unexplained null),
+and the **Rig Return** input (a found wiring disconnection). **The loop is not
+claimed to work. No part of it has been demonstrated end to end.**
+
+Serial telemetry in this entry was captured by Claude over USB, read-only except
+for Action 101's single `j`. Firmware unchanged throughout: `Build: Sep 26 2026
+16:36:53 v0.6.0` (`26f2bee`), verified byte-identical to HEAD for
+`signal_router.cpp/.h`, `guitar_rig_analyzer.ino` and `config.h`.
+
+### J4 Instrument In — MEASURED, and the path is good
+
+| Action | Measurement | Reading | Tier |
+|---|---|---|---|
+| 105 | J4 TIP solder lug → breadboard col 30 | **0.0 Ω** | `MEAS` |
+| 106 | J4 TIP → SLEEVE, guitar **unplugged** | **OL** | `MEAS` |
+| 108 | J4 TIP → SLEEVE, guitar connected, volume full | **6.75 kΩ** | `MEAS` |
+| 112 | SOURCE_NODE peak while strumming | **−11.1 dBFS = 9 129 counts** | `MEAS` |
+
+**Why these four together are a complete proof of the input path**, which no one
+of them is alone:
+
+- **105** establishes the conductor that read **OL** on 2026-10-05 now conducts.
+- **106** establishes C1 still blocks DC and there is no short to ground — i.e.
+  the `col 30` → GND jumper is gone and has not returned.
+- **108** is the one that is **off-board**: 6.75 kΩ is the pickup's DC resistance
+  through the cable and the jack's tip contact, inside the 6–15 kΩ band expected
+  for a passive pickup. It clears the instrument, the lead and the jack contact
+  in a single reading, and it is the measurement that distinguishes "open" from
+  "shorted" at the source rather than at the board.
+- **112** is the functional confirmation: 14 consecutive 5 s blocks, uptime
+  378–443 s, SOURCE ranging **−11.1 to −20.2 dBFS**, mean −15.9. Against the
+  failed capture's ≈−41.5 dBFS that is **+30.4 dB**, a 33× amplitude increase,
+  and it lands **within 1.0 dB** of the −10.1 dBFS historical reference strum
+  (`netlist.md` §14, 2026-09-19).
+
+**Independently corroborated at sample level, not just by the peak detector.**
+The `[RAWDUMP]` blocks show oscillating waveforms reaching **±4 224 counts** in a
+32-sample slice of a 2 048-sample block, with visible attack/decay envelope
+structure. The previous failed capture's largest raw sample anywhere in 42 s was
+**240 counts**. Two independent paths through the firmware agree.
+
+### 🔺 What repaired it is NOT established, and this entry does not claim it
+
+Actions 103–111 were carried out between the 2026-10-05 fault identification and
+Action 105's 0.0 Ω. **The record does not isolate which physical movement restored
+conduction.** The honest statement is the measured one: *the J4 tip conductor read
+OL on 2026-10-05 and reads 0.0 Ω at Action 105.* Attributing that to a specific
+reseat would be inference presented as observation.
+
+### Rig Send / Rig Return — a found disconnection and an unexplained null
+
+| Action | Observation | Tier |
+|---|---|---|
+| 112 | RETURN_NODE stayed at its floor, highest **−57.6 dBFS** (14 blocks, −57.6…−62.3, mean −60.6; raw samples never above ~37 counts) | `MEAS` |
+| 113 | J5 Rig Send cable confirmed connected to the Headrush **Guitar Input** | `PHYS/OBS` |
+| 114 | No visible Headrush input-meter response while strumming | `OBS` |
+| 115 | No strum-correlated waveform at **J5 TIP** on the DHO804 | `OBS` |
+| 117 | J5 TIP → SLEEVE resistance | **OL** `MEAS` |
+| 118 | J5 external cable unplugged at the analyzer end | `PHYS` |
+| — | ⛔ **CORRECTED — this is J5 Rig Send TIP, not J6.** As reported: *"J6 Rig Return TS TIP breadboard lead found out of the board."* Time of disconnection **unknown** | `PHYS/OBS` |
+
+**The SOURCE−RETURN gap at Action 112 was 48.1 dB.**
+
+### 🔺 Two corrections to how these observations should be read
+
+**1. Action 117's OL at J5 is the EXPECTED reading, not a finding.** J5 TIP
+reaches col 48 through K1's NC contact, and **col 48 has no DC path to ground** —
+C2 blocks DC toward the op-amp and no bleed resistor is fitted there. So TIP →
+SLEEVE *must* read OL on a healthy board, exactly as it did at J4 in Action 106
+for the same reason. **The correct continuity test for the Rig Send path is
+J5 TIP → col 48 / `48d`, which resolved hazard H-1 measured as continuity on
+2026-09-21.** Action 117 should not be carried forward as evidence of a Send-path
+fault; it is not evidence either way.
+
+**2. Action 115 is a genuine contradiction and is the sharpest open lead.**
+`SOURCE_NODE` **is** col 48, and J5 TIP is connected to col 48 through K1 pole 1
+NC — a contact bench-proven closed in the de-energised state (§12.1, `MEAS`,
+2026-09-19), which is the boot default and was confirmed live three times in the
+Action 112 capture by `Route: TS return, no injection`. Action 112 measured
+**−11.1 dBFS on that node**, which is on the order of **0.37–3.0 V_pp** depending
+on which of the two unreconciled full-scale calibrations applies (TODO-43) —
+unmissable on a scope at any sane setting.
+
+**So −11.1 dBFS at SOURCE and no waveform at J5 TIP cannot both be true**, unless
+one of these holds:
+- the **COM→tip wire at `57a`** is off or intermittent — the same conductor H-1
+  lifted and restored on 2026-09-21;
+- K1's NC contact is not closing;
+- or Action 115's measurement conditions were wrong — not strumming during the
+  capture, wrong probe point, or wrong vertical scale.
+
+**Resolving this does not require touching anything**: strum while scoping J5 TIP
+and simultaneously watching SOURCE dBFS. That is tracked as TODO-72.
+
+### ⛔ What is and is not explained by the J6 disconnection — PREMISE WRONG, see the correction block at the top of this entry. Retained unedited: the reasoning was sound and the conflation it warned against was correctly avoided, but the lead is J5, and an open `57a` explains all three observations at once
+
+- ✅ **Plausibly explains the absent RETURN measurement.** With the J6 TIP lead
+  out, K2 pole 1 NC has no source, so RETURN_NODE is an undriven input and its
+  ≈−60 dBFS floor is the expected reading.
+- ❌ **Does NOT explain Action 115 or Action 114.** J6 is downstream of the
+  Headrush; nothing about it can suppress a waveform at Rig Send or a meter
+  response at the Headrush input. **These remain separate, untested observations
+  and must not be collapsed into one cause.**
+- ❓ **Time of disconnection unknown.** It therefore cannot be established whether
+  Actions 112–118's RETURN readings were taken before or after it came out, which
+  means **none of them can be cited as a measurement of a connected return path.**
+
+This is the third unrecorded bench-state change on this board (after the `col 30`
+jumper's unlogged removal and re-fitting). The pattern is now worth naming:
+**a mechanical change with no timestamp invalidates every reading whose
+interpretation depends on it.**
+
+### J8 Amp Out — reconciled against the existing record, zero discrepancies
+
+The Amp Out build was reported again this session as a bench checkpoint. **It was
+cross-checked line by line against `ai/evidence/2026-10-08-ampout-buffer-dc-checkpoint.md`
+and journal 2026-10-08 (1)–(3) rather than recorded a second time.** Every
+reported item agrees with what is already on file: U4 on cols 24–27 · pin 8 +5 V ·
+pin 4 GND · C9 0.1 µF bypass · pin 1→pin 2 follower · RETURN_NODE coupled via
+C10 0.1 µF to pin 3 · R10 100 kΩ to **OPA_BIAS** (not VGND — §3 of the evidence
+file resolved that) · channel B terminated, pin 5 on `col 38 F–J` · C11 10 µF (+)
+on pin 1, (−) to col 21 → J8 TIP · R11 100 kΩ bleed · J8 SLEEVE to GND ·
+pins 1/2/3 = **0.876 V** · pin 7 = **0.872 V** · J8 TIP→SLEEVE DC = **0.000 V**.
+
+**The agreement is itself a result worth recording** — an independent re-report
+from the bench matching the written record on every item, including the two that
+had been corrected (the bias node and channel B's landing column).
+
+**Nothing is promoted on the strength of this re-report.** It is the same
+observations from the same observer, not new evidence, and §6 of the evidence file
+continues to govern what the DC pass does and does not support.
+
+### ⚠️ The ~58 mV_pp at Amp Out remains UNINTERPRETED
+
+The preliminary scope trace is recorded as **not** evidence about the buffer, in
+either direction:
+
+- `TODO-40` records a **grounded-probe floor of ≈32 mV_pp** on this scope.
+  58 mV_pp is ~1.8× that, so a large fraction may be instrument floor.
+- **The control has never been taken.** TODO-40's proof criterion opens with
+  *"record the grounded-probe control under the exact final settings; every
+  amplitude comparison depends on it"*, and it is still outstanding.
+- The RETURN_NODE telemetry taken at Action 112 back-converts to ≈**1.5 mV_pp**
+  (datasheet basis) or ≈**12.5 mV_pp** (TODO-43 observed basis) — both well below
+  58 mV_pp. That gap would be interesting if the probe floor were known. It is not.
+
+**This project has already withdrawn one conclusion for exactly this reason:**
+*"a gradient measured against an unknown floor is not a gradient."* The 58 mV_pp
+is therefore carried as an uninterpreted observation and **does not implicate the
+Amp Out buffer.** Tracked under TODO-75.
+
+### What the next session should know
+
+**⛔ This block was REWRITTEN after the J5/J6 correction, rather than retained and
+marked like the analytical sections above. Deliberate: its only purpose is to
+direct the next physical action, and stale guidance here would send someone to the
+wrong column with a wire in hand. The superseded version named J6 / column 15 and
+treated the Send and Return nulls as two live faults. The reasoning it rested on
+is preserved above.**
+
+1. **J5 Rig Send TIP reconnects to column 57, A–E strip** — **K1 pole 1 COM,
+   pin 3**. Not literally hole `57a`: K1's pin occupies it, so use `57b`–`57e` in
+   the same strip. **Not column 55** (that is the coil, `55a` = +5 V / `55f` =
+   collector, with D1 across it), and **not columns 8–18** (that is K2 / Rig
+   Return). Evidence trail in **TODO-71**. No runbook conflict on column 57,
+   unlike column 15.
+2. **One fault, not two.** An open `57a` lead accounts for Action 112's RETURN
+   floor, Action 114's dead Headrush meter and Action 115's missing J5 waveform
+   simultaneously. Verify it electrically before accepting it — **TODO-72** — but
+   stop treating the Send and Return nulls as independent problems.
+3. **J6 is `NYV`, not good.** Last positive evidence is 2026-09-19. Nobody has
+   measured it. If the return stays dead after `57a` is restored, J6 is the next
+   place to look rather than a surprise.
+4. **Two panel-jack flying leads have now come out of breadboard holes** — J4 TIP
+   (2026-10-05) and J5 TIP. H-1 also deliberately lifted and re-seated this exact
+   `57a` conductor on 2026-09-21. Whether that re-seat is the origin is **not
+   established** and the disconnection time is unknown, but the recurrence is a
+   mechanical pattern worth designing against, not a coincidence to absorb.
+5. Nothing in the chain has been demonstrated end to end. TODO-19, TODO-23,
+   TODO-40 and TODO-21 all remain unfixed and all still predict a thin, hissing
+   signal once the loop closes.
+
+---
+
+## 2026-10-08 (3) — **Three DC claims confirmed and promoted; TODO-70 stays open for a controlled measurement.** And the 0.000 V at Amp Out does not by itself prove the bleed path — the pre-bleed node read the same
+
+Appends to 2026-10-08 (1) and (2); **neither is edited.** Record: [`2026-10-08-ampout-buffer-dc-checkpoint.md`](evidence/2026-10-08-ampout-buffer-dc-checkpoint.md) §12.
+
+### Confirmed, with the tier each claim now carries
+
+| Claim | Evidence | Tier change |
+|---|---|---|
+| Channel B's DC output | pin 7 = **0.872 V** | `MEAS`, as recorded in (2) |
+| **R11's value** | **100 kΩ** read back | **`RPT` → `MEAS`** |
+| **Amp Out DC, post-bleed** | TIP → SLEEVE = **0.000 V** | new `MEAS` — supersedes the pre-bleed 0 mV |
+
+R11's promotion is the one worth naming: entry (2) carried its value as `RPT` on the
+build report alone. A resistor was read back, so it is now `MEAS`. Placement stays
+`PHYS`. **Two claims, two tiers, promoted separately** — the C1/`BC103` lesson.
+
+### The 0.000 V is the right measurement and it is not the proof it looks like
+
+It closes the probe entry (2) listed as owed, and it is a better reading than the
+pre-bleed one: at the resolution shown it is **0.000 V**, and with R11 fitted the
+jack's DC state is *defined by a resistor* rather than by leakage.
+
+**But it does not demonstrate that the bleed path conducts.** The pre-bleed node —
+floating, no DC path to ground at all — read **0 mV** and **1.5 mV** on two earlier
+passes. A reading that is the same with and without the component cannot distinguish
+the two cases. The 0.000 V proves C11 still blocks the ~0.876 V bias from the jack,
+which matters; it does not prove R11 is in the circuit.
+
+**What would prove it is one probe, power off: TIP → SLEEVE resistance.** ≈100 kΩ
+confirms the conductor end to end and promotes the bleed path from observed placement
+to a traced electrical path. **If the 100 kΩ was read in-circuit from col 21 (or the
+TIP) to GND, that reading already is the proof** and only needs saying so; if it was
+read out of circuit before insertion, it confirms the value and not the path. The
+record notes which it needs to know.
+
+This is the same shape as resolved hazard **H-1**, where lifting the COM→tip wire and
+re-reading is what made the open meaningful: *the control is what makes the reading
+meaningful.* Here the control is the pre-bleed reading, and it happens to match.
+
+### Decision — TODO-70 stays open; no component is installed on arithmetic
+
+**Decided by Conley Vidal, 2026-10-08.** The RETURN→SOURCE leak predicted in entry
+(2) is **not** to be mitigated by fitting the 10 µF bulk cap on the strength of the
+calculation. TODO-70 stays open for a **controlled measurement** first.
+
+**Why this is the right call and not just caution.** Three reasons already written
+into this project:
+
+1. **The arithmetic is `DERIV` and falsifiable, so measure it while it still can be.**
+   Fitting the cap first would remove the condition the prediction was made about.
+   A −27 dB leak at 100 Hz either shows up or it does not; afterwards neither result
+   is interpretable, because a null would not distinguish *"the cap fixed it"* from
+   *"it was never there."*
+2. **TODO-21's decision gate established the principle for this board** — do not
+   modify hardware ahead of the requirement, because a second electrical
+   configuration means two sets of bench results and *"the breadboard stops being
+   evidence for the product."*
+3. **Candidate fix 1 doubles as a documented-deviation closure (netlist D2).**
+   That makes it tempting to do for tidiness, which is exactly why it should wait
+   until it is being done for a measured reason.
+
+**What does not change:** TODO-70's predicted levels stay labelled predicted, and the
+proof criterion still permits them to be **wrong**. Drive a known tone into Rig Return
+TS with nothing in Instrument In and read SOURCE_NODE; if SOURCE holds its established
+idle floor, the arithmetic in entry (2) is wrong and gets corrected there, not dropped.
+
+### Still not established
+
+**No audio has passed through the buffer and no amplifier has been connected.** DC
+operation of both channels is correct and in spec; AC performance — oscillation under
+load, distortion, flatness, unity gain across the band, and whether Amp Out disturbs
+the RETURN measurement — is entirely untested, as is every level in TODO-70.
+
+## 2026-10-08 (2) — **Channel B resolved in the safe direction and the bleed resistor is in.** But biasing the second buffer from the shared OPA_BIAS node created a RETURN→SOURCE leak path, and the missing bulk cap is now a crosstalk term
+
+Appends to 2026-10-08 (1); **that entry is not edited.** Actions 72–79. Record: [`2026-10-08-ampout-buffer-dc-checkpoint.md`](evidence/2026-10-08-ampout-buffer-dc-checkpoint.md) §9–§11.
+
+### Channel B is correctly terminated — the gate from entry (1) is closed
+
+Entry (1) left one blocking probe: whether U4 pin 5 sat on OPA_BIAS (correct) or on VGND (journal 2026-09-05 (4) **Finding 3** live on the unused half). Answered:
+
+| Evidence | Reading | Tier |
+|---|---|---|
+| U4 pin 5 → **col 38 F–J** | — | `PHYS` |
+| U4 pin 7 (out B) | **0.872 V** | `MEAS` |
+| U4 pins 1 / 2 / 3 (channel A) | **0.876 V**, stable | `MEAS` |
+| Amp Out TIP → SLEEVE, DC, **pre**-bleed | **0 mV** | `MEAS` |
+
+**Finding 3 does not apply.** Channel B is a terminated follower sitting at 0.872 V — inside the −0.1…1.5 V common-mode window, and **2 mV** from the 0.874 V recorded on OPA_BIAS (2026-09-05 (5)). Both halves of the new part are now in spec. Promoted from `NYV` to `PHYS`+`MEAS` on new evidence, which is exactly what promotion requires.
+
+**The 100 kΩ bleed resistor is fitted** (Action 79, `PHYS`), closing the design note entry (1) raised. Col 21 now has a defined DC path to ground instead of floating, so Amp Out's DC state is set by a resistor rather than by leakage. Two consequences, both benign: the output cap's corner becomes **0.159 Hz** (C11 10 µF into 100 kΩ), and the buffer's DC load becomes 100 kΩ — lighter than the 10 kΩ the OPA1642's 0.2 V swing spec assumes, so the entry-(1) headroom reasoning is unaffected.
+
+**One small thing is now owed:** the 0 mV TIP reading was taken *before* the bleed resistor, i.e. on a floating node, so it was indicative rather than defined. A post-bleed TIP → SLEEVE reading is the one that actually demonstrates the architecture. One probe, low priority, listed in TODO-69.
+
+### What `col 38 F–J` actually is, and why the wording matters
+
+`col 38 F–J` is not OPA_BIAS directly. The netlist records it as **`U1_INP_B`** — *U1's own pin 5 node* — reaching OPA_BIAS through the **blue `38j` → `41c` jumper** (§3 net table, `PHYS`). Electrically that is OPA_BIAS, so the bias is correct. Topologically it means something new:
+
+**U1 pin 5 and U4 pin 5 now share one node, and both depend on a single jumper.** If `38j`→`41c` ever lifts, **both** op-amps' unused halves lose their bias simultaneously and both become the untermina­ted-channel-B failure that journal 2026-09-05 (4) Finding 3 describes. Before tonight that jumper carried one channel's termination; it now carries two. It is a conductor the netlist already flags as crossing the centre channel (§6c discussion at `38j`→`41c`). **Not a fault. A single point of failure that is worth knowing is single.**
+
+### The finding that matters more — a RETURN→SOURCE leak through shared OPA_BIAS
+
+Both buffers are now biased from the same node, and **U4 pin 3 is a signal node.** The return signal therefore drives OPA_BIAS through R10's 100 kΩ, and OPA_BIAS feeds U1 pin 3 through R5's 100 kΩ. That is a path from RETURN into SOURCE that did not exist before.
+
+OPA_BIAS's shunt impedance is R<sub>th</sub> 8.25 kΩ ∥ C4 alone — because netlist deviation **D2** records that the 10 µF bulk cap specified by journal 2026-09-05 (4) step 2 **was never fitted**, leaving only C4's 0.1 µF. First-order arithmetic:
+
+| Frequency | Z<sub>OPA_BIAS</sub> | Leak onto OPA_BIAS | → SOURCE, instrument plugged in | → SOURCE, **input open** |
+|---|---|---|---|---|
+| 1 kHz | 1 334 Ω | −37.7 dB | **−55.0 dB** | **−37.7 dB** |
+| 100 Hz | 5 433 Ω | −27.0 dB | **−31.2 dB** | **−27.0 dB** |
+
+It is worse at low frequency twice over: C4 stops holding OPA_BIAS down, *and* C1's 10 nF makes U1 pin 3 a high-impedance node (the TODO-19 corner, arriving from an unexpected direction). With the instrument jack open — the condition most of the SOURCE-floor investigation ran in — there is no divider at pin 3 at all and the leak arrives nearly whole.
+
+**Why this is not a footnote.** SOURCE and RETURN are the two channels whose *ratio is the transfer function*. A leak from RETURN into SOURCE does not look like a fault; it looks like a plausible rig response, which is the dangerous kind — the same argument TODO-42 makes about generator contamination. And −55 dB at 1 kHz sits suspiciously close to the −56 dBFS crosstalk floor already caveated in netlist finding A2.
+
+**D2's assessment needs revisiting, not rewriting.** It reads *"missing bulk cap is a low-frequency PSRR concern, not a functional one."* That was a fair call when one op-amp sat on the node and nothing injected signal into it. **A second buffer injecting a signal makes the missing cap a crosstalk term as well.** Fitting the 10 µF would improve the first divider by **~30 dB at 100 Hz** (Z<sub>bias</sub> 5 433 Ω → 155 Ω) and ~38 dB at 1 kHz, from one part already in stock, and would close a documented deviation at the same time.
+
+**This is `DERIV`, not measured, and it has a clean decisive test:** drive a known tone into Rig Return TS with **nothing** connected to Instrument In, and read SOURCE_NODE. If the leak is real, SOURCE shows the return tone at roughly the predicted level; if it does not, the arithmetic is wrong and should be corrected here. Raised as **TODO-70** rather than folded into TODO-69 — it is a side finding from a records pass, and side findings get their own item.
+
+### What is still not established
+
+Nothing in this entry concerns AC behaviour. **No audio has passed through the buffer and no amplifier has been connected.** DC operation of both channels is now correct and in-spec; oscillation under load, distortion, flatness, unity gain across the band, and whether Amp Out disturbs the RETURN measurement are all untested. TODO-69's steps 1–5 remain 🔴, and TODO-70 is new and unmeasured.
+
+**Proposed designator for the bleed resistor: R11** — provisional, with the rest of the naming, until the netlist gains Part III.
+
+## 2026-10-08 (1) — **A fourth jack and a second buffer are built and DC-validated.** Two anomalies that looked like circuit-design defects were both assembly/record facts, and the measurements are what separated them
+
+A new analog **Amp Out** branch now hangs off the Teensy-selected RETURN_NODE, so the analyzer can sit inline between a rig and an amplifier. **Built and DC-validated only — no audio has passed through it and no amplifier has been connected.** Record: [`2026-10-08-ampout-buffer-dc-checkpoint.md`](evidence/2026-10-08-ampout-buffer-dc-checkpoint.md). Tracking item: TODO-69.
+
+Two bench sessions: **2026-09-30** built the branch and took the first DC pass; **2026-10-08** (Action 72) reseated the adapter and re-took it. Both are in the evidence record, including the superseded numbers.
+
+### The architectural decision this build commits to
+
+Amp Out is an **analog branch** of the selected RETURN_NODE, taken at `16a` (K2 pole 1 COM). It is deliberately **not** `Rig Return → SGTL5000 ADC → Teensy → DAC → amplifier`. The live guitar path must not depend on codec conversion, sample rate, DSP, firmware state or digital latency. The existing `16a` → LINE IN R measurement conductor was left intact — this is a branch, not a re-route.
+
+A consequence worth stating plainly: because the tap is at the relay COM and not at the physical TS jack, **Amp Out follows the operator's TS/XLR selection** under [ADR-004](../docs/adr/ADR-004-return-source-is-operator-selected.md). Changing the return source now changes what the downstream amplifier hears, and K2 is break-before-make. That is consistent with ADR-004's operator authority, but it is new operator-visible behaviour.
+
+### Anomaly 1 — the 2.571 V bias was a loose adapter, not input current
+
+The 2026-09-30 pass read pin 3 at **2.571 V** / pin 1 at **2.569 V**. Against the recorded VGND of **2.495 V** (journal 2026-09-16, `BOT_RED` → GND) that is +76 mV, where U1 in its pre-rebias violated state sat **−327 mV** (2026-09-05 (1)). Opposite sign. I read the 76 mV as ≈0.76 µA out of the input through the 100 kΩ — six orders above a JFET gate's picoamps — and proposed it as evidence of common-mode overdrive.
+
+**Wrong mechanism.** The OPA1642 was **not fully seated in its socket** (`PHYS`, Action 72). After reseating, pins 1, 2 and 3 all read a stable **0.876 V**. Intermittent contact accounts for the anomalous and drifting readings; the input-current hypothesis is **withdrawn**.
+
+The instinct that produced it still paid: the arithmetic said *these two numbers cannot both be right*, which is what sent someone back to the hardware. **A DC reading that disagrees with the recorded node by a physically implausible amount is a reason to doubt the connection before doubting the design.**
+
+### Anomaly 2 — the bias node was never VGND
+
+The 2026-09-30 build report described the 100 kΩ as going to *"an intermediate node → existing VGND (~2.5 V)"*. On that description I raised **TODO-21** — biasing an OPA1642 input at ~2.5 V on a single +5 V rail is above TI's V<sub>CM</sub> ceiling of (V+) − 3.5 V = **1.5 V**, the exact defect that cost 327 mV of droop on U1.
+
+**That is not what is built.** Builder-confirmed 2026-10-08: the resistor lands on **OPA_BIAS** — the ~0.877 V node created by the 2026-09-05 (4) rebias precisely to fix this problem on U1 — at **cols 41 A–E ∪ 43 A–E** (bridged `41e`→`43e`), *not* col 45 / `BOT_RED`. The measurement corroborates it independently: **0.876 V against the 0.874 V recorded on OPA_BIAS** (2026-09-05 (5)), a 2 mV agreement. VGND would have read 2.495 V.
+
+**So TODO-21's defect is not reproduced on channel A.** The new buffer inherits U1's *fixed* topology by construction: a single 100 kΩ series resistor from a decoupled bias node, which keeps input impedance at exactly 100 kΩ and keeps rail noise out of the signal path.
+
+**Tier, stated honestly.** Node identity is `RPT` (builder) + `DERIV` (the 2 mV voltage agreement). It is **not** `MEAS` — no continuity check from the intermediate node to `41`/`43` has been taken. Strong, but not promoted.
+
+**Column precision is load-bearing here.** OPA_BIAS is 41/43; **col 45 is VGND**. This board already carries D9/TODO-45, where the runbook called `45a` "a free column" while col 45 is the VGND divider, and following it literally would have put a relay base drive on the VGND rail and destroyed Teensy pin 14. Write 41/43 or 45, never "around 44".
+
+### What is still open, and it is one probe
+
+**Channel B's bias node is unconfirmed.** The build report says pin 5 → VGND. Since that same report also said "VGND" where OPA_BIAS is in fact wired, pin 5 is *probably* on OPA_BIAS too — which would be correct, and would mirror U1 (`U1_INP_B`: blue jumper `38j` → `41c`, netlist deviation D1). But probably is not measured.
+
+It matters because journal **2026-09-05 (4) Finding 3** applies directly if pin 5 really is at 2.5 V: *an unused half whose input sits outside its CM range is not reliably terminated, and an oscillating channel B radiates through the shared supply pins into channel A — the exact failure the termination exists to prevent.* That is the named mechanism behind "oscillation-free is not yet claimed."
+
+**One reading settles it:** pin 5 → GND. **0.876 V** = correct and mirrors U1. **≈2.5 V** = Finding 3, live, on the unused half.
+
+### Teensy/Pi authority — verified against the tree, not assumed
+
+**No conflict.** Four reasons: [ADR-001](../docs/adr/ADR-001-display-architecture.md) keeps the Teensy sole authority for acquisition and measurement truth, and Amp Out sits *downstream inside* that boundary — its source is chosen by K2's coil on Teensy pin 15. [ADR-005](../docs/adr/ADR-005-pi-rendering-stack-and-presentation-semantics.md)'s invariant constrains renderers transforming state; Amp Out is not a renderer, puts no field on any wire and asserts nothing. The Pi cannot reach it even indirectly — `SerialSource` opens `O_RDONLY`, `/proc/<pid>/fd` shows `lr-x`, and the Pi→Teensy direction is physically disconnected (2026-09-30 (1)). And ADR-004 already makes the return source operator-owned with no `AUTO`.
+
+The contrast case the repo supplies is `VortexTunnel.jsx`, rejected as *"a second measurement/input path outside the Teensy authority boundary."* Amp Out is the opposite shape: an output, with no acquisition.
+
+**Two new obligations, not conflicts.** (1) **No UI element may claim anything about Amp Out** — no wire field carries it and no detect contact is wired (ADR-003, §12.3: pins 16/17/22/24 unconnected), so under ADR-005 the correct display is absence. (2) **TODO-42 gains a downstream consequence**: `signal_generator.cpp:99` sums the generator into `s_mixer_ret` slot 2, which *is* RETURN_NODE's tap. Latent today only because the sole arming path uses `EXTERNAL`. One non-EXTERNAL call site now drives an internally generated tone into a **physical guitar amplifier**, not merely into a measurement.
+
+### What this checkpoint does NOT establish
+
+No audio has passed through the buffer. Nothing is known about frequency response, gain across the band, oscillation under load, whether Amp Out disturbs the RETURN measurement, downstream amplifier behaviour, or TS/XLR selection observed at Amp Out. **Amp Out is not a completed feature.** The DC pass is the same class of evidence that looked healthy on U1 while U1 was out of spec — see TODO-69 for the gate.
+
+### Design notes carried forward (all `DERIV`, none built)
+
+- **Corner asymmetry.** 0.1 µF into 100 kΩ = **15.9 Hz** on the Amp Out branch; the RETURN tap does not share it, and whether the Rev D shield AC- or DC-couples LINE IN is still open (2026-09-12). Amp Out and the measurement tap are not guaranteed to have the same LF response.
+- **New shunt on RETURN_NODE.** ≈**101.6 kΩ** at 1 kHz (100 kΩ + 1.59 kΩ of C). Effect scales with the DUT's source impedance at J6 — small for a low-Z FX send, not negligible for a high-Z source. This makes "does Amp Out disturb the measurement" a prediction with a number.
+- **No bleed resistor.** Col 21 has no DC path to ground, so the TIP floats unloaded; the 1.5 mV reading is consistent with a settled floating node. Charge redistribution on first plug-in means a thump into a powered amp. 100 kΩ–1 MΩ to GND would define the jack and bound the transient.
+- **Decoupling loop.** C3 sits directly across U1 pin 8 (`34i`→`35i`); the new 0.1 µF reaches GND via col 23 F–J *plus a jumper* — a longer loop. Acceptable, recorded rather than silently normalised.
+
+### Naming — proposed, not ratified
+
+The repo had **no** prior term for this output: no `AMP_OUT`, no "monitor out", nothing matching "amplifier" in the netlist, ADRs or README. It is net-new terminology, so it gets chosen once. Free designators, by inventory: **J8** (J3 unused; J1/J2/J4–J7 taken), **U4**, **C9/C10/C11**, **R10**. Proposal, to be ratified when the netlist gains Part III: panel label **"Amp Out"**, connector **J8**, op-amp **U4**, net **`AMP_OUT`**, with `U4_*` nets following U1's pattern.
+
+**Pin→column mapping is inference, not observation.** From U1's convention (pin 1 = `35e`, pin 5 = `38f` ⇒ pins 1–4 ascend on A–E, 5–8 descend on F–J) plus "pin-1/notch end toward col 24": pin 1 = col 24 A–E, pin 4 = col 27 A–E, pin 5 = col 27 F–J, pin 8 = col 24 F–J. Inference from a convention. Column-and-trench-side is the load-bearing claim; row letters are `RPT` at best.
+
+### Documentation this still owes, deliberately not done in this entry
+
+[netlist.md](../docs/asbuilt/netlist.md) needs a **Part III** — it is the as-built authority and currently has uncommitted in-flight edits, so writing into it mid-revision would muddy Part I/II provenance. The schematics follow the netlist, never precede it (SCHEMATIC_EDITING.md house rule 5). [breadboard_bringup_v3.md](../docs/breadboard_bringup_v3.md) stops at Phase 10 and has no phase for this hardware — new Phase 11 vs. explicitly off-runbook is an open decision. The analog-branch decision above is **ADR-006 material** and gets written and reviewed on its own. README's jack list goes stale and should follow, not lead. **No firmware change is required or made** — Amp Out has no pin, no packet field and no routing state; that was checked, not assumed.
+
+### The transferable lesson
+
+Both anomalies looked like design defects and neither was. One was a part not pushed home; one was a build report naming the wrong node. **In both cases the thing that exposed the error was an arithmetic disagreement between a fresh reading and a previously recorded one** — 76 mV of impossible bias current, and 0.876 V landing 2 mV from OPA_BIAS instead of 1.6 V from VGND. Neither would have surfaced from the reading alone. Keeping measured node values in the record, with tiers, is what made two fresh numbers diagnostic instead of merely plausible.
+
+## 2026-10-05 (1) — **A diagnostic jumper left fitted for 23 days was shorting the guitar input to ground, and removing it opened the J4 tip conductor.** Neither the fault nor the repair attempt reached the record until this entry, and the original symptom is still unexplained
+
+**Nothing in this entry was written down at the time.** The session ran on
+2026-10-05; the next journal entries are 2026-10-08 (1)–(3) on the Amp Out
+buffer, which do not mention it. This entry is reconstructed from the bench
+dialogue three days later. **Treat every number in it as transcribed, not
+captured** — the same caution Part II of `docs/asbuilt/netlist.md` carries.
+
+### The caveat first, because the headline is incomplete
+
+The confirmed short explains **silence**. It does **not** explain the symptom that
+started the session — *"terrible drop in volume"*, which implies audible guitar.
+A dead short to ground does not attenuate; it mutes. **The original report is
+still unexplained, and this entry does not close the volume investigation.**
+See "What this does not establish" below.
+
+### What was reported — `OBS` / `RPT`, builder-reported by ear
+
+| Stage | Report |
+|---|---|
+| Opening symptom | severe volume loss **and** broadband noise, guitar → J4 → J5 → Headrush, versus the same guitar direct into the Headrush |
+| Listening test — guitar volume at maximum, Headrush on a clean low-gain patch, above the 12th fret then open low E | *"nothing except occasional constant screeching from different pedals"* |
+| Does the hiss scale with patch gain? | *"constant"* |
+| Headrush input used | instrument input, and the same jack the guitar had been in directly |
+| After jumper removal | no guitar; fuzz unchanged |
+
+**The level progression — weak, then absent — is itself a data point**, and it is
+part of why the original symptom is not accounted for.
+
+### MEASURED — `MEAS`, DMM, power off except where noted
+
+**Before removing the jumper:**
+
+| Measurement | Reading |
+|---|---|
+| `col 30` → GND jumper, visual | **present** (`PHYS/OBS`) |
+| J4 **sleeve** → breadboard GND rail | **0.2 Ω** |
+| J4 **tip** → GND | **1.2 Ω** |
+| J5 **sleeve** → breadboard GND rail | **0.2 Ω** |
+
+**After removing the jumper:**
+
+| Measurement | Expected | Reading |
+|---|---|---|
+| J4 tip → GND | OL | **OL** |
+| **J4 tip lug → col 30** | ~0 Ω | **OL** 🔴 |
+| col 33 → col 37 (the `33d`→`37d` jumper) | ~0 Ω | **6 Ω** |
+| col 37 → col 41 (R5 into OPA_BIAS) | 73–108 kΩ | **100.7, unit not confirmed** |
+| col 48 → J5 tip (K1 NC, de-energised) | ~0 Ω | **203.7, unit not confirmed** |
+| col 30 → col 33 | OL | **OL** — expected, C1 blocks DC |
+| col 35 → col 48 | OL | **50.5 MΩ** — C2 leakage, healthy |
+
+**Two readings are recorded with their units unconfirmed and must not be cited as
+either.** `100.7` and `203.7` were reported without a magnitude prefix. They are
+left ambiguous here rather than silently promoted to the value that makes sense,
+because that promotion is precisely the class of error the C1 / `BC103` finding
+(netlist A1) was about.
+
+### NOT MEASURED, and recorded as such
+
+**U1 pin 1 → GND, powered.** Reported back as `0.874` V. **Provenance
+unresolved.** `0.874 V` is the exact figure already in the record from journal
+2026-09-05 (5), and when asked whether this was a live reading or a quotation of
+that entry, no answer was given. **It is therefore not evidence about the board's
+state on 2026-10-05** and is excluded from the measured table above. Tier: none.
+
+### INFERRED — `DERIV`, computed from the measurements above
+
+1. **The 1.2 Ω tip → GND was the jumper, not the guitar.** It decomposes as
+   ≈1.0 Ω of tip-wire contact plus the 0.2 Ω jumper path, matching the sleeve's
+   own 0.2 Ω. A pickup reads **6–15 kΩ** DC, four orders of magnitude away, so no
+   state of the instrument or its volume pot can produce 1.2 Ω.
+2. **Attenuation while shorted ≈ −74 dB.** A ~6 kΩ pickup source into a 1.2 Ω
+   load gives 1.2 / 6001 ≈ 2 × 10⁻⁴. C1 sits in parallel with the short and was
+   therefore fed ≈0.02 % of the instrument.
+3. **The J4 tip conductor was intact before the removal and open after it.**
+   The only conductor on that lug runs to col 30, so the 1.2 Ω path had to pass
+   through col 30 and the jumper — which requires the tip wire to have been
+   connected at ≈1 Ω. It now reads OL. **This is an inference from two readings,
+   not an observation of the wire being pulled.** Nobody saw it come out.
+4. **The 6 Ω at col 33 → col 37 is electrically immaterial** — 6 Ω feeding a
+   ~100 kΩ node is ≈ −0.0005 dB — **but it is ~30× this board's 0.2 Ω norm**, so
+   it is logged as a marginal-contact watch item, not as a pass.
+
+### 🔺 A record contradiction this surfaced, and it is a documentation defect
+
+`docs/asbuilt/netlist.md` **§14** records, as bench-proven with a real signal on
+2026-09-19: *guitar → J4 → buffer → SOURCE_NODE → J5 → external TS cable → J6 →
+K2 NC → COM → LINE IN R*, **SOURCE −10.1 / RETURN −10.2 dBFS**.
+
+**That result is impossible with col 30 shorted to ground.** Yet TODO-40 asserts
+the jumper has been fitted continuously since 2026-09-12. Both cannot be true, so
+**the jumper was removed and re-fitted at least once between 2026-09-12 and
+2026-10-05, and neither event was recorded.** `netlist.md` §10.0, which exists to
+track exactly this kind of post-freeze change to Part I, does not carry it either.
+
+This is a defect in the record, not in the circuit. It is also the second
+unrecorded-bench-state problem on this board, and it is the reason the TODO-40
+pooled baseline cannot presently be attached to any known configuration.
+
+### What was decided, and why the TODO-6 hold did not apply
+
+TODO-6 carries **⛔ "Do not restore deviations independently of this item"** on
+this jumper, because it supplied the DC path a SHUNT → pin 16 detect experiment
+would have needed. That reasoning is superseded **by TODO-6's own content**:
+
+- **2026-09-13 (9)** established J4 has **no SHUNT contact** — lug #2 and the long
+  spring are one TIP net — and formally withdrew the experiment as unperformable.
+- **2026-09-13 (10)** decided detect moves to an independent Omron D2F-01L, with
+  *"do not sense their TIP nodes"* stated explicitly.
+- TODO-6 itself marks the boundary: *"Everything below this line predates the
+  continuity identification… the SHUNT topology reasoning does not describe the
+  installed jack."* **Both the ⛔ hold and the 🧪 prediction sit below that line.**
+
+So the jumper was load-bearing for a feature since decided never to use that node.
+TODO-6 also already said of it: *"It shorts the guitar signal to ground. The
+jumper works for detect by accident."* Removal was correct and cost nothing.
+
+### What this does NOT establish — read before citing this entry
+
+- 🔴 **That the J4 tip connection is repaired.** It was identified, not fixed.
+  **No measurement was taken after the fault was found.** Last recorded state is
+  `J4 tip lug → col 30 = OL`. Any subsequent SOURCE or RETURN reading may have
+  been taken with the instrument input physically disconnected.
+- 🔴 **That the volume/noise investigation is closed.** The short explains
+  silence. The reported *volume drop with audible guitar* is unexplained.
+  Candidates, none tested: an intermittent short; a degrading tip contact passing
+  through a high-resistance phase before opening; or the audible content having
+  been the noise floor all along, misattributed. **Not resolvable from the record.**
+- 🔴 **That TODO-19, TODO-23, TODO-21 or TODO-40 contributed to what was heard.**
+  All four remain real and unfixed, and all four were masked by the short. They
+  were initially offered as the leading explanation and that was wrong — a
+  confirmed wiring fault outranked four documented design limitations. **Worth
+  keeping: the open items were the most interesting hypothesis and the cheapest
+  check was the correct one.**
+- 🔴 **Hypothesis 5 — the Rig Send ground reference.** J5's sleeve returns to
+  Audio Shield GND (§12.3) while the signal on col 48 is generated against the
+  breadboard rail, so the ground-potential difference TODO-40 measured as a
+  **33.1 dB** effect on LINE-IN-L sits in series with the audio at the Headrush
+  input. TODO-40 has only ever examined that topology on a codec **input**, never
+  on an **output** feeding an external amplifier. **Raised, never tested.**
+- 🔴 **The two unit-ambiguous readings**, and the `0.874 V` provenance.
+
+### Promotions this session earned — proposed, for `netlist.md` §12.3
+
+Named explicitly, because promotion requires saying what the new evidence was.
+
+| Row | Was | Now proposed | Evidence |
+|---|---|---|---|
+| **J4 sleeve → GND** | `RPT`, no figure | **`MEAS` 0.2 Ω** | this session |
+| **J5 sleeve → GND** | `MEAS`, no figure | **`MEAS` 0.2 Ω** | this session |
+
+The J4 row also closes **step 3 of TODO-6's own next-bench-sequence** — *"Verify
+whether SLEEVE is actually connected to system GND"* — open since 2026-09-13.
+Not applied here; `netlist.md` is already modified on this branch.
+
+### What the next session should know
+
+1. **Measure `J4 tip lug → col 30` before anything else.** It is the leading
+   hardware suspect on this board and its last recorded value is OL.
+2. The front end's own open items are untouched and still predict a thin, hissing
+   guitar once signal is restored: TODO-19 (~145–160 Hz corner, low E at −6 dB),
+   TODO-23 (~100 kΩ input impedance), TODO-40 (~40 mV_pp floor at col 48),
+   TODO-21 (~0.5 V downward headroom, clipping points never measured).
+   **−10.1 dBFS at SOURCE on a strum is the figure to compare against.**
+3. R5's in-circuit reading is new input to **TODO-32** and does not close it.
+4. **Method note.** Three of the four hypotheses carried into this session were
+   documented design limitations, and the actual cause was a diagnostic left
+   fitted. The record said it was fitted, in four places, and it was read as
+   historical rather than current. **A bench-state deviation with no recorded
+   removal is a live condition, not a footnote.**
+
+### ⬆️ CLOSED OUT 2026-10-11 — appended, nothing above this line edited
+
+The J4 tip conductor identified as open in this entry was subsequently measured
+at **0.0 Ω** (Action 105), with TIP→SLEEVE **OL** unplugged (Action 106) and
+**6.75 kΩ** with the guitar connected (Action 108), and SOURCE reached
+**−11.1 dBFS** on a strum (Action 112). See journal **2026-10-11 (1)**.
+
+**Which physical movement restored it is still not established** — Actions
+103–111 intervened and the record does not isolate one. The "NOT established"
+block above stands as written for every other item, including the unexplained
+original volume-drop symptom and the untested Rig-Send ground hypothesis.
+
+---
+
 ## 2026-09-30 (2) — **Pi boots straight into the live analyzer.** My autostart assumption was wrong, the reboot test caught it in one cycle, and the fix made the file smaller
 
 Power-on → automatic launch → live Teensy telemetry, no terminal. Pi-only reboots; the **Teensy was never power-cycled** and reported **session 9** before and after, which is itself the evidence that the Pi reboot did not disturb it. Record: [`2026-09-30-pi-autostart-config.md`](evidence/2026-09-30-pi-autostart-config.md).
