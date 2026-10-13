@@ -1,55 +1,147 @@
-// Wiring only: poll the Pi receiver, hand already-classified bands to the scene.
+// Shell: one poll, one visible view, a persistent tab bar.
 //
 // *** NO MEASUREMENT PATH EXISTS IN THIS FILE OR ANYWHERE UNDER static/. ***
 // There is no getUserMedia, no AudioContext, no AnalyserNode, no FFT and no
 // arithmetic on measurement values beyond turning a dB into a bar height. The
 // only input is /api/frame, which carries bands the Pi has already classified.
+//
+// *** THIS FILE OWNS THE ONLY NETWORK CALL IN THE CLIENT. ***
+// Views receive the decoded frame as an argument and never fetch. One data
+// source is what makes "the browser cannot classify" checkable rather than
+// merely intended, and test_web_shell.py pins it.
 
-import { createFingerprint } from "./fingerprint_split.js";
+import { createToneView } from "./view_tone.js";
+import { createLiveView } from "./view_live.js";
+import { createLabView } from "./view_lab.js";
+import { createInfoView } from "./view_info.js";
+import { esc } from "./ui.js";
 
-const scene = createFingerprint(document.getElementById("stage"));
-const censusEl = document.getElementById("census");
-const authorityEl = document.getElementById("authority");
+const TABS = ["live", "tone", "lab", "info"];
+const POLL_MS = 500;
 
-function renderAuthority(f) {
-  // Teensy-authored values, printed verbatim. Nothing here is computed.
-  const a = f.authority || {};
-  const bits = [];
-  if (f.kind === "result") {
-    bits.push(`quality ${a.result_quality}`,
-              `${a.n_averages_completed} averages`,
-              `coherence ${Number(a.mean_coherence).toFixed(3)}`,
-              a.calibration_applied ? "calibrated" : "NOT calibrated");
-  } else if (f.kind === "live") {
-    bits.push(`state ${a.measurement_state}`,
-              `src ${Number(a.peak_source_dbfs).toFixed(1)} dBFS`,
-              `ret ${Number(a.peak_return_dbfs).toFixed(1)} dBFS`,
-              `confidence ${(Number(a.tf_confidence) * 100).toFixed(0)}%`);
+const host = (name) => document.querySelector(`.view[data-view="${name}"]`);
+
+const views = {
+  live: createLiveView(host("live")),
+  tone: createToneView(host("tone")),
+  lab: createLabView(host("lab")),
+  info: createInfoView(host("info")),
+};
+
+const linkDot = document.getElementById("link-dot");
+const kindPill = document.getElementById("kind-pill");
+const statusText = document.getElementById("status-text");
+const statusDetail = document.getElementById("status-detail");
+
+let active = "live";
+let frame = null;
+
+// --- navigation --------------------------------------------------------------
+
+function select(name) {
+  if (!TABS.includes(name)) return;
+  active = name;
+
+  for (const t of TABS) {
+    const shown = t === name;
+    host(t).hidden = !shown;
+    document.querySelector(`.tab[data-tab="${t}"]`)
+      .setAttribute("aria-selected", String(shown));
+
+    // An inactive view must not hold the GPU or run a timer. TONE's orbit is
+    // the only animated one today, but the contract applies to all of them so
+    // a later animated view cannot quietly keep rendering behind another tab.
+    const v = views[t];
+    if (shown) v.activate?.();
+    else v.deactivate?.();
   }
-  if (f.link) bits.push(`session ${f.link.session ?? "UNKNOWN"}`,
-                        f.link.stale ? "LINK STALE" : "LINK UP");
-  authorityEl.textContent = bits.join("  ·  ");
+
+  // Deliver the latest frame immediately: a tab that waits up to POLL_MS to
+  // show anything reads as a broken tap on a touchscreen.
+  if (frame) views[name].update?.(frame);
 }
+
+for (const btn of document.querySelectorAll(".tab")) {
+  // `click` is correct here and `touchstart` is not: click is delivered for
+  // touch, mouse and keyboard alike, and it does not fire when a finger lands
+  // on a tab and then slides off, which is a cancelled tap and not a choice.
+  btn.addEventListener("click", () => select(btn.dataset.tab));
+}
+
+// --- status strip ------------------------------------------------------------
+
+function renderStatus(f) {
+  const link = f.link || null;
+  const stale = link ? link.stale : null;
+
+  linkDot.className = "dot " + (!link ? "down" : stale ? "stale" : "up");
+  kindPill.textContent = f.kind === "unknown" ? "no frame" : f.kind;
+  kindPill.className = "pill " + (f.kind === "live" ? "live"
+    : f.kind === "result" ? "result" : "none");
+
+  if (f.kind === "unknown") {
+    statusText.textContent = f.reason;
+  } else {
+    const a = f.authority || {};
+    statusText.textContent = f.kind === "live"
+      ? `state ${a.measurement_state}`
+      : `quality ${a.result_quality}`;
+  }
+
+  const bits = [];
+  if (link) {
+    bits.push(`session ${link.session ?? "UNKNOWN"}`);
+    bits.push(stale ? "LINK STALE" : "LINK UP");
+    bits.push(`${link.frames_in} frames`);
+    if (link.decode_errors) bits.push(`${link.decode_errors} decode errors`);
+  } else {
+    bits.push("no link state");
+  }
+  statusDetail.textContent = bits.join("  ·  ");
+}
+
+// --- poll --------------------------------------------------------------------
 
 async function poll() {
   try {
     const f = await (await fetch("/api/frame", { cache: "no-store" })).json();
-    scene.setSegments(f.segments);
-    if (f.kind === "unknown") {
-      censusEl.textContent = f.reason;
-      authorityEl.textContent = "";
-    } else {
-      // Both censuses are shown: the reduction to 48 bands is a presentation
-      // step and must not be mistaken for the instrument's own coverage.
-      censusEl.textContent =
-        `source ${f.census_source.text}   →   ring ${f.census_bands.text}`;
-      renderAuthority(f);
-    }
-    window.__frame = f;                       // for the headless screenshot check
+    frame = f;
+    renderStatus(f);
+    views[active].update?.(f);
+    window.__frame = f;                     // for the headless screenshot check
   } catch (e) {
-    censusEl.textContent = `transport error: ${e.message}`;
+    linkDot.className = "dot down";
+    kindPill.textContent = "no frame";
+    kindPill.className = "pill none";
+    statusText.textContent = `transport error: ${e.message}`;
+    statusDetail.textContent = "";
   }
 }
 
+// Polling continues while the page is hidden only if something needs it; nothing
+// does, so it stops. The Pi is an appliance and a background tab that keeps
+// asking is pure heat.
+let timer = 0;
+function startPolling() {
+  if (!timer) timer = setInterval(poll, POLL_MS);
+}
+function stopPolling() {
+  clearInterval(timer);
+  timer = 0;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopPolling();
+    views[active].deactivate?.();
+  } else {
+    views[active].activate?.();
+    poll();
+    startPolling();
+  }
+});
+
+select(active);
 poll();
-setInterval(poll, 500);
+startPolling();
+
+export { TABS };

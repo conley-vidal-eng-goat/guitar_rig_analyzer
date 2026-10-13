@@ -2,40 +2,63 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Guitar Rig Analyzer — Tone Fingerprint</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; background: #04070b; color: #d8e4f0;
-               font-family: "DejaVu Sans", system-ui, sans-serif; overflow: hidden; }
-  #stage { position: absolute; inset: 0; }
-  #hud { position: absolute; left: 0; right: 0; top: 0; padding: 14px 16px;
-         pointer-events: none; }
-  #hud h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .08em;
-            text-transform: uppercase; color: #9fb3c8; }
-  #census { margin-top: 4px; font-family: "DejaVu Sans Mono", monospace;
-            font-size: 12px; color: #d29922; }
-  #authority { margin-top: 2px; font-family: "DejaVu Sans Mono", monospace;
-               font-size: 11px; color: #6b7f94; }
-  #legend { position: absolute; left: 16px; bottom: 14px; font-size: 11px;
-            line-height: 1.7; pointer-events: none; color: #8b9bad; }
-  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 7px;
-        vertical-align: -1px; border-radius: 2px; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Guitar Rig Analyzer</title>
+<link rel="stylesheet" href="./tokens.css">
+<link rel="stylesheet" href="./shell.css">
 </head>
 <body>
-  <div id="stage"></div>
-  <div id="hud">
-    <h1>Tone Fingerprint — Split</h1>
-    <div id="census">connecting…</div>
-    <div id="authority"></div>
-  </div>
-  <div id="legend">
-    <div><span class="sw" style="background:#4cc9f0"></span>measured · attenuated (left, below ring)</div>
-    <div><span class="sw" style="background:#ff7b00"></span>measured · boosted (right, above ring)</div>
-    <div><span class="sw" style="background:transparent;border:2px solid #d29922"></span>value present, not established — no direction asserted</div>
-    <div><span class="sw" style="background:#0d1117;border:1px solid #21262d"></span>unmeasured — nothing drawn</div>
-  </div>
-  <script type="module" src="./main.js"></script>
+<div id="shell">
+
+  <!-- Always visible. A disconnected or stale link must never be discoverable
+       only by noticing that a chart stopped moving. -->
+  <header id="status">
+    <div id="status-line">
+      <span class="dot" id="link-dot"></span>
+      <span class="pill none" id="kind-pill">no frame</span>
+      <span id="status-text">connecting…</span>
+    </div>
+    <div id="status-detail"></div>
+  </header>
+
+  <main id="views">
+    <section class="view pad" data-view="live"></section>
+    <section class="view canvas-host" data-view="tone" hidden></section>
+    <section class="view pad" data-view="lab" hidden></section>
+    <section class="view pad" data-view="info" hidden></section>
+  </main>
+
+  <nav id="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="live" aria-selected="true">
+      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2 14h3l2.5-7 3 13 3-16 2.5 10H22"/>
+      </svg>
+      LIVE
+    </button>
+    <button class="tab" role="tab" data-tab="tone" aria-selected="false">
+      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.5"/><line x1="3.5" y1="12" x2="20.5" y2="12"/>
+        <line x1="8" y1="12" x2="8" y2="17"/><line x1="16" y1="12" x2="16" y2="7"/>
+      </svg>
+      TONE
+    </button>
+    <button class="tab" role="tab" data-tab="lab" aria-selected="false">
+      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9.5 3v6.2L4.6 18a2 2 0 0 0 1.7 3h11.4a2 2 0 0 0 1.7-3l-4.9-8.8V3"/>
+        <line x1="8" y1="3" x2="16" y2="3"/>
+      </svg>
+      LAB
+    </button>
+    <button class="tab" role="tab" data-tab="info" aria-selected="false">
+      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/>
+        <circle cx="12" cy="7.8" r=".6"/>
+      </svg>
+      INFO
+    </button>
+  </nav>
+
+</div>
+<script type="module" src="./main.js"></script>
 </body>
 </html>

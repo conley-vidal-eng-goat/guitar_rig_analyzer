@@ -1,0 +1,59 @@
+/* Design tokens — the one place a colour or a metric is decided.
+ *
+ * Reconciled from three sources on 2026-10-12; see docs/ui/README.md §3.2 for
+ * why each value comes from where it does. The short form:
+ *
+ *   SEMANTIC colours come from the shipping renderer and DO NOT MOVE. They are
+ *   already in fingerprint_split.js, in the on-screen legend, and in committed
+ *   evidence screenshots. Changing one silently relabels published evidence.
+ *
+ *   CHROME colours come from the October design brief. They carry no
+ *   measurement meaning and may be restyled freely.
+ *
+ *   CHANNEL identities come from visual_design_document.md v1.2.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- surfaces ------------------------------------------------------- */
+  --bg:         #04070b;   /* shipping renderer's scene background */
+  --panel:      #0a0e16;   /* v1.2 panel bg */
+  --panel-2:    #111827;   /* Oct brief, layered navy */
+  --hairline:   #253047;   /* Oct brief, soft hairline */
+
+  /* ---- text ----------------------------------------------------------- */
+  --text:       #d8e4f0;   /* both documents agree */
+  --muted:      #9fb3c8;
+  --faint:      #6b7f94;
+
+  /* ---- SEMANTIC: what a colour MEANS. Do not restyle. ------------------ */
+  --cold:       #4cc9f0;   /* measured, attenuated */
+  --cold-alert: #90e0ef;
+  --warm:       #ff7b00;   /* measured, boosted */
+  --warm-alert: #ffd166;
+  --unknown:    #d29922;   /* value present, direction not established */
+
+  /* ---- chrome accents (Oct brief) ------------------------------------- */
+  --accent:     #38D6F5;
+  --violet:     #8C62FF;
+  --spring:     #55E5B0;
+  --amber:      #FFBF50;
+  --coral:      #FF6474;
+
+  /* ---- channel identities (v1.2), reserved -----------------------------
+   * 🔺 OPEN (docs/ui/README.md §3.2): --source sits close to --cold. They never
+   * share a view today. If a SOURCE/RETURN overlay is ever drawn beside the
+   * loss/gain language, one of them must move, and that is a legibility
+   * decision for the physical panel — not one to settle on a desktop.
+   */
+  --source:     #3498db;
+  --return:     #2ecc71;
+
+  /* ---- metrics, sized for the 7" panel at arm's length ----------------- */
+  --gutter:     16px;
+  --tap:        88px;      /* well above the 44px floor the brief asks for */
+  --statusbar:  76px;
+  --tabbar:     104px;
+  --radius:     10px;
+}

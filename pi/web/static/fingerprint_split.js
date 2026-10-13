@@ -73,16 +73,49 @@ export function createFingerprint(container) {
   const scene = new THREE.Scene();
   scene.background = BACKGROUND_COLOR;
 
-  const width = container.clientWidth;
-  const height = container.clientHeight;
-  const aspect = width / height;
-  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, aspect, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 200);
   const halfFov = (CAMERA_FOV * Math.PI) / 180 / 2;
-  const cameraDistance = FIT_RADIUS / (Math.tan(halfFov) * Math.min(aspect, 1));
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(width, height);
   renderer.setPixelRatio(1);               // embedded GPU, per the design doc
   container.appendChild(renderer.domElement);
+
+  // *** TODO-80: THE VIEWPORT IS NOT KNOWN AT CONSTRUCTION TIME. ***
+  //
+  // This used to read container.clientWidth/clientHeight once, here, and derive
+  // both the camera aspect and the orbit distance from them. On the Pi that is
+  // wrong, and it was wrong invisibly: Chromium's Wayland surface is created at
+  // a provisional size and resized when the compositor assigns the output.
+  // Measured on the panel 2026-10-12 — at load 668x392, on resize 720x1280. So
+  // the ring was fitted to a viewport that never existed and then displayed at
+  // one it had never seen.
+  //
+  // A macOS window is sized before first paint, which is why months of desktop
+  // work could not surface this. Size is therefore now a FUNCTION, called on
+  // construction, on every container resize, and again whenever the view is
+  // shown after being hidden (a display:none container measures 0 x 0).
+  let cameraDistance = 1;
+  let lastW = 0;
+  let lastH = 0;
+
+  function resize() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    // A hidden or not-yet-laid-out container measures zero. Fitting to that
+    // would divide by zero and bake a NaN into the camera matrix, so the only
+    // safe action is to do nothing and wait to be called again.
+    if (w <= 0 || h <= 0) return false;
+    if (w === lastW && h === lastH) return false;
+    lastW = w;
+    lastH = h;
+
+    const aspect = w / h;
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+    // The ring plus a margin must fit the NARROW axis, whichever that is now.
+    cameraDistance = FIT_RADIUS / (Math.tan(halfFov) * Math.min(aspect, 1));
+    renderer.setSize(w, h, false);
+    return true;
+  }
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
   const key = new THREE.PointLight(0xdfe9ff, 0.8, 60);
@@ -218,8 +251,9 @@ export function createFingerprint(container) {
   window.addEventListener("touchend", () => { dragging = false; });
   el.addEventListener("touchmove", e => { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
 
-  function frame() {
-    if (spin) yaw -= 0.0016;
+  let rafId = 0;
+
+  function draw() {
     camera.position.set(
       Math.sin(yaw) * Math.cos(pitch) * cameraDistance,
       -Math.sin(pitch) * cameraDistance,
@@ -228,12 +262,40 @@ export function createFingerprint(container) {
     camera.lookAt(0, 0, 0);
     update();
     renderer.render(scene, camera);
-    requestAnimationFrame(frame);
   }
-  requestAnimationFrame(frame);
+
+  function frame() {
+    if (spin) yaw -= 0.0016;
+    draw();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  // The compositor can resize this surface at any time, not only at startup —
+  // a rotated output or a different kiosk geometry is the same event. Observing
+  // the container covers both, and costs nothing while the size is stable.
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(() => { if (resize() && !rafId) draw(); }).observe(container);
+  }
+  window.addEventListener("resize", () => { if (resize() && !rafId) draw(); });
+
+  resize();
+  rafId = requestAnimationFrame(frame);
 
   return {
     setSegments(next) { segments = next || []; },
-    renderOnce() { update(); renderer.render(scene, camera); },
+    renderOnce() { resize(); update(); renderer.render(scene, camera); },
+
+    // Paused means no rAF at all, not a loop that returns early: an idle
+    // callback 60 times a second is still the GPU being asked to wake up.
+    pause() {
+      if (!rafId) return;
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    },
+    resume() {
+      if (rafId) return;
+      rafId = requestAnimationFrame(frame);
+    },
+    resize,
   };
 }
