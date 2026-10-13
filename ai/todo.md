@@ -17,6 +17,26 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-81 — `linearToDbfs()` has no callers, and both its name and its floor are claims the instrument never made 🔴 **found 2026-10-13 while establishing the FFT unit for the LIVE spectrum. Latent; no runtime fault**
+
+**What.** [`audio_capture.cpp:332`](../audio_capture.cpp#L332) defines
+
+```c
+static inline float linearToDbfs(float linear) {
+    if (linear <= 0.0f) return -120.0f;
+    return max(20.0f * log10f(linear), -120.0f);
+}
+```
+
+**Nothing calls it.** Two problems are waiting in it for whoever does:
+
+1. **The name asserts a unit that is not established.** These magnitudes come from `AudioAnalyzeFFT1024` with `AudioWindowHanning1024` ([`audio_capture.cpp:485`](../audio_capture.cpp#L485)). A Hann window has 0.5 coherent gain, so a full-scale sine does not read 1.0 in its bin, and **the mapping from full-scale input to 1.0 has never been calibrated on this instrument.** Calling the result dBFS would put an uncalibrated relative level on screen under an absolute label.
+2. **`-120.0` is an invented number.** It is neither measured nor a property of the data — it is a floor someone chose. Returned from a function named `...Dbfs`, it would read as "the instrument measured −120 dBFS".
+
+**Why it is filed rather than deleted.** The conversion itself may be wanted. What must not survive is the unit claim and the silent floor. The Pi side already does this correctly: `web/payload.py` forwards linear magnitude with an explicit reference and note, and the renderer applies a **named display floor** it states on screen as a drawing choice.
+
+**Proof:** either the function is removed, or it is renamed to say what it computes (a dB ratio against magnitude 1.0), its floor becomes a named constant documented as a display choice, and a calibration establishes the reference before anything is labelled dBFS.
+
 ### TODO-80 — The renderer sizes its camera from a viewport that does not exist yet, so the ring is fitted to 668×392 and shown at 720×1280 🟢 **FIXED 2026-10-13 in `cc7b704`, confirmed on the panel. Found 2026-10-12 on the first Pi browser run; CANNOT reproduce on macOS**
 
 **Fix:** size is a function, not a construction-time constant — called on construction, from a `ResizeObserver`, from `window.resize`, and again whenever TONE is shown after being hidden. A zero-sized container is refused rather than used (a `display:none` container measures 0×0, and fitting to that bakes a NaN into the camera matrix). Pinned by `test_web_shell.TestViewportIsNeverSampledOnce`. Evidence: [`2026-10-13-pi-shell-four-tabs.md`](evidence/2026-10-13-pi-shell-four-tabs.md).

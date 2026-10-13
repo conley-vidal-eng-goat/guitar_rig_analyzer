@@ -54,6 +54,94 @@ def _bin_hz(index: int, sample_rate: int, fft_bins: int) -> float:
     return index * (sample_rate / (2.0 * fft_bins))
 
 
+# =============================================================================
+# MAGNITUDE SPECTRA — fft_source[] / fft_return[]
+# =============================================================================
+#
+# *** THE UNIT IS NOT dBFS, AND THE FIRMWARE DOES NOT CLAIM IT IS. ***
+#
+# Established by reading the firmware, not assumed:
+#
+#   audio_capture.cpp:693   s_accum_src[k] += s_fft_src.read(k)
+#   audio_capture.cpp:99    s_fft_src is an AudioAnalyzeFFT1024
+#   audio_capture.cpp:485   windowFunction(AudioWindowHanning1024)
+#   audio_capture.cpp:778   fft_source[k] = accum * (1.0 / FFT_AVERAGE_COUNT)
+#
+# So each value is the mean, over FFT_AVERAGE_COUNT frames, of the Teensy audio
+# library's per-bin magnitude, which the library scales to a nominal 0.0-1.0.
+#
+# **A Hann window is applied.** Its coherent gain is 0.5, so a full-scale sine
+# does not read 1.0 in its bin, and the energy is spread across neighbours. The
+# mapping from "full-scale input" to "1.0 here" has never been calibrated on this
+# instrument, so **1.0 is a reference, not a known full-scale level.**
+#
+# 🔺 `audio_capture.cpp:332` defines `linearToDbfs()`, which would convert these
+# to "dBFS" with a -120.0 floor. **IT HAS NO CALLERS.** Its name is an
+# unverified claim and its floor is an invented number; wiring it up would put
+# both on screen as though measured. See TODO-81.
+#
+# The honest label is therefore **dB relative to FFT magnitude 1.0** -- never
+# dBFS, and never on the same axis as `peak_source_dbfs`, which is a time-domain
+# peak and a different quantity entirely.
+
+SPECTRUM_UNIT = "linear_magnitude"
+SPECTRUM_REFERENCE = 1.0
+SPECTRUM_REFERENCE_NOTE = (
+    "Mean of AudioAnalyzeFFT1024 per-bin magnitudes over FFT_AVERAGE_COUNT "
+    "frames, Hann-windowed. Reference 1.0 is the library's nominal full-scale "
+    "magnitude and has NOT been calibrated against a full-scale input on this "
+    "instrument. This is NOT dBFS and must not share an axis with the "
+    "time-domain peak meters."
+)
+
+
+def spectrum_geometry(geometry, count: int) -> list[dict]:
+    """The frequency span each TRANSMITTED bin actually covers.
+
+    Spans, not just centres, because the span is what says whether a bin can go
+    on a log axis at all. Transmitted bin ``i`` is `decimateMax` over source bins
+    ``i*decim .. i*decim+decim-1``, and source bin ``k`` is centred at ``k*df``
+    spanning half a bin either side.
+
+    *** BIN 0 CONTAINS DC, AND THAT IS NOT RECOVERABLE. ***
+    Its span starts at 0 Hz. Because the firmware decimates by MAXIMUM and does
+    not say which source bin won, a large value in bin 0 may be a DC offset or
+    may be a real tone near 130 Hz -- nothing on the wire distinguishes them. It
+    is flagged rather than dropped here, so the renderer excludes it from a log
+    axis knowingly instead of a reader wondering where bin 0 went.
+    """
+    df = geometry.sample_rate / (2.0 * geometry.fft_bins)
+    decim = max(1, int(geometry.decim_ratio))
+    out = []
+    for i in range(count):
+        lo = max(0.0, (i * decim - 0.5) * df)
+        hi = (i * decim + decim - 0.5) * df
+        out.append({
+            "i": i,
+            "lo_hz": round(lo, 2),
+            "hi_hz": round(hi, 2),
+            "hz": round((i * decim + (decim - 1) / 2.0) * df, 2),
+            "dc": lo <= 0.0,
+        })
+    return out
+
+
+def _spectrum_points(bins) -> list[dict]:
+    """One transmitted bin on the wire.
+
+    ``value`` is present only when the bin is drawable as a measurement -- the
+    same rule the ring uses. For a spectrum that means every finite bin, because
+    a magnitude needs no coverage to be interpretable and zero is a measurement
+    of silence (`presentation_semantics.classify_spectrum`).
+    """
+    return [
+        {"cls": b.cls.name,
+         "value": (b.value if b.cls.is_drawable_as_measurement
+                   and math.isfinite(b.value) else None)}
+        for b in bins
+    ]
+
+
 def _segment(b: ps.BinSemantics, bands: int) -> dict:
     """One ring band on the wire.
 
@@ -135,8 +223,28 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS) -> dict:
         return band_of_hz(hz, bands)
 
     ring = ps.resample(source, bands, group_of=group_of)
+
+    # The spectra are NOT resampled. They are the transmitted bins, plotted where
+    # the instrument put them. A second reduction onto a log axis would leave 21
+    # of 48 ring bands with no source bin at all (the transmitted bins are linear
+    # at ~172 Hz), and would undo at the display the peak preservation the
+    # firmware was careful to put on the wire.
+    src_spec = ps.classify_spectrum(live.fft_source)
+    ret_spec = ps.classify_spectrum(live.fft_return)
+
     return {
         "kind": "live",
+        "spectra": {
+            "unit": SPECTRUM_UNIT,
+            "reference": SPECTRUM_REFERENCE,
+            "reference_note": SPECTRUM_REFERENCE_NOTE,
+            "nyquist_hz": round(geometry.sample_rate / 2.0, 2),
+            "geometry": spectrum_geometry(geometry, len(src_spec)),
+            "src": _spectrum_points(src_spec),
+            "ret": _spectrum_points(ret_spec),
+            "census_src": _census(ps.census(src_spec)),
+            "census_ret": _census(ps.census(ret_spec)),
+        },
         "bands": bands,
         "source_bins": len(source),
         "census_source": _census(ps.census(source)),

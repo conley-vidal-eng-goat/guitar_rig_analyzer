@@ -8,6 +8,7 @@ something to draw a bar from, and the contract has a hole in it.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 import unittest
@@ -205,6 +206,87 @@ class TestNoBrowserMeasurementPath(unittest.TestCase):
         js = (STATIC / "fingerprint_split.js").read_text()
         self.assertIn('if (cls !== "MEASURED")', js)
         self.assertIn("HIDDEN", js)
+
+
+class TestSpectraOnTheWire(unittest.TestCase):
+    """The reviewed FFT contract, at the payload boundary, on real idle bytes."""
+
+    @classmethod
+    def setUpClass(cls):
+        snap = _snap(IDLE_BIN)
+        cls.live_raw = snap.live
+        cls.out = payload.live_payload(snap.live, snap.geometry)
+        cls.sp = cls.out["spectra"]
+        cls.result = payload.result_payload(*(lambda s: (s.result, s.geometry))(_snap(RESULT_BIN)))
+
+    def test_a_result_carries_no_spectrum(self):
+        """RESULT has no fft arrays. Inventing an empty one would imply it does."""
+        self.assertNotIn("spectra", self.result)
+
+    def test_the_unit_and_reference_are_stated_not_assumed(self):
+        self.assertEqual(self.sp["unit"], "linear_magnitude")
+        self.assertEqual(self.sp["reference"], 1.0)
+        self.assertIn("NOT dBFS", self.sp["reference_note"])
+        self.assertIn("NOT been calibrated", self.sp["reference_note"])
+
+    def test_the_payload_never_claims_dbfs_for_a_spectrum(self):
+        """peak_source_dbfs is a time-domain peak and lives elsewhere; the
+        spectrum must not borrow its unit."""
+        blob = json.dumps(self.sp)
+        self.assertNotIn("dbfs", blob.lower().replace("not dbfs", ""))
+
+    def test_there_is_no_second_resample(self):
+        """One point per transmitted bin. The firmware already decimated by
+        MAXIMUM to preserve narrow peaks."""
+        n = len(self.live_raw.fft_source)
+        self.assertEqual(len(self.sp["src"]), n)
+        self.assertEqual(len(self.sp["ret"]), n)
+        self.assertEqual(len(self.sp["geometry"]), n)
+
+    def test_bin_zero_spans_dc_and_says_so(self):
+        g = self.sp["geometry"]
+        self.assertTrue(g[0]["dc"])
+        self.assertEqual(g[0]["lo_hz"], 0.0)
+        self.assertEqual([x["i"] for x in g if x["dc"]], [0],
+                         "exactly one bin spans DC")
+
+    def test_the_spans_are_the_real_transmitted_bin_edges(self):
+        """44100 Hz, 512 bins -> 43.0664 Hz per source bin, decimated 4:1."""
+        g = self.sp["geometry"]
+        self.assertAlmostEqual(g[0]["hi_hz"], 150.73, places=1)
+        self.assertAlmostEqual(g[1]["lo_hz"], 150.73, places=1)
+        self.assertAlmostEqual(g[1]["hi_hz"], 323.0, places=1)
+        self.assertAlmostEqual(g[-1]["hi_hz"], 22028.47, places=1)
+        for a, b in zip(g, g[1:]):
+            self.assertAlmostEqual(a["hi_hz"], b["lo_hz"], places=2,
+                                   msg="spans must tile without gaps or overlap")
+
+    def test_nothing_is_measured_below_the_first_usable_bin(self):
+        """Coverage starts above 150 Hz -- ABOVE a low-E fundamental at 82 Hz.
+        The payload must not imply otherwise."""
+        first = next(x for x in self.sp["geometry"] if not x["dc"])
+        self.assertGreater(first["lo_hz"], 82.41)
+
+    def test_an_exact_zero_is_forwarded_as_a_measurement(self):
+        """The real idle capture holds three. Zero magnitude is a measurement of
+        silence, so it must arrive as 0.0 and not as null."""
+        zeros = [pt for pt in self.sp["src"] if pt["value"] == 0.0]
+        self.assertEqual(len(zeros), 3)
+        for pt in zeros:
+            self.assertEqual(pt["cls"], "MEASURED")
+
+    def test_every_idle_bin_is_measured(self):
+        self.assertEqual(self.sp["census_src"]["measured"], 128)
+        self.assertEqual(self.sp["census_src"]["unmeasured"], 0)
+
+    def test_the_transfer_function_in_the_same_frame_is_total_absence(self):
+        """The contrast is the point, and it is in one payload."""
+        self.assertEqual(self.out["census_source"]["measured"], 0)
+        self.assertEqual(self.out["census_source"]["unmeasured"], 128)
+
+    def test_the_payload_is_strict_json(self):
+        """allow_nan=False: absence can never arrive as NaN."""
+        json.dumps(self.out, allow_nan=False)
 
 
 if __name__ == "__main__":

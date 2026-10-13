@@ -210,35 +210,116 @@ class TestOneDataSource(unittest.TestCase):
                 self.assertNotIn(banned, code, f"{p.name} references {banned}")
 
 
-class TestFftScopeFence(unittest.TestCase):
-    """fft_source[] and fft_return[] carry NO coverage nibbles -- the coverage
-    array belongs to tf_db[]. So there is no rule yet for what UNMEASURED means
-    in a magnitude spectrum, and a renderer inventing one is the drift ADR-005 §4
-    exists to stop.
+class TestSpectrumIsRenderedUnderTheReviewedContract(unittest.TestCase):
+    """Replaces the temporary FFT scope fence, which fired as designed when the
+    spectrum landed.
 
-    This test fails the moment a spectrum is drawn before that rule is reviewed.
-    Delete it in the same commit that adds the rule to presentation_semantics.py,
-    not before.
+    The fence said "nothing may touch these arrays yet". These say what the
+    reviewed contract actually requires, which is the stronger statement: simply
+    deleting the guard would have left the rules it protected unenforced.
     """
 
-    def test_the_transport_does_not_carry_the_fft_arrays_yet(self):
-        payload_src = (STATIC.parents[0] / "payload.py").read_text()
-        for field in ("fft_source", "fft_return"):
-            self.assertNotIn(f'"{field}"', payload_src,
-                             f"{field} is now on the wire; the fence needs review")
+    @classmethod
+    def setUpClass(cls):
+        cls.spec = (STATIC / "spectrum.js").read_text()
+        cls.live = (STATIC / "view_live.js").read_text()
+        cls.payload = (STATIC.parents[0] / "payload.py").read_text()
 
-    def test_no_client_code_references_the_fft_arrays(self):
-        for p in _client_js():
-            code = _strip_comments(p.read_text())
-            for field in ("fft_source", "fft_return"):
-                self.assertNotIn(field, code, f"{p.name} reads {field}")
+    # --- units -----------------------------------------------------------
 
-    def test_live_states_the_gap_rather_than_drawing_an_empty_axis(self):
-        """An axis labelled 'spectrum' with nothing on it implies the instrument
-        measured a flat response. Saying why it is absent does not."""
-        src = (STATIC / "view_live.js").read_text()
-        self.assertIn("PENDING_SPECTRUM", src)
-        self.assertIn("no per-bin coverage", src)
+    def test_the_axis_is_never_labelled_dbfs(self):
+        """linearToDbfs() exists in the firmware, floors at -120 and HAS NO
+        CALLERS. Its name is an unverified claim. A Hann window has 0.5 coherent
+        gain, so a full-scale sine does not read 1.0, and the reference has never
+        been calibrated on this instrument."""
+        allowed = re.compile(r"not\s+(<b>)?dBFS|time-domain|TIME-DOMAIN|peak_\w+_dbfs")
+        for name, src in (("spectrum.js", self.spec), ("view_live.js", self.live)):
+            code = _strip_comments(src)
+            for m in re.finditer(r"dBFS", code):
+                ctx = code[max(0, m.start() - 120):m.end() + 40]
+                self.assertRegex(
+                    ctx, allowed,
+                    f"{name} says dBFS without either denying it applies to the "
+                    f"spectrum or tying it to the time-domain peak")
+
+    def test_the_payload_states_the_reference_rather_than_assuming_one(self):
+        for token in ("SPECTRUM_UNIT", "SPECTRUM_REFERENCE",
+                      "SPECTRUM_REFERENCE_NOTE", "linear_magnitude"):
+            self.assertIn(token, self.payload)
+        self.assertIn("NOT dBFS", self.payload)
+
+    def test_the_two_quantities_are_kept_apart(self):
+        """A per-bin averaged magnitude and a time-domain peak are different
+        measurements. On the idle capture they differ by ~7 dB, and a shared
+        axis would invite a reader to treat that as a finding."""
+        self.assertIn("time-domain peak", self.live)
+        self.assertIn("do not compare", self.live.lower())
+
+    # --- the display floor is a drawing choice ---------------------------
+
+    def test_the_floor_is_a_named_constant_and_is_exported(self):
+        self.assertRegex(self.spec, r"const FLOOR_DB = -\d+;")
+        self.assertIn("export { FLOOR_DB", self.spec)
+
+    def test_the_floor_is_never_called_a_noise_floor(self):
+        found = 0
+        for name, src in (("spectrum.js", self.spec), ("view_live.js", self.live)):
+            code = _strip_comments(src)
+            for m in re.finditer(r"noise floor", code):
+                found += 1
+                ctx = code[max(0, m.start() - 40):m.end()]
+                self.assertRegex(
+                    ctx, r"not a noise floor|never a noise floor",
+                    f"{name} calls the display floor a noise floor")
+        # The phrase is allowed ONLY as a denial, and the denial must be present:
+        # a floor shown without that disclaimer is the failure this guards.
+        self.assertGreater(found, 0, "the display floor is not disclaimed anywhere")
+
+    def test_clipped_points_are_counted_and_surfaced(self):
+        """Graphical clipping must be distinguishable from a measured level."""
+        self.assertIn("clippedCount", self.spec)
+        self.assertIn("clippedCount", self.live)
+        self.assertIn("display floor", self.live)
+
+    def test_an_exact_zero_is_drawn_at_the_floor_not_discarded(self):
+        """A magnitude of exactly 0.0 is a measurement of silence. The real idle
+        capture contains three of them."""
+        self.assertIn("pt.value > 0 ? 20 * Math.log10(pt.value) : -Infinity",
+                      self.spec)
+
+    # --- the axis uses real bins -----------------------------------------
+
+    def test_there_is_no_second_resample_in_the_client(self):
+        """The firmware already decimated 512 -> 128 by MAXIMUM. Reducing again
+        would flatten exactly what it preserved."""
+        code = _strip_comments(self.spec)
+        for banned in ("resample", "bucket", "binTo", "groupOf"):
+            self.assertNotIn(banned, code, f"spectrum.js appears to {banned}")
+
+    def test_each_point_is_plotted_at_its_own_transmitted_frequency(self):
+        self.assertIn("xOf(g.hz)", self.spec)
+
+    def test_the_dc_bin_is_excluded_from_the_log_axis(self):
+        self.assertIn("g.dc", self.spec)
+        self.assertIn('"dc"', self.payload)
+
+    def test_the_unrepresented_low_end_is_drawn_rather_than_cropped(self):
+        """Coverage starts above 150 Hz, which is ABOVE a low-E fundamental at
+        82 Hz. Cropping the axis to the data would hide that."""
+        self.assertIn("not transmitted", self.spec)
+        self.assertIn("firstUsable", self.spec)
+        self.assertIn("82 Hz", self.live)
+
+    def test_an_unmeasured_bin_lifts_the_pen(self):
+        self.assertIn('pt.cls !== "MEASURED"', self.spec)
+        self.assertIn("open = false", self.spec)
+
+    # --- the sizing rule applies here too --------------------------------
+
+    def test_the_canvas_is_never_sized_from_a_one_shot_read(self):
+        self.assertIn("function resize()", self.spec)
+        self.assertIn("ResizeObserver", self.spec)
+        self.assertIn("if (cw <= 0 || ch <= 0) return false;", self.spec)
 
 
 class TestAbsenceIsNeverFormattedAsANumber(unittest.TestCase):

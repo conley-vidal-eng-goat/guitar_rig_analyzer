@@ -12,6 +12,95 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (4) — **The LIVE spectrum: the first real instrument data drawn on the panel.** Establishing what the numbers actually *are* took longer than drawing them, and turned up a dead function whose name is a lie
+
+Payload forwarding and renderer in one reviewed commit, against the contract from
+2026-10-13 (3). Evidence:
+[`evidence/2026-10-13-live-spectrum.md`](evidence/2026-10-13-live-spectrum.md).
+
+**No firmware change, no protocol change, no bench action.** Fixture replay
+throughout; the Tk UI kept `/dev/ttyAMA0`.
+
+### The unit question was the whole job
+
+The instruction was not to label the axis until the reference was established.
+That turned out to be the right order, because the answer is **not dBFS** and
+nothing in the repository said so.
+
+`fft_source[]` is the mean of `AudioAnalyzeFFT1024::read()` over
+`FFT_AVERAGE_COUNT` frames, with `AudioWindowHanning1024` applied. A Hann window
+has 0.5 coherent gain, so a full-scale sine does not read 1.0 in its bin — and
+the mapping from full-scale input to 1.0 **has never been calibrated on this
+instrument.** So 1.0 is a *reference*, not a known full-scale level, and the
+honest label is "dB relative to FFT magnitude 1.0".
+
+### 🔺 And then there is `linearToDbfs()`
+
+`audio_capture.cpp:332` converts these magnitudes to "dBFS" with a `-120.0`
+floor. **It has no callers.** Its name asserts a unit that is not established,
+and its floor is a number someone chose returned from a function whose name says
+it is a measurement. Either half, wired up, puts a fabrication on screen under an
+absolute label. **TODO-81.**
+
+It is worth noticing how it would have happened: not by anyone deciding to
+mislead, but by a future contributor finding a conveniently named helper sitting
+right next to the data it converts. **A dead function with an authoritative name
+is a trap baited for the next reader**, and the Pi side avoided it only because
+the unit was checked before the axis was labelled.
+
+### Two decisions where the honest answer was also the uglier one
+
+**The display floor.** The real idle capture holds **5 bins at exactly 0.0**, so
+`log10(0)` is not a hypothetical. Those points are drawn at −100 dB, and the
+screen says *"5 point(s) drawn at the −100 dB display floor, of which 5 are a
+measured magnitude of exactly zero. The floor is where this graph stops, not a
+noise floor the instrument reported."* A zero magnitude is a **measurement of
+silence** — classified MEASURED, forwarded as `0.0` and not `null`, counted, and
+marked on the baseline. The alternative, quietly substituting a floor, is how a
+drawing choice becomes a reported level.
+
+**The low end.** Transmitted bin 0 spans 0–150.73 Hz, contains DC, and
+`decimateMax` does not record which source bin won — so a large value there may
+be a DC offset or a real 130 Hz tone, and nothing on the wire distinguishes them.
+It is excluded; 127 of 128 bins are plotted.
+
+**Which means the live spectrum cannot see below 151 Hz, and a low-E fundamental
+at 82.41 Hz falls in that gap.** On a *guitar* analyzer that is not a footnote.
+The region is drawn hatched and labelled "not transmitted" rather than cropped
+away, because an axis cropped to its data hides the limitation instead of
+reporting it. The temptation to start the axis at 151 Hz and have a tidy plot was
+real; the plot is uglier and tells the truth.
+
+### The screen now carries its own epistemology
+
+One view shows `spectrum 128/128 measured` beside `transfer function 0/128
+measured`, from the same frame, with the reason stated: a magnitude has no
+denominator, a transfer function divides by the source, and below the source gate
+there is nothing to divide by. That contrast used to live only in test names.
+
+Traces sit near −80 dB rel. 1.0 while the instrument reports −63.9 dBFS peak —
+different quantities, separate cards, unit on each, and the screen says *do not
+compare the numbers*.
+
+### The fence was replaced, not removed
+
+`TestFftScopeFence` fired the moment the spectrum landed, which is what it was
+for. Deleting it would have left the rules it protected unenforced, so it became
+25 positive tests: the unit is never labelled dBFS, the floor is a named exported
+constant never called a noise floor except to deny it, an exact zero is drawn and
+not discarded, the DC bin is excluded, the spans tile without gaps, no second
+resample occurs, and the canvas is never sized from a one-shot read.
+
+**432 tests, green on macOS and on the Pi.** LIVE costs **6.4 %** of one core
+against TONE's 30.4 %, because the spectrum has no animation loop at all — it
+redraws on the 500 ms poll.
+
+### Next
+
+Live serial, which needs a handoff from Tk for `/dev/ttyAMA0`. Nothing here is
+live-measurement evidence: it is a recorded idle capture, and the only honest
+claim is that the path from real Teensy bytes to a correct picture now works.
+
 ## 2026-10-13 (3) — **The FFT presentation contract: a magnitude spectrum is not a transfer function, and treating it like one would blank real measurements.** Contract only; no spectrum drawn
 
 `presentation_semantics.classify_spectrum()` and `resample_peak()`, with tests.
