@@ -191,17 +191,48 @@ claim; `0` is an observation.
 
 ## §4 — Raw bytes first, no renderer
 
+> ## ✅ EXECUTED AND PASSED — 2026-10-13 20:57:48, repository `6161b5b`
+>
+> `15s of 15s · 547 219 B · **36 481 B/s** · sha256 e90f74a4…580a`
+> `frames ok 382 · CRC failures 0 · oversize 0 · discarded 1532 (lead 1532, **interior 0 in 0 events**) · decode_errors 0 · session 47`
+> Evidence: [`2026-10-13-gate4-raw-uart-15s.md`](../ai/evidence/2026-10-13-gate4-raw-uart-15s.md)
+> and the capture beside it. Journal 2026-10-13 (9).
+
+**Preconditions:** zero UART holders by full `/proc` sweep; no Tk, web server or
+Chromium running; the rollback script present.
+
+```sh
+pinctrl get 14,15      # expect: GPIO14 = TXD0 / GPIO15 = RXD0
+```
+
+🔺 **`raspi-gpio` is NOT installed on this Pi.** The older procedure prescribes
+it, the command failed mid-gate on 2026-10-13, and **a precondition that cannot
+be run is worse than one that is absent** — it reads as a failure. `pinctrl` is
+its replacement on current Raspberry Pi OS and is present here; `gpioinfo` is too.
+Observed 2026-10-13: `14: a4 pn | hi // GPIO14 = TXD0`, `15: a4 pu | hi //
+GPIO15 = RXD0`. This check is **diagnostic for a zero-byte capture**, not a gate
+— if bytes arrive at the nominal rate, the pins are evidently right.
+
 ```sh
 cd ~/gra-stage-todo82/pi
-sh tools/capture.sh /dev/ttyAMA0 15 /tmp/gate4-raw-$(date +%H%M).bin
+sh tools/capture.sh /dev/ttyAMA0 15 /tmp/gate4-raw-$(date +%H%M%S).bin
 sha256sum /tmp/gate4-raw-*.bin
+python3 tools/replay.py /tmp/gate4-raw-*.bin
 ```
 
 **No `sudo`** — `dialout` membership covers it, and the `sudo` in
 `pi_resume_from_cold.md` §4 is unnecessary on this machine.
 
 **Expected:** 15 s elapsed, ≈**547 kB**, ≈**36 500 B/s**. The 2026-09-26
-hardware measurement was 36 465 B/s. The script checks its own duration.
+hardware measurement was 36 465 B/s; 2026-10-13 gave 36 481 B/s. The script
+checks its own duration.
+
+**Acceptance is `CRC failures 0` and `interior 0`, not a particular leading
+discard.** A non-zero *leading* discard is expected when attaching mid-stream
+and is attach loss, not corruption — but opening near a frame boundary can
+legitimately give zero, so its magnitude is not a criterion and its presence is
+not required. Interior discards and CRC failures are findings and must be
+investigated, never written off as startup artefacts.
 
 **Why before the renderer:** it separates "the link is bad" from "the Pi-side
 read cadence is bad". Without it those two produce the same symptom and you will

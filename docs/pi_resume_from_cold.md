@@ -261,7 +261,7 @@ holding it, do §5 first.
 | Symptom | Response |
 |---|---|
 | **"capture ended after Ns but 30s were requested"** | A **tooling fault**, not a link result. Do not interpret the byte count. The `stty` line must still read `min 1 time 0` |
-| 30 s elapsed, **0 bytes** | A real observation. Before concluding the link is dead: `ls -l /dev/ttyAMA*`, `raspi-gpio get 14,15` (expect TXD0/RXD0). On 2026-09-26 a scope showed a healthy 3.3 V waveform arriving while `serial0` read nothing — wrong device, not a wiring fault |
+| 30 s elapsed, **0 bytes** | A real observation. Before concluding the link is dead: `ls -l /dev/ttyAMA*`, `pinctrl get 14,15` (expect `GPIO14 = TXD0` / `GPIO15 = RXD0`). **`raspi-gpio` is NOT installed on this Pi** — corrected 2026-10-13 after the command failed mid-gate; `pinctrl` is its replacement on current Raspberry Pi OS and `gpioinfo` is also present. On 2026-09-26 a scope showed a healthy 3.3 V waveform arriving while `serial0` read nothing — wrong device, not a wiring fault |
 | Rate far below ~36 kB/s | A link fault. **Fix it here.** Do not replay or render anything until the byte rate is right |
 
 **Evidence to preserve:** the capture file itself, its **sha256**, the script's

@@ -12,6 +12,231 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (9) — **Gate 4 §4: 36 481 B/s, zero CRC failures, zero interior discards.** An independent reference for the link, taken while nothing was competing for the port
+
+**2026-10-13, 20:57:48–20:58:03 PDT. Repository `6161b5b`. `OBS`.** Evidence:
+[`evidence/2026-10-13-gate4-raw-uart-15s.md`](evidence/2026-10-13-gate4-raw-uart-15s.md)
+and the 547 219-byte capture beside it.
+
+**No firmware, wiring, autostart or checkout change. Tk not running, web server
+not running, Chromium not running — and nothing was started afterwards.** The
+UART is deliberately left free.
+
+### Preconditions, all checked before the port was opened
+
+Zero UART holders by full `/proc` sweep; no Tk, no `web.server`, no Chromium;
+`/tmp/gra-rollback.sh` present and executable; `/dev/ttyAMA0` present as
+`root:dialout`; `throttled=0x0`, 42.2 °C. On the Mac: `caffeinate` **pid 92915**
+still alive (checked by `ps -p`, not `pgrep`), AC power, 81 % charging, Teensy
+USB node present and **no connection-loss events since the handoff**.
+
+`raspi-gpio` is not installed on this Pi, so the GPIO 14/15 alt-function check
+in the procedure could not be run. It did not matter — bytes arrived at the
+nominal rate — but the procedure should stop claiming a check that the machine
+cannot perform.
+
+### The capture
+
+```
+device  : /dev/ttyAMA0            config : 460800 8N1 raw, min 1 time 0
+elapsed : 15s of 15s requested    bytes  : 547219      rate : 36481 B/s
+sha256  : e90f74a457b09f91490769316be5873c3f34bc9a4cdf2dd20ab15e3a401f580a
+```
+
+**No `sudo`** — `dialout` covers it, as established in 2026-10-13 (2).
+
+**36 481 B/s against 36 465 B/s measured on this hardware 2026-09-26, and the
+36 483 B/s constant `sources.py` has carried since.** Agreement to ~0.05 % across
+eighteen days, two sessions, and a firmware the board has since restarted into.
+
+`capture.sh` passed its own duration check, which exists because a 2026-09-26
+defect produced a plausible-looking failure report from a capture that had
+actually run for about one second.
+
+### The decode — offline, after the fact, on bytes nothing interpreted live
+
+```
+LiveFrame 301 · StatePacket 30 · RouterStatus 15 · Hello 15
+frames ok 382 · CRC failures 0 · oversize rejects 0
+bytes discarded 1532 (leading 1532, interior 0 in 0 events) · buffered 119
+session 47 · fw 0.6.0 · 128/512 bins · 4:1 · 44100 · IDLE · decode_errors 0
+TRANSPORT: OK
+```
+
+**HELLO at 15 in 15 s is exactly the documented 1 Hz re-announcement.** 301
+placed LiveFrames is 20.1/s; several of the 21 `geometry_unavailable` frames are
+live frames that arrived before the first HELLO and could not be located, which
+brings the real rate to ≈21/s against the ~21.5/s the design assumes.
+
+**`session 47` — the same session Tk reported immediately before it was stopped.
+The Teensy did not restart across the handoff.**
+
+The capture was transferred to the Mac, **the sha256 verified on both machines**,
+and `replay.py` re-run on the transferred copy, reproducing the Pi's output line
+for line.
+
+### 🔺 A correction to my own prediction, recorded rather than quietly dropped
+
+2026-10-13 (8) predicted that the next process to open the port **would** report
+a non-zero `lead` discard. It did — 1 532 bytes, ≈0.9 of a ≈1 700 B frame, which
+is what landing uniformly inside a frame produces.
+
+**The prediction was still wrong as stated.** Opening near a frame boundary can
+legitimately yield zero leading discards, so a non-zero count is *expected*, not
+*required*. **The acceptance criterion is no unexplained CRC failures and no
+interior discards** — correction supplied in review. Being right by luck is not
+the same as having stated a testable thing correctly, and the distinction
+matters because the next attach is the one that counts.
+
+### What this is for
+
+**It is the reference the web transport gets compared against, and it is
+same-evening and same-session.** A continuous blocking reader absorbs the full
+36 481 B/s. Whether a reader that pumps only when an HTTP request arrives —
+every 500 ms — absorbs the same is the open question, and §5 now has a number
+taken under today's conditions rather than an eighteen-day-old one.
+
+### Demonstrated vs. not
+
+**Demonstrated (`OBS`):** at this firmware, this session and this evening, the
+link delivers its nominal byte rate with zero CRC failures, zero oversize
+rejects, zero interior discards and zero decode errors over 15 continuous
+seconds, read by a process with no competitor for the port.
+
+**Not demonstrated:** anything about field *semantics* — `replay.py` and the
+firmware still share one author's reading of `data_sender.h`, and what a raw
+capture establishes independently is structural: rate, framing, CRC, absence of
+mid-stream corruption. Not a measurement either; the instrument is `IDLE` and
+`replay.py` prints its analog figures under a heading that says they are not part
+of the verdict. And nothing about the 20:05 event, which this window sits 50
+minutes after.
+
+**No TODO status changed.** TODO-34 and TODO-35 already record the receive and
+RESULT transports as hardware-proven (2026-09-26 / 09-27); this is
+re-confirmation at the current firmware, not a new acceptance. TODO-85 stays open
+— its acceptance needs the +5 V rail recorded as `PHYS` and a timed session,
+neither of which this provides.
+
+### State at the end
+
+**UART free, zero holders, nothing started.** `/tmp/gra-rollback.sh` is the way
+back to a working panel; §5 is the way forward.
+
+## 2026-10-13 (8) — **Gate 4 §3: `/dev/ttyAMA0` is free for the first time since 19:11:26.** The handoff took half a second and the interesting part was everything done before it
+
+**2026-10-13, ~20:57 PDT. Repository `6161b5b`.** The Tk UI was stopped. **No
+firmware, wiring, autostart or checkout change; nothing was started in its
+place.** The port is deliberately unattended at the end of this entry.
+
+### Mac power precaution, verified rather than assumed
+
+`caffeinate -dimsu` started at **20:53:13, pid 92915**, confirmed by `ps -p` and
+by the assertion table — `PreventSystemSleep`, `PreventUserIdleSystemSleep`,
+`PreventUserIdleDisplaySleep`, *"asserting forever"*. **Not** confirmed by
+`pgrep -f`, which produced a false positive on this same machine an hour ago
+(2026-10-13 (7)). Mac on AC, battery 81 % and charging, lid open.
+
+### The rollback was written to disk before the thing that destroys it
+
+`/proc/1505/environ` is where the verified recovery environment lives, and
+**killing 1505 deletes it.** So the first action of this gate was to read it and
+write the recovery command to `/tmp/gra-rollback.sh`:
+
+```sh
+cd /home/conley/guitar_rig_analyzer
+exec setsid nohup env XDG_RUNTIME_DIR=/run/user/1000 DISPLAY=:0 \
+     XAUTHORITY=/home/conley/.Xauthority sh pi/run_ui.sh --serial /dev/ttyAMA0
+```
+
+Not executed by anything, and nothing references it automatically. **It exists so
+that the recovery does not depend on a process that no longer exists, or on
+anyone remembering four environment variables under pressure.** The §1 rehearsal
+proved the command works; this makes it survive the thing it is recovering from.
+
+### Five guards, then one signal
+
+The script refused to proceed unless all of these held, and each was checked by
+the method that cannot lie:
+
+```
+analyzer_ui processes (pgrep -af, NOT -c): 1
+that pid: 1505
+1505 holds ttyAMA0: yes
+ttyAMA0 holders before: 1505          <- full /proc sweep, every pid
+no web.server, no chromium
+ALL GUARDS PASSED
+```
+
+**Final Tk baseline, the last numbers from the proven renderer** (`OBS`):
+
+```
+LINK UP · session 47 · fw 0.6.0 · proto 2 · 128/512 bins · 4:1 · 44100 Hz
+IDLE · SOURCE_NODE −43.6 dBFS · RETURN_NODE −51.4 dBFS
+TF 1 measured / 127 unmeasured · confidence 0% · 0/512 clamped
+frames ok 139539 · CRC fail 1 · decode err 0 · discarded 1023 (lead 1, interior 1022)
+pid 1505, started 19:11:26, uptime 1:42:56
+```
+
+**49 745 frames since the 20:05 event with no further loss of any kind.** That is
+the condition the web transport now has to be compared against, and it is why it
+was recorded immediately before the handoff rather than reconstructed afterwards.
+
+### The handoff — `OBS`
+
+`kill 1505` (SIGTERM; **not** `-9`):
+
+```
+waited 0.5 s
+/proc/1505 gone          <- not a zombie: ppid was 1, so init reaped it at once
+ps: 1505 gone
+pgrep -af analyzer_ui: none
+FULL DESCRIPTOR SWEEP:  ZERO holders — the UART is free
+after 6 s: still none, still zero holders    <- no respawn, as designed
+```
+
+The panel capture went from **88 428 B to 907 519 B** — the dark instrument UI
+replaced by the desktop. A size change that large is not a repaint artefact.
+
+Preservation after: `3a53212a…` / `b40fbc70…` unchanged, checkout `ce682cd`/49
+untouched, `throttled=0x0`, 46.1 °C, port 8711 free, **no `web.server` and no
+`chromium` — nothing was started.**
+
+### 🔺 A falsifiable prediction, recorded now so §4 can test it rather than explain it
+
+**The Teensy is still transmitting into a port nobody is reading.** It has no way
+to know the Pi stopped listening, and the kernel is discarding the bytes.
+
+So **whatever opens `/dev/ttyAMA0` next will attach mid-stream**, and its first
+frame boundary will cost it a partial frame. The receiver should report a
+**non-zero `lead` discard and `interior 0`** — exactly the signature the fixture
+rehearsal produced when it attached to a recorded stream mid-file (`discarded
+1598 (lead 1598, interior 0)`), and exactly what Tk itself shows from its own
+19:11 attach (`lead 1`).
+
+**If instead the first attach shows interior discards, that is a finding**, not
+attach loss, and it must not be explained away as "it just started". Writing the
+expectation down before the observation is what makes that distinction available
+later.
+
+### Demonstrated vs. not
+
+**Demonstrated:** the production UI stops on SIGTERM within half a second,
+releases its descriptor completely, does not respawn, and leaves every
+configuration byte unchanged; the UART reaches **zero** holders by full sweep;
+and a written, verified recovery exists on disk that does not depend on anything
+that was just stopped.
+
+**Not demonstrated:** that anything can successfully *acquire* the port — no
+process has opened it since 19:11:26; the raw byte rate under present
+conditions; the acquisition cadence; and every ADR-005 §2 condition except 3.
+
+### ⚠️ State at the end of this entry
+
+**The instrument is dark and the port is unattended.** This is a deliberate
+stopping point, not a resting state. Either §4 proceeds, or
+`sh /tmp/gra-rollback.sh` restores the Tk UI and its link. Nothing is lost by
+waiting, but nothing is being displayed either.
+
 ## 2026-10-13 (7) — **Gate 4 §2 baseline, and the instrument's power turns out to hang off a laptop USB port.** The sleep risk is real but smaller than it looked, and the evidence for that is a sleep that already happened
 
 **2026-10-13, ~20:49 PDT. Repository `3ad57d9`. Read-only throughout: Tk was not
