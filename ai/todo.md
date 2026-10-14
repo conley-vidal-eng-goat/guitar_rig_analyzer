@@ -40,7 +40,7 @@ The physical device is mid-breadboard. This track leads TODO priority over softw
 
 **Proof:** a timed observation on the panel at the new cadence showing `decode_errors 0`, `stale false`, driver `overrun 0 / buf_overrun 0`, and the whole-kiosk CPU re-measured — plus the operator saying it reads as live.
 
-### TODO-90 — TONE is the committed design's geometry without its visual layer 🟡 **IMPLEMENTED 2026-10-13 — ring glow VERIFIED on the panel; pulse, emissive bars and the second easing channel NOT yet seen, because the one TONE capture had zero MEASURED bands**
+### TODO-90 — TONE is the committed design's geometry without its visual layer 🟡 **IMPLEMENTED 2026-10-13. Ring glow VERIFIED visually; pulse VERIFIED quantitatively (15.6 % peak-to-peak ring luminance, period 4.49 s). Emissive bars and the second easing channel STILL UNSEEN — no MEASURED band occurred in 120 captures**
 
 **The operator's report (`RPT`):** *"the TONE page is simplistic and does not match the sophisticated visual designs we previously created."*
 
@@ -107,6 +107,10 @@ MAX_BAR_HEIGHT = 4.2                            fingerprint_split.js:33
 **🛑 This needs a decision, not an implementation.** The honest fix shrinks the ring by 39 % in answer to a complaint that it looks too simple, and clamping the height instead is excluded by the standing instruction not to clamp a measurement-driven height to fit a viewport. The arithmetic is pinned by `TestBarsAreNotTallerThanTheCameraIsToldToExpect` in [`test_web_tone.py`](../pi/tests/test_web_tone.py), which **fails on the day the defect is fixed** — update it then rather than loosening it now.
 
 **🔺 Still unevaluated, and separate from the clipping:** whether the ramps, side assignment and coverage-driven thickness match the design once a range of MEASURED bands is present. One screenshot of one moment cannot establish those either.
+
+**🔺 CLIPPING HAS STILL NEVER BEEN OBSERVED UNDER TEST, only in the 2026-10-13 21:15 capture and in the arithmetic.** The 2026-10-13 21:55 verification produced **zero** MEASURED bands across 120 frames, so the geometry was **not exercised** — which is not the same as it behaving. Keep the three apart: *observed on the panel*, *established mathematically*, *not exercised*.
+
+**🛑 DECISION HELD 2026-10-13 (review).** The all-orbit bounding sphere is conservative — it contains every bar at every angle including ones the operator may never use, at a cost of 39 % of the ring's displayed size. **A fit computed over the SUPPORTED orbit range may preserve more of the intended composition.** The natural trigger for deciding is the A/B Headrush measurement, which will produce sustained MEASURED bands and ask the question of real data rather than of a worst case.
 
 **What.** Drive the instrument with a signal that produces a range of MEASURED bands, and check against `docs/visual_design_document.md`: does bar length saturate or clip; is the attenuated/boosted side assignment correct against the underlying values; do the colour ramps match the specification; is the legend readable over a fully-populated ring.
 

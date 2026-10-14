@@ -12,6 +12,100 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (14) — **Verification: the pulse measured at 15.6 % peak-to-peak, the framing-error counter flat across 250 s — and three things still unseen because no bar was ever drawn**
+
+**2026-10-13, 21:54:59–21:59:09 PDT. Repository `72048e3`. Read-only: the kiosk
+was not restarted, the transport held the UART throughout, no code was edited.**
+
+### ✅ Serial stability — the question from review, answered
+
+Over **250 s uninterrupted**, with the kiosk running and the operator at the
+bench:
+
+| | before 21:54:59 | after 21:59:09 |
+|---|---|---|
+| session | 47 | 47 |
+| `stale` | false | false |
+| `frames_in` | 21 642 | 28 021 → **25.4/s** |
+| `decode_errors` | 0 | **0** |
+| driver `rx` | 296 140 877 | +9 112 796 → **36 451 B/s** |
+| driver **`frame`** | **196** | **196 — no new framing errors** |
+| `overrun` / `buf_overrun` / `parity` | 0 / 0 / 0 | **0 / 0 / 0** |
+| | | 48.3 °C, `throttled=0x0` |
+
+**The counter is flat.** The earlier +102 (journal (13)) did not continue. That
+window contained a port close/reopen — the supervised teardown and relaunch, each
+reconfiguring the line with `stty` — and bench activity; **this one contained
+neither, and produced none.** The instruction not to attribute them automatically
+to reconfiguration was right, and the correct statement is still narrow: *the
+counter rose once in a window containing a reconfiguration, and has not risen in
+a window without one.* Two observations, not a mechanism.
+
+### ✅ The ring pulse, measured rather than eyeballed
+
+A single frame cannot show a pulse, and the previous session produced exactly one
+TONE capture. This time 120 captures at 2 s. With no image library available, a
+minimal PNG decoder (zlib + the five scanline filters) gave the mean luminance of
+the band containing the ring, excluding header, legend and tab bar:
+
+```
+11.02  11.32  10.60  11.59  10.30  11.79  10.22  11.81  10.28  11.70  10.51  11.37  10.85 ...
+min 10.22   max 11.81   peak-to-peak 1.60  =  15.6 % of the minimum
+```
+
+**A clean oscillation at ≈2.2 samples per cycle.** The implemented period is
+2π/0.0014 ms⁻¹ = **4.49 s**, and 2 s sampling against 4.49 s produces exactly this
+alternating pattern with the slow envelope visible at both ends of the run. The
+amplitude is consistent with opacity `0.45 ± 0.12` diluted by the ring being a
+fraction of the measured band.
+
+**`OBS`, and quantitative — not "it looked like it was pulsing".**
+
+### ✅ The ring glow — visible on the panel
+
+Confirmed in the captures: a soft halo around the baseline torus that none of the
+pre-`72048e3` images have.
+
+### 🔺 Three things remain unseen, because no bar was ever drawn
+
+**Every one of the 120 frames carried `0 measured · 128 unmeasured`.** Frame 010
+reads it directly, and all 120 sit in 37 953–39 105 B — a band that excludes the
+one known bars-present capture (`g6-seq-018`, 6 measured, **40 649 B**). So on the
+evidence **no MEASURED band occurred during the four minutes**, and therefore:
+
+- ❌ **`emissive` bar materials** — cannot be seen when no bar is drawn.
+- ❌ **The second easing channel** — same.
+- ❌ **Clipping** — *the geometry was not exercised.* Nothing was observed leaving
+  the viewport, and that is **not** evidence that it would not; it is evidence
+  that the case did not arise. The mathematical result stands untouched.
+
+**And the panel never left TONE.** All 120 frames are the TONE view, so:
+
+- ❌ **Scroll without text selection** — no scroll occurred.
+- ❌ **Navigation responsiveness** — no navigation occurred.
+
+### The three states this entry keeps apart, deliberately
+
+| | |
+|---|---|
+| **Observed on the panel** | the pulse (measured), the glow, the serial counters |
+| **Established mathematically, not observed** | that a bar taller than 4.03 units leaves the fitted view |
+| **Not exercised** | bars of any height, scrolling, navigation |
+
+Collapsing the second and third is how a known defect gets quietly downgraded to
+a non-issue, and collapsing the first and second is how arithmetic gets reported
+as evidence. TODO-88 stays open on the strength of the arithmetic alone.
+
+### Camera fit — held, per review
+
+The all-orbit bounding sphere is **conservative**: it contains every bar at every
+orbit angle, including angles the operator may never use, and costs 39 % of the
+ring's displayed size. A fit computed over the *supported* orbit range could
+preserve more of the intended composition. **Nothing changed**, and the decision
+now has a natural trigger: the A/B Headrush measurement will produce sustained
+MEASURED bands, which is the first time the question will be asked of real data
+rather than of a worst case.
+
 ## 2026-10-13 (13) — **The UI correction pass: LIVE measured at 5.03 polls/s, TONE's glow restored — and the camera fix deliberately NOT made, because verifying it showed the premise was false**
 
 **2026-10-13, ~21:40–22:05 PDT. From `816cdc4`.** Items A, C and D of the
