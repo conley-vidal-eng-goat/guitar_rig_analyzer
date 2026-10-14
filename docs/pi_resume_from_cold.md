@@ -385,7 +385,9 @@ session log honest.
 |---|---|---|
 | `~/.config/labwc/autostart` | `rm ~/.config/labwc/autostart` | No analyzer at boot. labwc falls back to the untouched system file |
 | `~/gra-webtest` | `rm -rf ~/gra-webtest` | Scratch tree gone. The Pi's own checkout is unaffected |
-| Chromium kiosk profile | nothing — `run_web.sh` uses `mktemp -d` and deletes it on exit | No persistent browser state |
+| Chromium kiosk profile | `du -sh /tmp/gra-kiosk.*`, then `rm -rf` the ones you have confirmed belong to no running kiosk | 🔺 **CORRECTED 2026-10-13.** This row used to read *"nothing — deletes it on exit"*. It did not: `exec` destroyed the trap (TODO-82), and two launches leaked **171 MB**. Fixed in `run_web.sh`, so launches from 2026-10-13 onward do clean up after themselves — but **anything left by an earlier launch is still there** |
+
+🔺 **A rollback table that is wrong is worse than one that is missing**, because it is what an operator consults *instead of* checking. The row above was believed for a day and was false for the whole of it. Verify a rollback claim before relying on it.
 
 **No system file has ever been modified.** `/etc/xdg/labwc/autostart` is
 root-owned and unchanged, sha256

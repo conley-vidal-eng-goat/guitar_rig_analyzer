@@ -218,7 +218,7 @@ so is the fingerprint's swipe-to-orbit. This needs one person and one finger.
 | `~/.config/labwc/autostart` | mtime 2026-09-30 00:30:46, untouched, still launching `run_ui.sh --serial /dev/ttyAMA0` |
 | Pi's repository checkout | untouched |
 | `~/gra-webtest` | scratch tree, removable with one `rm -rf` |
-| Chromium profiles | ephemeral, `/tmp/gra-kiosk.*`, deleted |
+| Chromium profiles | ephemeral, `/tmp/gra-kiosk.*`, **recorded here as "deleted" — see the correction below** |
 
 ## Next
 
@@ -229,3 +229,29 @@ so is the fingerprint's swipe-to-orbit. This needs one person and one finger.
 3. **`--serial /dev/ttyAMA0`** against the live Teensy, which requires stopping the
    Tk UI so the port is free.
 4. Only after 2 and 3: disconnect/reconnect, then autostart.
+
+---
+
+## 🔺 CORRECTION — 2026-10-13: the profiles were not deleted
+
+**The "State of the Pi afterwards" table above claims Chromium profiles were
+ephemeral and deleted. That claim was wrong when it was written**, and it is
+corrected here rather than edited away, because the record of what was believed
+on 2026-10-12 is part of the evidence.
+
+`run_web.sh` `exec`ed Chromium, which replaced the shell and destroyed the
+`trap cleanup EXIT INT TERM` that would have removed `$PROFILE`. The cleanup
+function existed, was correct, and could never run. Measured on the Pi
+2026-10-13 after two fixture launches: `/tmp/gra-kiosk.lL1i1B` **45 MB** and
+`/tmp/gra-kiosk.iB2cZf` **126 MB**.
+
+**How the error was made, which is the part worth keeping.** I verified that no
+Chromium *process* remained and reported the profile as cleaned on that basis.
+Process absence was observed; directory absence was inferred from reading the
+script. **The script's cleanup path was never executed, so reading it proved
+nothing about what ran** — the same class of error as a validation step that
+cannot distinguish pass from fail (TODO-79's generalised rule).
+
+The same root cause also orphaned the transport onto PID 1 while it was still
+bound to the port — on a live run, still holding `/dev/ttyAMA0`. Both are fixed
+and tested: **TODO-82** and **TODO-83**.

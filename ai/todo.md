@@ -17,6 +17,47 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-82 — `run_web.sh` `exec`ed Chromium, which destroyed its own cleanup trap and orphaned the transport onto the UART 🟢 **FIXED 2026-10-13, verified by 17 new tests. Found on the Pi 2026-10-13 during the Gate 3 fixture rehearsal; CANNOT reproduce without actually killing the browser**
+
+**Why this was a live-demonstration blocker and not a tidiness item.** The orphaned transport keeps the port *and*, on a `--serial` run, `/dev/ttyAMA0`. The script's own port-wait connects to **whatever answers**, so the next launch would have attached to the orphan, come up looking healthy, and **presented the orphan's data as the new run's** — on camera, with no indication on screen. A leaked process is recoverable; a filmed measurement whose provenance is a stale process is not.
+
+**What was wrong.** [`run_web.sh`](../pi/run_web.sh) backgrounded `python3 -m web.server`, installed `trap cleanup EXIT INT TERM`, and then `exec`ed Chromium. **`exec` replaces the shell, so the trap could never fire.** Neither the transport nor the profile was ever cleaned up.
+
+**The observation, 2026-10-13 (launch pid 3350, fixture-only, no UART at risk):**
+
+```
+ps -o comm -p 3350          -> chromium        <- the exec replacement, observed
+server 3354, PPID 3350                          <- transport is a child of the browser
+kill 3350                   -> browser gone
+ps 3354                     -> 3354  1  python3 -m web.server ...   <- reparented to PID 1
+curl :8711/api/frame        -> still answering
+```
+
+**🔺 A second finding inside the teardown, and the more generalisable one.** `ps -p 3354` reported the server alive 3 s after SIGTERM, yet it was gone once the browser exited. **It was almost certainly an unreaped zombie — and `ps -p` and `kill -0` both report a zombie as alive.** The process state was not captured, so which it was cannot be established. The rule that follows does not depend on knowing: **process liveness is not an answer to "is the UART free?". Descriptor ownership is.** Sweep `ls -l /proc/*/fd | grep ttyAMA0` and read the fd, not the process table.
+
+**The fix, in four parts.** (1) Chromium is no longer `exec`ed. (2) It runs in the **background** and is `wait`ed for — necessary because a POSIX shell blocked on a *foreground* command does not act on a trapped signal until that command returns, so dropping `exec` alone would have left SIGTERM response indefinitely deferred. (3) `stop_child` does a **bounded** TERM → 5 s → KILL → 2 s → reap, because an unbounded `wait` hangs cleanup if a child ignores SIGTERM; liveness is read from `/proc/<pid>/stat` so a zombie is not mistaken for a running process. (4) A **port-ownership guard** refuses to start when something already answers on the port, and names the occupant — including whether it holds a serial device.
+
+**🔺 What the guard explicitly does not do.** A free port is not a free UART. The guard carries that sentence in capitals precisely because it sits one step before a handoff and must not be read as clearing it.
+
+**Residual risk, stated rather than closed:** a trap cannot run on `SIGKILL` to the supervising shell. Nothing in POSIX shell fixes that. The port guard and the profile inventory are what make the *next* launch safe after such a kill, and the descriptor sweep is what makes it detectable. A `systemd --user` unit with `ExecStopPost=` would close it, at the cost of touching the Pi's service configuration, which this project has deliberately not done.
+
+**Proof:** [`pi/tests/test_web_launcher.py`](../pi/tests/test_web_launcher.py) — 17 tests. Ten source guards pin the shape of the fix (no `exec`, backgrounded browser, both pids tracked, three traps, handlers that actually exit, bounded escalation, reaping, `/proc` liveness, idempotent cleanup). Four behavioural tests start the real launcher with `--no-browser`, signal it, and assert the port is released: SIGTERM → exit 143 and port free, SIGINT → exit 130 and port free, and an occupied port is refused with exit 1 while the existing listener is left untouched. **The behavioural tests are the ones that matter**, because the pre-fix launcher would have passed a source review.
+
+### TODO-83 — Every kiosk launch leaked its ephemeral Chromium profile, and two documents stated the opposite 🟢 **FIXED 2026-10-13 alongside TODO-82. 171 MB leaked in one evening**
+
+**What.** Same root cause as TODO-82: `cleanup()` removed `$PROFILE`, and `exec` meant it never ran. Measured on the Pi after two fixture launches on 2026-10-13:
+
+```
+/tmp/gra-kiosk.lL1i1B    45 MB
+/tmp/gra-kiosk.iB2cZf   126 MB
+```
+
+**🔺 The documentation said this could not happen, which is why nobody looked.** [`docs/pi_resume_from_cold.md`](../docs/pi_resume_from_cold.md)'s rollback table listed Chromium profiles as needing *"nothing — `run_web.sh` uses `mktemp -d` and deletes it on exit"*, and [`evidence/2026-10-12-pi-chromium-first-run.md`](evidence/2026-10-12-pi-chromium-first-run.md) recorded them as *"ephemeral, deleted"*. Both have been corrected. **A rollback table that is wrong is worse than one that is missing**, because it is the thing an operator consults instead of checking.
+
+**The fix, and the constraint on it.** Cleanup removes **only `$PROFILE`**, the directory this launch created. A blanket `rm -rf /tmp/gra-kiosk.*` was considered and rejected: it would delete the profile of a kiosk another session is still running, with nothing to distinguish them. Pre-existing profiles are **reported at startup with their size and left alone**; removing them is a decision for somebody who has checked that no Chromium is running.
+
+**Proof:** three tests in [`pi/tests/test_web_launcher.py`](../pi/tests/test_web_launcher.py) — the glob delete is banned, `"$PROFILE"` removal is required, and the inventory loop is asserted to contain no `rm`. The two leaked directories from 2026-10-13 are **deliberately still on the Pi**: they are the evidence, and deleting them is the operator's call.
+
 ### TODO-81 — `linearToDbfs()` has no callers, and both its name and its floor are claims the instrument never made 🔴 **found 2026-10-13 while establishing the FFT unit for the LIVE spectrum. Latent; no runtime fault**
 
 **What.** [`audio_capture.cpp:332`](../audio_capture.cpp#L332) defines

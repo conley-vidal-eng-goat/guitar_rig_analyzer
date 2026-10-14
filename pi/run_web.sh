@@ -60,18 +60,128 @@ esac
 URL="http://${HOST}:${PORT}${PAGE}"
 [ "$HOST" = "0.0.0.0" ] && URL="http://127.0.0.1:${PORT}${PAGE}"
 
+# --- refuse to start against somebody else's transport -----------------------
+#
+# TODO-82. A previous run could have left an orphaned `web.server` bound to this
+# port. The port-wait below connects to WHATEVER answers, so without this guard a
+# relaunch attaches to the orphan and presents ITS data as the new run's — and on
+# a live run that orphan is also the process holding /dev/ttyAMA0. Observed on
+# the Pi 2026-10-13: killing the browser left the transport on PID 1, still bound
+# and still answering.
+#
+# The decision uses the same connect probe as the port-wait below, so it adds no
+# dependency; `ss` is used only to NAME the occupant, and its absence degrades
+# the message, never the refusal.
+#
+# 🛑 A FREE PORT IS NOT A FREE UART, AND THIS GUARD MUST NEVER BE READ AS ONE.
+#    Before a live handoff, sweep the descriptors instead:
+#        ls -l /proc/*/fd 2>/dev/null | grep ttyAMA0
+if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.2);
+sys.exit(0 if s.connect_ex(('127.0.0.1', $PORT)) == 0 else 1)" 2>/dev/null; then
+  echo "[web] :$PORT is already bound — refusing to start." >&2
+  occupant="$(ss -ltnpH "sport = :$PORT" 2>/dev/null || true)"
+  if [ -n "$occupant" ]; then
+    echo "[web]   $occupant" >&2
+    occ_pid="$(printf '%s' "$occupant" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -1)"
+    if [ -n "$occ_pid" ] && [ -r "/proc/$occ_pid/cmdline" ]; then
+      echo "[web]   pid $occ_pid: $(tr '\0' ' ' < "/proc/$occ_pid/cmdline")" >&2
+      if ls -l "/proc/$occ_pid/fd" 2>/dev/null | grep -q ttyAMA; then
+        echo "[web]   ⚠  THAT PROCESS IS HOLDING A SERIAL DEVICE." >&2
+      fi
+    fi
+  fi
+  echo "[web] Stop it by PID, or pass --port to serve somewhere else." >&2
+  exit 1
+fi
+
 # --- transport ---------------------------------------------------------------
 
 # shellcheck disable=SC2086
 python3 -m web.server $SRC_ARGS $PREFER --host "$HOST" --port "$PORT" &
 SERVER_PID=$!
 
-cleanup() {
-  [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null || true
-  [ -n "${PROFILE:-}" ] && [ -d "$PROFILE" ] && rm -rf "$PROFILE"
+# --- lifecycle ---------------------------------------------------------------
+#
+# TODO-82, found on the Pi 2026-10-13. This script used to `exec` Chromium, which
+# REPLACES the shell and therefore destroys the trap below, so cleanup could
+# never run: the transport was orphaned onto PID 1 and the ephemeral profile was
+# left on disk (TODO-83, 171 MB leaked across two launches that evening). The
+# shell now survives as the supervisor and both children are tracked here.
+
+alive() {
+  # True only if the pid exists AND is not a zombie. `kill -0` cannot tell the
+  # difference, and an unreaped child made `ps -p` report an already-dead server
+  # as running during the 2026-10-13 teardown — which is exactly the kind of
+  # ambiguity that must not stand between an operator and a UART handoff.
+  # Field 3 of /proc/<pid>/stat is the state; comm (field 2) may contain spaces
+  # and parentheses, so strip through the LAST ')' rather than splitting on them.
+  if [ -r "/proc/$1/stat" ]; then
+    _st="$(sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | cut -d' ' -f1)"
+    [ -n "$_st" ] && [ "$_st" != "Z" ]
+  elif [ -d /proc ]; then
+    return 1                      # Linux and no such entry: the pid is gone
+  else
+    kill -0 "$1" 2>/dev/null      # non-Linux dev box: zombies indistinguishable
+  fi
+}
+
+stop_child() {
+  # Bounded shutdown with escalation. An unbounded `wait` would hang this script
+  # — and strand the profile on disk — if a child ignored SIGTERM.
+  #
+  # SIGTERM is sent unconditionally, before any liveness check. That is
+  # deliberate: it is harmless if the child is already dead, and it means the
+  # `wait` at the end is ALWAYS preceded by a signal, so it can never block
+  # forever even if `alive` is wrong. The pid cannot have been recycled either,
+  # because an unreaped child of this shell keeps its pid until we wait for it.
+  _pid="$1"; _label="$2"
+  kill "$_pid" 2>/dev/null || true
+  _i=0
+  while [ "$_i" -lt 50 ] && alive "$_pid"; do _i=$((_i + 1)); sleep 0.1; done
+  if alive "$_pid"; then
+    echo "[web] $_label ($_pid) ignored SIGTERM for 5 s — escalating to SIGKILL" >&2
+    kill -9 "$_pid" 2>/dev/null || true
+    _i=0
+    while [ "$_i" -lt 20 ] && alive "$_pid"; do _i=$((_i + 1)); sleep 0.1; done
+  fi
+  wait "$_pid" 2>/dev/null || true          # reap: this shell is the parent
+  if alive "$_pid"; then
+    echo "[web] ✗ $_label ($_pid) SURVIVED SIGKILL — do not relaunch blind" >&2
+    return 1
+  fi
   return 0
 }
-trap cleanup EXIT INT TERM
+
+CLEANED=0
+cleanup() {
+  # Idempotent: EXIT fires after an INT/TERM handler has already run.
+  if [ "$CLEANED" -ne 0 ]; then return 0; fi
+  CLEANED=1
+  _rc=0
+  if [ -n "${BROWSER_PID:-}" ]; then
+    if ! stop_child "$BROWSER_PID" browser; then _rc=1; fi
+  fi
+  if [ -n "${SERVER_PID:-}" ]; then
+    if ! stop_child "$SERVER_PID" transport; then _rc=1; fi
+  fi
+  # ONLY this launch's profile. A blanket `rm -rf /tmp/gra-kiosk.*` would delete
+  # a profile belonging to a kiosk another session started, with no way to tell
+  # whose it was — so historical ones are reported at startup and removed by a
+  # human who has checked ownership.
+  if [ -n "${PROFILE:-}" ] && [ -d "$PROFILE" ]; then
+    rm -rf "$PROFILE" && echo "[web] removed profile $PROFILE"
+  fi
+  if [ "$_rc" -ne 0 ]; then
+    echo "[web] ✗ cleanup incomplete — verify by PID before relaunching" >&2
+  fi
+  return 0
+}
+
+# Separate handlers rather than one shared trap: INT and TERM must terminate the
+# script, and an EXIT-only trap would let the shell carry on after the signal.
+trap 'cleanup' EXIT
+trap 'echo "[web] SIGINT received"  >&2; cleanup; exit 130' INT
+trap 'echo "[web] SIGTERM received" >&2; cleanup; exit 143' TERM
 
 # Wait for the port rather than sleeping a guessed interval: a fixed sleep is
 # either slower than it needs to be or wrong on a cold boot.
@@ -140,6 +250,15 @@ if [ -z "$CHROMIUM" ]; then
   exit 1
 fi
 
+# Pre-existing profiles are REPORTED, never removed (TODO-83). One of them may
+# belong to a kiosk that another session is still running, and a glob delete
+# cannot tell whose it is. Cleaning them is a decision for somebody who has
+# checked that no chromium is running.
+for d in /tmp/gra-kiosk.*; do
+  [ -d "$d" ] || continue
+  echo "[web] note: pre-existing profile $d ($(du -sh "$d" 2>/dev/null | cut -f1)) — left alone" >&2
+done
+
 # An ephemeral profile: this is a test launcher, and it must not leave state
 # behind that a later run — or the Tk UI — inherits.
 PROFILE="$(mktemp -d /tmp/gra-kiosk.XXXXXX)"
@@ -153,7 +272,7 @@ echo "[web] launching kiosk at $URL"
 # the on-screen keyboard. Observed on this Pi, 2026-10-12, first launch. The page
 # never becomes visible and no keyboard is attached to dismiss it. This flag is
 # what stands between a kiosk that boots and one that hangs on a password prompt.
-exec "$CHROMIUM" \
+"$CHROMIUM" \
   --ozone-platform=wayland \
   --kiosk "$URL" \
   --user-data-dir="$PROFILE" \
@@ -169,4 +288,18 @@ exec "$CHROMIUM" \
   --disable-pinch \
   --overscroll-history-navigation=0 \
   --autoplay-policy=user-gesture-required \
-  --check-for-update-interval=31536000
+  --check-for-update-interval=31536000 &
+BROWSER_PID=$!
+
+echo "[web] supervisor $$ · transport $SERVER_PID · browser $BROWSER_PID"
+
+# *** `wait` ON A BACKGROUND CHILD, NOT A FOREGROUND ONE. ***
+#
+# A trapped signal that arrives while a POSIX shell waits on a FOREGROUND command
+# is not acted on until that command finishes — which for a kiosk means never. So
+# removing the `exec` is necessary but NOT sufficient: Chromium must also run in
+# the background and be waited for, because `wait` is interruptible and a
+# foreground command is not. SIGTERM is then prompt, and a browser crash simply
+# returns here and falls through to the EXIT trap.
+wait "$BROWSER_PID" || true
+echo "[web] browser exited — shutting the transport down"
