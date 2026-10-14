@@ -12,6 +12,124 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (7) — **Gate 4 §2 baseline, and the instrument's power turns out to hang off a laptop USB port.** The sleep risk is real but smaller than it looked, and the evidence for that is a sleep that already happened
+
+**2026-10-13, ~20:49 PDT. Repository `3ad57d9`. Read-only throughout: Tk was not
+stopped, the UART was not opened by anything else, no firmware, wiring, autostart
+or process was modified.**
+
+### `RPT` — the Teensy is powered from the Mac's USB cable
+
+**Operator-reported, 2026-10-13: the Teensy 4.1 takes its power from the USB
+cable to the Mac.**
+
+**🛑 This is `RPT` and it is about the TEENSY ONLY.** Whether the breadboard's
++5 V rail is fed from the Teensy's regulator, or from somewhere else, is **not
+established** and must not be inferred from this. `docs/breadboard_bringup_v3.md`
+reads as though it is, and that document is a build procedure, not a record of
+what is currently wired. **Do not write "the breadboard is USB-powered"
+anywhere until somebody has looked at the board.** That is TODO-85.
+
+What *is* now established is a dependency worth stating plainly: **the
+instrument's power source is a port on a laptop that also sleeps and runs on
+battery, and on which the kernel logged three `hardware connection lost` events
+tonight.**
+
+**🛑 Those are connection-loss events, not verified power interruptions.** The
+host saying a device stopped responding is not the same as VBUS dropping, and
+the 19:10 event is the counter-example in this very entry: 12.5 minutes gone,
+and the session unchanged afterwards. Do not write "the USB lost power three
+times" anywhere; what was observed is that the host lost the device three
+times.
+
+### The sleep risk, calibrated against something that already happened
+
+The alarming reading first (`OBS`, `pmset -g custom`):
+
+```
+AC Power:      sleep 1   displaysleep 10   standby 1   hibernatemode 3
+Battery Power: sleep 1   displaysleep  2   standby 1   hibernatemode 3
+```
+
+**One minute of idle to system sleep, on AC as well as battery.** For a filmed
+take where nobody touches the Mac, that is well inside the window.
+
+**But the obvious conclusion is wrong, and tonight's own log says so.** The Mac
+slept at **19:04:16 ('Clamshell Sleep', on battery)**, woke at 19:06:24, and the
+Teensy re-enumerated at 19:07:07. **The session id was 46 before that sleep and
+still 46 at 19:57 and 20:04.** So:
+
+> **A Mac sleep occurred tonight and did not reset the Teensy.** USB VBUS was
+> evidently maintained across it. The device was re-enumerated on wake — a data
+> event, not a power event.
+
+That is the same discrimination as 2026-10-13 (5): **re-enumeration is not
+reset; the session counter is the thing that distinguishes them.**
+
+**What remains untested, and is the reason the precautions stand anyway:**
+`standby 1` with `hibernatemode 3` means a *longer* sleep can enter a deeper
+state than the two minutes observed, and nothing has tested whether VBUS
+survives that. One short clamshell sleep is one data point.
+
+**Precautions for filming, in order of what they actually protect against:**
+
+1. **Mains power and the charger connected.** A depleted battery is not
+   preventable by software.
+2. **`caffeinate -dimsu`** for the duration of the session — it inhibits *idle*
+   sleep, which is the 1-minute setting above.
+3. **Lid open.** `caffeinate` does **not** prevent clamshell sleep, and clamshell
+   sleep is precisely what happened at 19:04.
+4. None of the three protects against a loose cable, which is the failure mode
+   with the most evidence behind it tonight.
+
+**`OBS` — no `caffeinate` is running right now.** And a trap worth recording,
+because it is the second one tonight: `pgrep -af caffeinate` printed a pid, and
+`ps -p` on that pid showed **nothing**. The pid was the pipeline's own shell,
+whose command line contained the search string, already exited by the time it
+was checked. **`pgrep -f` matching itself is the macOS twin of the `pgrep -c`
+trap in 2026-10-13 (6).** Confirm a pid names what you think before believing it.
+
+### The baseline — all `OBS`
+
+| | |
+|---|---|
+| Tk | **pid 1505**, started **19:11:26**, uptime **1:38:12**, ppid 1 |
+| UART | `/proc/1505/fd/3 -> /dev/ttyAMA0`, `lr-x------`; full sweep: **1505 and nothing else** |
+| Devices | `ttyAMA0` `crw-rw---- root dialout`; `serial0 -> ttyAMA10` (the Pi 5 trap, unchanged) |
+| Panel | `LINK UP · session 47 · fw 0.6.0 · proto 2 · 128/512 bins · 4:1 · 44100 Hz` |
+| | `IDLE · SOURCE −38.3 dBFS · RETURN −50.9 dBFS · TF 2 measured / 126 unmeasured · confidence 1 %` |
+| | **`frames ok 132302 · CRC fail 1 · discarded 1023 (lead 1, interior 1022)`** |
+| Processes | no `web.server`, no `chromium`, port 8711 free |
+| Leftovers | `/tmp/gra-kiosk.iB2cZf` 126 MB, `/tmp/gra-kiosk.lL1i1B` 45 MB — pre-fix leaks, kept as evidence |
+| Pi health | `throttled=0x0`, 48.3 °C, 106 G free, `boot_id 2e711482…` unchanged (same boot) |
+| Display | DSI-2, 720×1280 @ 60.038 Hz, transform normal, scale 1.0 |
+| Staged code | `/home/conley/gra-stage-todo82`, 69 files, `run_web.sh` sha256 `2c9ae618…` |
+| Pi checkout | `ce682cd`, 49 dirty — **untouched**, and it is what autostart launches |
+| Autostart | `3a53212a…` / `b40fbc70…` — both unchanged |
+| Rollback | `DISPLAY=:0`, `XAUTHORITY=/home/conley/.Xauthority`, `XDG_RUNTIME_DIR=/run/user/1000`; Xwayland pid 1568 `-auth … :0`; socket `X0`; `run_ui.sh` and the fixture present |
+| Mac | AC power, battery 81 % charging, no `caffeinate`, Teensy USB present, **no USB disconnect since 20:30** |
+
+### Differences from §1, ~25 minutes earlier
+
+**One number moved, and it is the right one.** `frames ok` 122 920 → **132 302**,
+**+9 382 frames**, while `CRC fail` stayed at **1** and interior discards stayed
+at **1022**. Cumulatively **42 508 frames since the 20:05 event with no further
+loss of any kind.**
+
+Everything else is identical: same pid, same descriptor, same boot, same
+autostart hashes, same checkout, same display geometry. Pi temperature 46.6 →
+48.3 °C, which is the panel and the SSH work, not a trend.
+
+### What this gate demonstrates and what it does not
+
+**Demonstrated:** the preconditions for the handoff hold — one UART holder, a
+free port, a healthy link with no accumulating loss, a verified rollback, and a
+staged tree whose identity is recorded.
+
+**Not demonstrated:** anything about the handoff itself, the acquisition cadence,
+or whether the web client can hold a link for minutes rather than seconds. §3
+onward has not been run.
+
 ## 2026-10-13 (6) — **Gate 4 §1: the keyboard-free recovery path is proven, before the UART is given up rather than after.** Reading the running process's environment found a gap the drafted command had
 
 **2026-10-13, ~20:45 PDT. Repository `08dc450`. Staged tree

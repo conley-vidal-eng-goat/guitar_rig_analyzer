@@ -17,6 +17,26 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-85 — The instrument's power comes from a laptop USB port, and what else hangs off it has never been established 🔴 [bench] **found 2026-10-13; blocks nothing today, and is a single point of failure during any filmed take**
+
+**Why.** `RPT` 2026-10-13: the operator states the Teensy 4.1 is powered from the USB cable to the Mac. That makes the instrument's power source **a port on a laptop that sleeps and runs on battery**, and on which the kernel logged **three `hardware connection lost` events in 80 minutes** on the evening it was noticed (journal 2026-10-13 (5), (7)).
+
+**🛑 A USB connection-loss event is NOT a verified power interruption.** `hardware connection lost` is the host saying the device stopped responding to it. It does not establish that VBUS dropped, and tonight gives a direct counter-example: the 19:10 event was followed by a 12.5-minute gap and **no session change**, so the Teensy kept running throughout. Whether any of the three involved an electrical interruption, a data-layer loss, or a host-side drop is **unestablished**. Only one of them — the 20:05 pair — coincides with the single session increment on record, and even that is coincidence in a window, not a measured cause.
+
+**🛑 What is NOT established, and must not be written down as though it were.** Whether the breadboard's +5 V rail — the reference the entire analog front end is built on — is fed from the Teensy's regulator or from somewhere else. `docs/breadboard_bringup_v3.md` reads as though it is, but that is a **build procedure, not a record of the board as it stands**, and this project has already been bitten once by treating a build report as an observation (TODO-79). **Nobody has looked.**
+
+**Why the obvious alarm is overstated, and the precautions still stand.** A Mac clamshell sleep occurred at 19:04 on 2026-10-13 and the session id did **not** change across it, so VBUS survived at least a short sleep and the device merely re-enumerated. But `pmset` reports `sleep 1` (one minute to idle sleep) on **AC as well as battery**, with `standby 1` and `hibernatemode 3` — so a *longer* sleep can enter a deeper state that has never been tested.
+
+**What.** Three things, cheapest first:
+
+1. **Establish the power topology by looking at the board** — where the +5 V rail is fed from, and whether anything else draws from the Teensy's regulator. Record it as `PHYS` with coordinates, not as a reading of the runbook.
+2. **Filming precautions**, which cost nothing and are independent of the answer: mains power and charger connected; `caffeinate -dimsu` for the session (it inhibits *idle* sleep, which is the 1-minute setting); **lid open**, because `caffeinate` does not prevent clamshell sleep and clamshell sleep is exactly what happened at 19:04.
+3. **Consider an independent 5 V supply** for any session that matters. Deferred deliberately: changing the power topology before a demonstration introduces a new variable into the one thing that is currently working, and the USB path has not been shown to be the fault.
+
+**🔺 None of the above protects against an intermittent cable or connector.** That is a *candidate* suggested by three host-side connection-loss events on an evening of bench movement — **not a diagnosis**, and nothing has measured the cable.
+
+**Proof:** the +5 V rail's source recorded as `PHYS` with board coordinates; and a filmed or otherwise timed session of at least the intended take length during which the session id does not change and the Pi's interior-discard counter does not move.
+
 ### TODO-84 — The instrument cannot say why it restarted, so every reset is an inference 🔴 **[drafted] found 2026-10-13 while investigating an unexplained session change. Latent; no runtime fault**
 
 **Why.** On 2026-10-13 the session id went 46 → 47 with nobody having pressed reset or unplugged anything. Establishing even *that* it had restarted took three independent records — the EEPROM session counter, the Mac's USB kernel log, and a panel photograph. Establishing **why** was impossible, and still is: a grep across the entire firmware finds **no read of `SRC_SRSR` or any reset-status register**. The only "watchdog" hit in the tree is a comment in `insights_engine.cpp`.
