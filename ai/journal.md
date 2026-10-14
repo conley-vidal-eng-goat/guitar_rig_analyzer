@@ -12,6 +12,116 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (5) — **The Instrument In tip was shorted to GND, and the Teensy restarted during the evening. Three independent records bracket the same two minutes; the causal link is not established**
+
+Software session (web UI, launcher fix `3399a94`). **No firmware change, no
+protocol change, no wiring change by me.** The wiring change recorded below was
+made by the operator at the bench and is reported here as such.
+
+### The physical finding, operator-reported
+
+**`RPT` — the operator discovered that the Instrument In jack's TIP was shorted
+to GND on the breadboard, and physically corrected it during this evening's
+session, "around 8:05 PM".** Exact time not recorded; the operator was playing
+guitar through the Headrush at the time.
+
+**This is `RPT`, not `PHYS`.** Nobody photographed the short, measured it before
+the repair, or recorded the coordinates of what was changed. A continuity check
+after the fact was reported as open, and that is also `RPT`. The distinction
+matters here more than usual because TODO-79 was filed three days ago about
+exactly this failure — a builder report recorded as `PHYS`, which then had eight
+weeks of reasoning built on it.
+
+**What the short plausibly explains, and at what strength:**
+
+- **Low SOURCE levels and absent transfer-function coverage before the repair.**
+  A tip shorted to ground drives the input node to 0 V. Every SOURCE reading
+  taken while that short existed was taken through it. **How long it existed is
+  unknown**, so the set of contaminated measurements cannot be bounded — which
+  means it joins TODO-78's list of reasons the level history needs re-baselining
+  rather than reinterpreting.
+- **It does not explain a processor reset.** Shorting an audio input to ground
+  is not a mechanism for restarting a Teensy. If the repair caused the restart
+  it was through something else — a supply or ground disturbance, or physical
+  movement of a breadboard conductor while working. **None of that was
+  observed.**
+
+### The restart, and the three records that bracket it
+
+**`OBS` — the session id went 46 → 47 between two panel photographs**, ~20:04
+and ~20:23.
+
+`s_session_id` has exactly one assignment ([`data_sender.cpp:462`](../data_sender.cpp#L462)),
+fed by `nextSessionId()`, called from `dataSender_init()`, whose only call site
+is `presentation_init()` ([`presentation.cpp:38`](../presentation.cpp#L38)) in
+`setup()`. **There is no path that changes the session without re-running
+`setup()`.** One increment means one restart — not two, and not a re-announce.
+
+**`OBS` — the Mac's kernel logged the Teensy's USB (`0x16c0/0483`) three times
+tonight as `hardware connection lost`:**
+
+```
+19:10:34.955   connection lost
+19:23:04.687   enumerated            <- 12.5 min later, Mac awake throughout
+20:05:16.259   connection lost
+20:05:16.264   enumerated            <- +5 ms
+20:05:17.139   connection lost
+20:05:17.596   enumerated            <- +457 ms
+```
+
+**The 19:10 event is the control case and it is the useful one.** The USB link
+was gone for 12.5 minutes and the session was still 46 at 19:57 and at 20:04.
+So **a USB connection loss does not by itself mean the Teensy restarted** — that
+one did not, and the board kept feeding the Pi throughout. The 20:05 pair is
+therefore different in kind, not merely in timing. A 5 ms re-enumeration is far
+too quick for a boot; a 457 ms one is consistent with one, which puts the
+restart most plausibly at **20:05:17.1** — an inference from re-enumeration
+latency, not an observation of a boot.
+
+**`OBS` — the Pi receiver recorded its first non-zero loss counters**, from
+`0 / 0` at ~20:04 to **1 CRC failure and 1 022 interior discarded bytes** at
+~20:23. At 36 483 B/s that is ≈28 ms of wire time, about 0.6 of a ≈1 700 B
+frame — **the magnitude of a single truncated frame**, with one CRC failure
+consistent with a false SYNC found in the debris. Both counters are cumulative
+since the Tk process started at 19:11:26 and **nothing timestamps when they
+incremented**, so this is magnitude consistency and a shared window. Nothing
+more.
+
+### What is concluded, and what is explicitly not
+
+**Concluded:** the Teensy restarted exactly once, in a window that also contains
+a USB disconnect/re-enumerate pair and an operator-reported physical repair.
+
+**Not concluded:** that the repair caused the restart. Three records agreeing on
+a two-minute window is a strong coincidence and a weak mechanism. Recorded as a
+**probable repair-associated restart, cause unconfirmed**, and the investigation
+is closed at the operator's direction rather than because it was resolved.
+
+**🔺 The reason it cannot be resolved is itself a finding.** The firmware never
+reads `SRC_SRSR`. A grep across the whole tree finds no reset-status register
+access anywhere — the only "watchdog" hit is a comment. **Power-on, brownout,
+watchdog and external reset are indistinguishable on this instrument**, and no
+boot has ever recorded why it happened. Filed as TODO-84. Five lines in the
+boot banner would have turned tonight's inference into a reading, and the banner
+already exists because of a 2026-09-19 lesson about not inferring what the
+firmware could simply state.
+
+### Why this is worth keeping for the portfolio
+
+A wiring fault was found and corrected, and its correction was then tied to a
+change in instrument behaviour by cross-referencing **a firmware EEPROM counter,
+a host operating-system kernel log, and a photograph of a panel** — three
+records with no common author and no shared failure mode. None of them is
+conclusive alone. That is the shape of real instrument debugging, and it is more
+interesting than a clean result.
+
+### Next
+
+The live UART handoff is deferred until the Gate 4 procedure is written and
+reviewed. ADR-005 §2 condition 4 — *survive disconnect and reconnect* — remains
+**untested**, and tonight the instrument demonstrated it can exercise that path
+without being asked.
+
 ## 2026-10-13 (4) — **The LIVE spectrum: the first real instrument data drawn on the panel.** Establishing what the numbers actually *are* took longer than drawing them, and turned up a dead function whose name is a lie
 
 Payload forwarding and renderer in one reviewed commit, against the contract from

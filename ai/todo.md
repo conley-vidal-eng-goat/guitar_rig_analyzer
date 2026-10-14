@@ -17,6 +17,18 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-84 — The instrument cannot say why it restarted, so every reset is an inference 🔴 **[drafted] found 2026-10-13 while investigating an unexplained session change. Latent; no runtime fault**
+
+**Why.** On 2026-10-13 the session id went 46 → 47 with nobody having pressed reset or unplugged anything. Establishing even *that* it had restarted took three independent records — the EEPROM session counter, the Mac's USB kernel log, and a panel photograph. Establishing **why** was impossible, and still is: a grep across the entire firmware finds **no read of `SRC_SRSR` or any reset-status register**. The only "watchdog" hit in the tree is a comment in `insights_engine.cpp`.
+
+**So power-on, brownout, watchdog and external-pin reset are indistinguishable on this instrument.** For a device powered over a cable that also feeds the analog rail, on a breadboard, that is the single most useful fact it could report about itself and it reports nothing.
+
+**What.** Read `SRC_SRSR` in `setup()` before anything clears it, decode the bits, print them in the existing boot banner, and carry the value in HELLO so the Pi can display it. The banner already exists for precisely this reason — the 2026-09-19 lesson that the firmware should *state* what it is rather than let an operator infer it from what is absent.
+
+**🔺 Order and scope.** `SRC_SRSR` is sticky across resets and must be read before it is cleared, and whether the Teensy core startup clears it needs checking rather than assuming. This is a boot-path change to a frozen firmware and **must not be made during a demonstration window** — it is cheap, it is not urgent, and a reflash is the one action that invalidates every session id on record.
+
+**Proof:** a deliberate reset of each available kind — power cycle, reset button, software reset — produces a distinguishable banner line, and the three are shown to differ. Anything less proves only that the register was read.
+
 ### TODO-82 — `run_web.sh` `exec`ed Chromium, which destroyed its own cleanup trap and orphaned the transport onto the UART 🟢 **FIXED 2026-10-13, verified by 17 new tests. Found on the Pi 2026-10-13 during the Gate 3 fixture rehearsal; CANNOT reproduce without actually killing the browser**
 
 **Why this was a live-demonstration blocker and not a tidiness item.** The orphaned transport keeps the port *and*, on a `--serial` run, `/dev/ttyAMA0`. The script's own port-wait connects to **whatever answers**, so the next launch would have attached to the orphan, come up looking healthy, and **presented the orphan's data as the new run's** — on camera, with no indication on screen. A leaked process is recoverable; a filmed measurement whose provenance is a stale process is not.
