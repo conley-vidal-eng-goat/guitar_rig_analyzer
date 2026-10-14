@@ -17,6 +17,22 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-91 — The Headrush A/B: show the instrument detecting a real change in a real rig 🔴 [bench] **procedure written 2026-10-13, NOT executed. This is the portfolio's centrepiece**
+
+**Why.** Everything demonstrated so far is the instrument *working* — a link, a renderer, a panel. None of it is the instrument *measuring something*. The A/B is the first claim that is about the guitar rig rather than about the analyzer.
+
+**What.** [`docs/ab_headrush_procedure.md`](../docs/ab_headrush_procedure.md). Continuous broadband pink noise as a fixed control variable; one Headrush parameter changed and nothing else; LIVE captured plus a `m`-armed RESULT in each state; 30 s dwell after the change because LIVE's EMA is sticky for unenergised bins.
+
+**🛑 Why not a guitar.** `TF_SOURCE_GATE` makes a bin UNMEASURED unless its source is energised, and a plucked note energises a handful of 512 bins (observed: `confidence 4 %`). Two guitar performances energise different bins, so A and B would be compared across different bin sets — a comparison that would look like a result and would not be one.
+
+**🔺 What it may claim: a CHANGE, not a response.** A TF is a ratio and this is a differential comparison on one instrument minutes apart, which is exactly why it survives the uncalibrated state. **It does not close TODO-70, TODO-75 or TODO-78**, and it must not be written up as though it did. The repaired Instrument In short is still `RPT` — reported, never measured.
+
+**🔺 The Pi cannot arm it.** Pi→Teensy is physically disconnected; `m` goes over the Teensy USB console from the Mac.
+
+**It also closes four UI items at no extra cost**, because sustained stimulus is the first condition that populates the TONE bar path for minutes: TODO-90 (emissive, easing), TODO-88 (whether clipping happens under real data — orbit while the bars are up), TODO-87 (scroll during a dwell), TODO-89 (tap through the views and judge 5 Hz). **During the dwells, never during a capture.**
+
+**Proof:** two RESULTs from one session id with their grades and coherences, two LIVE payloads, panel captures of both states, the stimulus level and every Headrush setting recorded — and a stated difference between A and B that is larger than the variation observed within either.
+
 ### TODO-89 — LIVE updates twice a second because the client asks twice a second 🟡 **FIXED IN CODE 2026-10-13: measured 2.01 → 5.03 responses/s. Open until the operator confirms it reads as live**
 
 **The operator's report (`RPT`):** *"the LIVE page is noticeably slower than the previous UI."*

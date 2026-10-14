@@ -12,6 +12,153 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (15) — **Why TONE showed zero measured bands, and why a guitar cannot be the stimulus for an A/B**
+
+**2026-10-13, ~22:10 PDT. Repository `db46cb3`. Read-only: firmware and
+presentation contracts, nothing executed, nothing connected, the kiosk left
+running and still the sole UART holder.** Procedure written to
+[`docs/ab_headrush_procedure.md`](../docs/ab_headrush_procedure.md).
+
+### The answer, and it is the instrument working correctly
+
+```
+config.h:526   TF_SOURCE_GATE            0.001f     // linear FFT magnitude, ~ -60 dBFS
+config.h:560   TF_CONFIDENCE_THRESHOLD   0.10f      // >= 51 of 512 bins energised
+```
+
+A bin whose averaged **source** magnitude is below the gate is *unenergised*: the
+firmware writes `NAN` to `tf_db[]` and clears the bin's `valid` nibble, the Pi
+reads that as **`pen_lift`**, and `classify_live` returns **UNMEASURED**. An
+UNMEASURED band draws nothing.
+
+**A plucked guitar note energises a handful of bins out of 512.** The panel said
+so itself at 21:15: `confidence 4 %`, `6 measured · 122 unmeasured`. **Not a
+rendering defect. Not a flat response. Not a fault.** The instruction not to
+assume the absence of bars was a rendering problem was the right instruction, and
+checking cost twenty minutes instead of a day spent on the renderer.
+
+### 🛑 Absence of measurement versus a flat response
+
+These are the two readings that must never be confused, and the discriminator is
+permanently on screen:
+
+| | TONE | LIVE |
+|---|---|---|
+| **No measurement** | no bar at all; band counted `unmeasured` | low `confidence`; `0 measured · 128 unmeasured` |
+| **Flat response** | a bar at the 0.03 minimum on **every** band, counted `measured` | high `confidence`; `128 measured · 0 unmeasured`; TF drawn flat near 0 dB |
+
+The census line is the whole answer. When the bands say `unmeasured`, the
+instrument is saying *"I did not measure this"* — never *"this is 0 dB."* The UI
+was built around that distinction and it is now doing its job.
+
+### What it costs the experiment
+
+**A guitar cannot be the stimulus, and two performances cannot be compared.** The
+TF divides RETURN by SOURCE per bin, which normalises the source away — but only
+for bins the source energised, and two performances energise different bins.
+Setting A and setting B would be compared on different bin sets, which is not a
+comparison at all. It would look like a result.
+
+**So: continuous broadband pink noise**, set once and never touched, as the
+control variable. `breadboard_bringup_v3.md` already uses the same idea ("plug a
+phone into the test cable, play a song") to energise SOURCE; noise is better
+because it is stationary and replayable.
+
+### LIVE's stickiness is a real hazard with a simple remedy
+
+`config.h:529-554` — when a bin falls below the gate its EMA buffer is **not**
+reset; it holds the last value. Deliberate ("sticky instrument"), and harmless
+under continuous stimulus, where every bin stays energised and α = 0.15 converges
+in about a second. **It bites if the noise stops between A and B**: the next curve
+would be part A, part B, and nothing on screen would say so. Hence the mandatory
+30 s dwell after the change, with the stimulus still running.
+
+### The command path, and the one thing the Pi cannot do
+
+RESULT is the graded measurement — EXCELLENT/GOOD/MARGINAL/POOR from coherence and
+the fraction of bins meeting it (`measurement_core.h:248-253`) — and it is armed
+by `m`. **The Pi cannot send it.** Pi→Teensy is physically disconnected and the
+panel renders the controls disabled. `m` goes over the Teensy's USB console from
+the Mac, `/dev/cu.usbmodem192895301`. That is the only command path that exists,
+and it is also why the Mac must stay awake for the whole session.
+
+### 🔺 What the experiment may claim
+
+**A change, and only a change.** A TF is a ratio and the comparison is A against B
+on one instrument, one routing, one gain, one stimulus, minutes apart. **A
+differential claim survives the absence of calibration** — which is the state this
+instrument is in — so this is the strongest measurement available today rather
+than a compromise.
+
+**It may not claim an absolute response.** TODO-75 (grounded-probe floor,
+unrecorded, gates every amplitude claim), TODO-78 (no post-C10 baseline), TODO-70
+(uncontrolled RETURN→SOURCE leak) are all untouched by it. **And the repaired
+Instrument In short remains `RPT`** — reported, not measured, not photographed.
+The procedure says in capitals not to write that the input has been verified.
+
+### The electrical question, raised in review and answered from the as-built
+
+**"A phone is not an instrument source"** is the right objection, and the record
+answers it rather than my assuming it away.
+
+- **The input stage was designed for exactly this case.** `breadboard_bringup_v3.md`
+  justifies the input coupling capacitor in those terms — *"your phone outputs AC
+  centered on its own ground, which has no idea what our VGND is"* — and its own
+  Phase-7 verify step is *"plug a phone into the test cable, play a song at low
+  volume"*, with the band **SOURCE −24 to −6 dBFS**.
+- **Nothing attenuates the source.** `J4 tip → C1 → U1A (OPA1642 JFET) → C2 →
+  SOURCE_NODE → LINE-IN-L`, and the buffer's 1 kHz gain was measured at **0.9848**
+  — unity. Whatever the phone puts out arrives at the codec.
+- **Estimated headroom:** the one calibration point, 0.123 Vrms → −29.9 dBFS
+  (`config.h:346`), puts the −24…−6 dBFS band at roughly **0.24–1.9 Vrms**. A
+  phone headphone output delivers 0.3–1.0 Vrms at full volume, so it lands inside
+  the band and **cannot reach the top of it**.
+
+**🔺 And that estimate sits on a single point and an unexplained full scale.**
+TODO-43: the same figure implies ~10.85 Vpp full scale while `lineInLevel()` spans
+3.12 → 0.24 Vpp, so **no register value explains it**, and
+`SGTL5000_LINE_IN_LEVEL 5` still says *"CALIBRATE BEFORE FIELD USE"*. **The
+volts-to-dBFS mapping on this instrument is not understood.** The level is
+therefore set by watching SOURCE on the panel, never computed — and it is one more
+reason the experiment may only claim a difference.
+
+**🛑 Ground loop.** The coupling cap blocks DC; the sleeve still bonds the source's
+ground to analyzer GND → Teensy GND → the Mac's USB ground. A mains-powered laptop
+closes a loop through the mains earth. **A phone on battery, charger unplugged,
+does not.** Recorded as a requirement, not a preference.
+
+**No internal alternative exists.** `ENABLE_DUT_INJECTION 0` — injection is
+compiled out, and the detect hardware is not fitted. There is no stimulus inside
+the established routing architecture.
+
+### 🔑 The leak gets a detector, for free
+
+TODO-70's RETURN→SOURCE leak **is not cancelled by differencing**: if the Headrush
+change alters RETURN's spectrum and some of RETURN reaches SOURCE, then SOURCE
+moves too and the ratio is contaminated invisibly.
+
+**But the stimulus is fixed, so SOURCE must be identical in A and B.** If SOURCE's
+own spectrum moves when only the Headrush changed, the only remaining path is
+leakage. **Record SOURCE in both states and compare it first** — unchanged bounds
+the leak's effect on this comparison; changed makes the contamination visible and
+quantified. An open blocker becomes a measured bound inside the run, with no new
+hardware. It does not close TODO-70, which still needs its own controlled test.
+
+### Compare the intersection, not the union
+
+A bin enters the comparison only if it is `MEASURED` in **both** states. Treating a
+bin that is missing in one state as unchanged would manufacture a flat region that
+was never measured. The intersection size — *"N of 128 bins measured in both"* —
+is part of the claim, not a footnote.
+
+### Next
+
+The first physical action is deliberately not an electrical one: **photograph the
+rig and write down every Headrush setting, before touching anything.** If the A/B
+later shows a change, that photograph is what establishes it was the one
+parameter and not something that moved while working — and it is also the
+portfolio's picture of the instrument in a working state, which exists right now.
+
 ## 2026-10-13 (14) — **Verification: the pulse measured at 15.6 % peak-to-peak, the framing-error counter flat across 250 s — and three things still unseen because no bar was ever drawn**
 
 **2026-10-13, 21:54:59–21:59:09 PDT. Repository `72048e3`. Read-only: the kiosk
