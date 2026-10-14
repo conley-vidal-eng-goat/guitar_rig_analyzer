@@ -17,6 +17,32 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-87 — A finger-drag on the LIVE view selects text instead of just scrolling 🔴 **found 2026-10-13 on the live panel. Cosmetic-to-operational; trivially fixed; would be visible on camera**
+
+**What.** Dragging to scroll the LIVE view highlights the text it passes over. Captured on the panel at 2026-10-13 21:1x (journal 2026-10-13 (11)): `SOURCE`, `−49.7 dBFS`, `RETURN`, `−50.8 dBFS`, the dBFS explanatory paragraph and the `STATE` heading all left selected in blue.
+
+**Why it is a defect and not a quirk.** This is an appliance with no keyboard and no pointer. Selected text persists until something clears it, it can raise a selection/clipboard popup over the panel, and **it will appear in the Maker Portfolio footage** the moment anyone scrolls on camera. The instrument looks like a web page at exactly the moment it should look like an instrument.
+
+**Where.** [`shell.css:219-220`](../pi/web/static/shell.css#L219) already sets `touch-action: manipulation` and `user-select: none` — **scoped to `.tab` only**, the navigation buttons. Nothing applies either to the content cards, so the default selection behaviour stands everywhere else.
+
+**What.** Apply `user-select: none` (plus `-webkit-user-select: none`, which Chromium still wants) to the shell, and `-webkit-touch-callout: none` to suppress the long-press callout. **Keep selection where it is genuinely useful if anywhere is** — nothing on this panel currently needs it, since there is no way to paste anything anywhere.
+
+**🔺 Do not fix this during a filming window.** It is a stylesheet change to the renderer that is currently working on live hardware for the first time. It costs one line and can wait for a session where nothing is riding on it.
+
+**Proof:** a finger-drag across the LIVE cards scrolls the view and leaves no highlighted text, confirmed from a `grim` capture rather than from the CSS.
+
+### TODO-88 — The MEASURED bar path rendered for the first time and has never been evaluated 🔴 **found 2026-10-13. ADR-005's longest-standing open evidence debt is now closeable — and the first look raises a question**
+
+**Why this could not be done before.** Both pinned fixtures classify to **zero** MEASURED bands, so bar heights, side assignment, the cyan/orange ramps, coverage-driven thickness and frame easing were **visually unconfirmed** no matter how many fixture sessions were run. ADR-005 carried that as an open evidence debt, and the 2026-10-12 record flagged it explicitly. **Only live guitar input could ever close it, and on 2026-10-13 it did.**
+
+**What was observed (`OBS`).** `source 128 bins · 6 measured · 2 clamped · 120 unmeasured → ring 48 bins · 6 measured · 2 clamped · 40 unmeasured`, with cyan bars below the ring and amber markers on it — the attenuated side and the "value present, no direction asserted" class, both drawn for the first time.
+
+**🔺 The question the first look raises, stated as a question.** In that capture **the cyan bars extend past the bottom of the viewport**, running under the legend and off the frame. That may be correct — bar length encodes magnitude and these were large — or the scale may not be bounded to the view. **It has not been evaluated against the intended scale, and one screenshot of one moment is not enough to call it either way.**
+
+**What.** Drive the instrument with a signal that produces a range of MEASURED bands, and check against `docs/visual_design_document.md`: does bar length saturate or clip; is the attenuated/boosted side assignment correct against the underlying values; do the colour ramps match the specification; is the legend readable over a fully-populated ring.
+
+**Proof:** panel captures at several coverage levels, each with the census printed on screen, compared field by field against the design document — and a statement for each of the five properties above saying whether it is as specified, not merely that something was drawn.
+
 ### TODO-86 — Acquisition is driven by the browser's poll, and the browser can stop polling 🔵 **latent, NOT causing loss. Measured 2026-10-13 — read the measurement before acting on this**
 
 **🛑 READ THIS FIRST: the 4 096-byte-buffer loss hypothesis was FALSIFIED BY MEASUREMENT, not argued away.** Journal 2026-10-13 (10). The serial driver's own `TIOCGICOUNT` counters, against bytes actually read, at four cadences:
@@ -1909,13 +1935,15 @@ Implemented in `trySendBestEffort()`, which **all six** best-effort packet types
 |---|---|
 | Import `visual_design_document.md` (v1.2) as the UI specification of record | 🟢 **DONE 2026-10-12** — [`docs/visual_design_document.md`](../docs/visual_design_document.md), body byte-identical, RA8875 sections marked demoted. Seven permitted JSX concepts in [`docs/ui/concepts/`](../docs/ui/concepts/); `VortexTunnel.jsx` excluded with its reason recorded. The October design brief imported as a **second, non-binding input**, and all three sources reconciled in [`docs/ui/README.md`](../docs/ui/README.md) |
 | UI transport from `analyzer_link` to the browser | 🟢 `pi/web/server.py` + `payload.py`, 500 ms poll on `/api/frame`, classified bands only |
-| Committed Pi visuals against real frames | 🟡 `ToneFingerprintSplit` ported and rendering real fixture bytes **on the panel at 60 fps inside a four-tab shell (2026-10-13, `cc7b704`)**. `WaterfallSpectrum3D` not started. **🔺 The MEASURED bar path has still never been rendered** — both pinned fixtures classify to zero MEASURED bands |
+| Committed Pi visuals against real frames | 🟡 `ToneFingerprintSplit` ported and rendering real fixture bytes **on the panel at 60 fps inside a four-tab shell (2026-10-13, `cc7b704`)**. `WaterfallSpectrum3D` not started. **🟢 The MEASURED bar path FINALLY RENDERED 2026-10-13 21:15 on live guitar input** — `6 measured · 2 clamped · 120 unmeasured → ring 6 measured · 2 clamped · 40 unmeasured`, cyan bars drawn below the ring with amber markers on it. Both pinned fixtures classify to zero MEASURED bands, so only live input could ever close this. **It has not been EVALUATED — see TODO-88** |
 | Kiosk autostart replacing the Tk autostart (`d4eca26`) | 🔴 not written. **Do not replace the Tk autostart until ADR-005 §2's four conditions hold** |
 | Disconnect/reconnect survival | 🔴 `link.stale` exists in the payload; the client ignores it |
 
 **✅ CHROMIUM NOW VALIDATED ON THE HARDWARE — 2026-10-12, 23:35–23:52 PDT.** [`evidence/2026-10-12-pi-chromium-first-run.md`](evidence/2026-10-12-pi-chromium-first-run.md). Chromium 152 renders the client on the panel at **60 fps** (worst 1 s sample 45) on **hardware WebGL 2 — `ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1)`, not SwiftShader**; portrait, scale 1, full 720×1280; 369 tests green on the Pi; the fixture renders to the same census as the macOS record. **Two hardware-only defects were found and one is still open — see TODO-80.** The other, a gnome-keyring modal that blocked the first launch with no keyboard to dismiss it, is fixed in `run_web.sh`.
 
-**🔺 STILL UNVALIDATED:** autostart (not written), `--serial /dev/ttyAMA0` (never run — the Tk UI holds the port, so every frame so far is a **recorded fixture** with the Teensy not measuring), disconnect/reconnect, long-run stability beyond ~25 s, and **touch delivery** — the capability is reported (10 points, PointerEvent) but nobody has touched the panel, because the session was entirely over SSH. **ADR-005 §2: one of four conditions met.**
+**✅ LIVE SERIAL VALIDATED ON THE HARDWARE — 2026-10-13, 21:12–21:20 PDT.** Journal 2026-10-13 (11). `run_web.sh --serial /dev/ttyAMA0 --prefer live` on the physical panel: `kind live`, **`LINK UP`**, session 47, `stale false`, **9 490 frames over 371 s = 25.6/s**, `decode_errors 0`, driver `overrun 0 / buf_overrun 0` and **no new framing errors** across the window. All four views rendered live data, touch navigation worked in both directions, the TONE ring was dragged by finger, and the LIVE view scrolled. The web transport was the **sole** `ttyAMA0` holder throughout.
+
+**🔺 STILL UNVALIDATED:** autostart (not written — and **the Tk autostart is deliberately untouched**); **disconnect/reconnect** (`link.stale` exists in the payload and the client still ignores it); long-run stability beyond the ~6 min now demonstrated; and the Pi→Teensy direction, which does not exist. **ADR-005 §2: two of four conditions met** — §2.2 (connect to `analyzer_link`) joined §2.3 (render real protocol-v2 frames) on 2026-10-13. §2.1 (boot into Chromium) and §2.4 (survive disconnect/reconnect) remain 🔴. **Until all four hold, the Tk UI is what ships.**
 
 **Interface architecture decided 2026-10-12:** four tabs — LIVE / TONE / LAB / INFO — persistent bottom navigation at 720×1280, frameworkless (vanilla ES modules + three.js + Canvas2D, no React, no build step, per ADR-005 §1a). **Navigation switches views; it must not imply control**, because the Pi→Teensy direction does not exist (TODO-35).
 

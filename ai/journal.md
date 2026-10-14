@@ -12,6 +12,143 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (11) — **The web client rendered a live Teensy frame on the physical panel. First time in the project's history, and it held for six minutes without losing a byte**
+
+**2026-10-13, 21:12:14–21:19:49 PDT. Repository `93a4d58`, staged tree
+`/home/conley/gra-stage-todo82`.** `OBS` throughout. **No firmware, wiring,
+autostart or checkout change.** The Tk autostart is untouched and still what the
+Pi boots into.
+
+### Preflight
+
+Zero `ttyAMA0` holders; port 8711 free; no Tk, web server or Chromium;
+`/tmp/gra-rollback.sh` present; `throttled=0x0`, 41.1 °C. Staged hashes matched
+the tested ones exactly — `run_web.sh` `2c9ae618…`, `main.js` `b1de238b…`. On the
+Mac: `caffeinate` pid 92915 alive (by `ps -p`), AC power, lid open, Teensy USB
+present with no connection-loss events since 21:00.
+
+### Launch
+
+```sh
+setsid nohup sh run_web.sh --serial /dev/ttyAMA0 --prefer live &
+```
+
+```
+[web] transport up at http://127.0.0.1:8711/  (after 100 ms)
+[web] note: pre-existing profile /tmp/gra-kiosk.iB2cZf (126M) — left alone
+[web] note: pre-existing profile /tmp/gra-kiosk.lL1i1B (45M) — left alone
+[web] supervisor 15401 · transport 15406 · browser 15437
+```
+
+Supervisor `sh`, 13 processes in the session, and the **sole** `ttyAMA0` holder
+was 15406, the transport. The launcher fix from `3399a94` behaved exactly as its
+tests said it would, on live hardware, with a real UART at stake for the first
+time.
+
+### The first live frame
+
+```
+kind live · session 47 · LINK UP · stale false · decode_errors 0 · IDLE
+SOURCE −26.5 dBFS · RETURN −50.0 dBFS · TF confidence 4% · 5 bins at the clamp rail
+```
+
+**The spectrum was a guitar.** The SOURCE trace carried structure — a peak near
+700 Hz with harmonics rolling off above 2 kHz — against a flat RETURN near
+−80 dB. Every previous web screenshot in this project came from a recorded
+fixture replayed from disk.
+
+**ADR-005 §2 condition 2 — "connect to `analyzer_link`" — is MET.** It has been
+🟡 PARTIAL since 2026-10-12, and 🔴 before that.
+
+### Timed observation — 371 s of continuous live operation
+
+| | t0 21:13:38 | t1 21:19:49 | |
+|---|---|---|---|
+| `frames_in` | 1 819 | 11 309 | **+9 490 = 25.6/s** |
+| `decode_errors` | 0 | 0 | — |
+| `stale` | false | false | never went stale |
+| driver `rx` | 205 845 135 | 219 401 772 | **+13 556 637 B = 36 541 B/s** |
+| driver `overrun` | 0 | **0** | — |
+| driver `buf_overrun` | 0 | **0** | — |
+| driver `frame` errors | 94 | **94** | **no new ones** |
+
+**36 541 B/s against 36 481 B/s in the §4 raw capture — +0.16 %, inside the ±1 s
+my timestamps are good to.** 25.6 frames/s against 25.5/s from the raw capture
+and 24.8–25.4/s from the §5 cadence runs. **Four independent windows now agree.**
+
+The §5 prediction holds under the real server, with JSON payload construction
+inside the same lock and a browser polling it: **zero overruns, zero loss.**
+
+🔺 **`frame` errors were already at 94 at t0** — UART-level framing errors
+accumulated earlier in the session, cumulative since the port came up. None were
+added during the live run. Recorded as an observation; whether any of them relate
+to the single CRC failure Tk saw at 20:05 is **not established** and nothing
+timestamps them.
+
+### All four views, on live data, verified from the panel
+
+120 captures at 3 s intervals, **every one distinct** — which is itself evidence
+of live rendering, since a replayed fixture goes static the moment it ends.
+
+| Frames | View | What was new |
+|---|---|---|
+| 001–014, 031–042 | **LIVE** | moving spectrum, `LINK UP`, levels tracking the instrument |
+| 015–021, 043–045 | **TONE** | **the MEASURED bar path, rendered for the first time** |
+| 022–025 | **LAB** | *"NO CAPTURED RESULT — the transport is carrying live frames, not a captured RESULT"* |
+| 026–030 | **INFO** | `session 47 · freshness UP · frames received 3945 · decode errors 0 · kind live` |
+| 046–120 | **LIVE, scrolled** | the COVERAGE card and its explanation, previously below the fold |
+
+**Touch worked in every direction tested** — four views, multiple transitions,
+a finger-drag on the TONE ring, and a scroll on LIVE. Before tonight the record
+was one tap on one button in one direction.
+
+### 🟢 ADR-005's longest-standing evidence debt is now closeable
+
+TONE showed `source 128 bins · **6 measured** · 2 clamped · 120 unmeasured → ring
+48 bins · 6 measured · 2 clamped · 40 unmeasured`, with **cyan bars below the
+ring and amber markers on it**. Both pinned fixtures classify to **zero**
+MEASURED bands, so no amount of fixture work could ever have drawn that path —
+only live input could, and it did.
+
+**🔺 And the first look raises a question rather than settling one.** The cyan
+bars **extend past the bottom of the viewport**, running under the legend and off
+the frame. That may be correct — bar length encodes magnitude — or the scale may
+not be bounded to the view. **One screenshot of one moment cannot tell.** TODO-88.
+
+### 🔴 One defect found, and it would be visible on camera
+
+**A finger-drag on LIVE selects text as well as scrolling.** The capture shows
+`SOURCE`, `−49.7 dBFS`, `RETURN`, `−50.8 dBFS`, the dBFS paragraph and the
+`STATE` heading left highlighted in blue.
+
+[`shell.css:219-220`](../pi/web/static/shell.css#L219) already sets
+`user-select: none` — **scoped to `.tab` only**. Nothing applies it to the content
+cards. On an appliance with no keyboard this is not a quirk: selected text
+persists, can raise a selection popup, and **will appear in the portfolio footage
+the moment anyone scrolls on camera.** TODO-87. One line, and deliberately not
+tonight.
+
+### Demonstrated vs. not
+
+**Demonstrated:** the web client acquires from the live UART as sole holder,
+renders all four views from real Teensy frames on the physical touchscreen,
+accepts touch navigation and gestures, and ran 6+ minutes with no loss, no
+staleness and no decode errors, at a byte rate matching the independent raw
+capture to 0.16 %.
+
+**Not demonstrated:** autostart (not written, deliberately); **disconnect and
+reconnect** — `link.stale` exists in the payload and the client still ignores it,
+so ADR-005 §2.4 is untested and the Teensy's 20:05 restart would have exercised
+it unobserved; stability beyond ~6 minutes; and anything about measurement
+accuracy, since the instrument is `IDLE` and no capture was armed.
+
+### State at the end
+
+**The kiosk is still running and the panel is live.** Teardown is one command —
+`kill "$(cat /tmp/gate4-live.pid)"` — and the supervisor's trap stops the
+transport, reaps both children and removes the profile. `sh /tmp/gra-rollback.sh`
+returns the panel to Tk.
+
 ## 2026-10-13 (10) — **Gate 4 §5: my own buffer hypothesis is dead, and it was wrong by two orders of magnitude.** The kernel held 154 kB between reads without losing a byte
 
 **2026-10-13, ~21:10 PDT. Repository `80e5b09`. `OBS`.** Staged code only
