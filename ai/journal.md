@@ -12,6 +12,132 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (10) — **Gate 4 §5: my own buffer hypothesis is dead, and it was wrong by two orders of magnitude.** The kernel held 154 kB between reads without losing a byte
+
+**2026-10-13, ~21:10 PDT. Repository `80e5b09`. `OBS`.** Staged code only
+(`/home/conley/gra-stage-todo82`, `PYTHONPATH` pinned and the module source paths
+printed to prove it). **No firmware, wiring, autostart or display change. No
+Chromium, no kiosk, no web server.** The port was verified free before and
+released after every run.
+
+### First: what the production transport actually does
+
+Read on the Pi, in the staged tree, rather than recalled:
+
+```
+every call site of engine.pump():
+  web/server.py:51          <- inside FrameService.frame(), under the lock
+  analyzer_ui/app.py:154    <- the Tk tick
+  analyzer_ui/__main__.py:74
+
+threads / timers in web/:
+  threading.Lock            <- serialises concurrent request threads
+  ThreadingHTTPServer       <- one thread per REQUEST
+  (no Thread(), no Timer, no scheduler, no select/poll loop)
+```
+
+**Confirmed: there is no background acquisition.** The serial port is read
+exactly when an HTTP request arrives, and at no other time. `ThreadingHTTPServer`
+means several requests can call `pump()` concurrently, serialised by the lock —
+so the pump rate is the *sum* of all clients' poll rates, not one client's.
+
+### The measurement, designed so it could not rest on my assumption
+
+My earlier claim was that a 500 ms gap would overflow `N_TTY_BUF_SIZE` (4 096 B)
+and silently lose ~78 % of the stream. **That assumption is exactly what the
+measurement had to avoid inheriting**, so it does not estimate loss at all — it
+reads the serial driver's own counters through `TIOCGICOUNT` and compares
+**characters the UART received** against **bytes this process actually read**:
+
+```
+driver_rx  -  bytes_read  -  residual_pending   =  lost in the kernel
+```
+
+plus the driver's `overrun`, `buf_overrun`, `frame` and `parity` counters, which
+are what a real overflow increments. Production `SerialSource` and
+`FrameScanner`, unchanged; only the thing that *triggers* the pump differs.
+
+### Results — four cadences, 20–25 s each
+
+| cadence | reads | driver rx | bytes/read (mean / max) | **overrun / buf_overrun** | **lost** | CRC | interior |
+|---|---|---|---|---|---|---|---|
+| **50 ms** (Tk's) | 373 | 36 476 B/s | 1 952 / 2 130 | **0 / 0** | **0** | 0 | 0 |
+| **500 ms** (the client's) | 38 | 36 483 B/s | 18 953 / 19 955 | **0 / 0** | **0** | 0 | 0 |
+| 2 000 ms (4×) | 12 | 36 480 B/s | 70 094 / 77 410 | **0 / 0** | **0** | 0 | 0 |
+| 4 000 ms (8×) | 6 | 36 477 B/s | 126 722 / **154 340** | **0 / 0** | **0** | 0 | 0 |
+
+**Zero overruns, zero loss, zero CRC failures and zero interior discards at every
+cadence tested, including eight times slower than the one that matters.**
+
+### 🔴 The hypothesis was wrong, and wrong in an instructive way
+
+**`N_TTY_BUF_SIZE` is 4 096 and that number is real — it is simply not the
+ceiling.** The line discipline's `read_buf` is 4 kB, but the tty flip buffer in
+front of it grows dynamically, and with `-crtscts -ixoff` the driver is never
+throttled, so data queues rather than being dropped. **A single read returned
+154 340 bytes with the driver reporting no overrun of any kind** — 37× the figure
+I treated as a ceiling.
+
+**I reasoned from one buffer in a chain of three and presented it as the whole
+chain.** The review instruction not to infer loss from a 4096-byte assumption was
+correct, and had the test been built on that assumption it would have measured
+nothing. What makes this recoverable is that the prediction was written down
+before the measurement, so it could be falsified rather than quietly forgotten.
+
+**`LOST_IN_KERNEL` reads −459 in every run**, identically. A negative "loss" is
+an ordering artefact, not a finding: the driver counter is sampled, *then* the
+residual drain runs, so bytes arriving between the two are counted as read but
+not as received. 459 B is ≈12 ms of stream, the interval between those two calls,
+and its constancy across four runs is itself evidence the figure is an artefact
+rather than noise.
+
+### A label correction
+
+`frames_ok` is **25/s**, not the ~21.5/s I have been quoting. It counts *all*
+frames — LiveFrame, StatePacket, RouterStatus and Hello. §4's raw capture gives
+382/15 s = 25.5/s and these runs give 23–25/s; the ~21.5/s figure in
+`sources.py` refers to **live frames only** (301 in §4's 15 s ≈ 20/s placed, ≈21/s
+including those that arrived pre-HELLO). Three independent windows agree once the
+quantities are matched. **The numbers were never in conflict; my label was.**
+
+### What this does and does not settle
+
+**Settles:** the request-driven acquisition keeps up with the stream at the
+client's intended 500 ms cadence, with no kernel-side loss, measured against the
+driver's own counters rather than inferred.
+
+🔺 **This is not an "8× throughput margin", and calling it one would be wrong.**
+Throughput is fixed by the wire — 36 481 B/s, whoever reads it. What was
+established is **successful buffering and recovery at polling intervals up to
+eight times the intended one**: the kernel held the backlog and the reader
+drained it without the driver reporting a single overrun. That is a statement
+about latency tolerance, not about capacity.
+
+**Does not settle:**
+
+- **The ceiling is unmeasured beyond 154 kB / 4 s.** There is a cadence at which
+  this fails; it is simply far outside anything the client does.
+- **This emulates the pump, it is not the server.** The real `FrameService.frame()`
+  also builds the JSON payload inside the same lock, so its effective interval is
+  500 ms *plus* that work. Given 8× margin that is very unlikely to matter, but it
+  has not been measured.
+- **`main.js` stops polling entirely when the page is hidden**
+  (`visibilitychange` → `stopPolling()`). Acquisition then stops, because
+  acquisition *is* polling. In a kiosk the page should never be hidden, and the
+  status strip would honestly report `LINK STALE` if it were — but it is a real
+  path, and it is the one place where the coupling has an operational consequence.
+  Recorded as TODO-86.
+- **Nothing about rendering.** No browser was involved in any run.
+
+### 🔺 A planned change that should now NOT be made
+
+I proposed a daemon pump thread in `FrameService` "so the renderer's poll rate
+stops being the acquisition rate". **On this evidence that change fixes nothing**,
+and it would add a concurrency path to the one component standing between the
+instrument and the screen. It should not be implemented to solve a loss problem,
+because there is no loss problem. TODO-86 records that, so the idea is not
+revived from the earlier journal entries without this measurement attached.
+
 ## 2026-10-13 (9) — **Gate 4 §4: 36 481 B/s, zero CRC failures, zero interior discards.** An independent reference for the link, taken while nothing was competing for the port
 
 **2026-10-13, 20:57:48–20:58:03 PDT. Repository `6161b5b`. `OBS`.** Evidence:

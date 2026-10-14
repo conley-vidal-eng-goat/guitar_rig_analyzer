@@ -17,6 +17,29 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-86 — Acquisition is driven by the browser's poll, and the browser can stop polling 🔵 **latent, NOT causing loss. Measured 2026-10-13 — read the measurement before acting on this**
+
+**🛑 READ THIS FIRST: the 4 096-byte-buffer loss hypothesis was FALSIFIED BY MEASUREMENT, not argued away.** Journal 2026-10-13 (10). The serial driver's own `TIOCGICOUNT` counters, against bytes actually read, at four cadences:
+
+| cadence | bytes/read (max) | overrun / buf_overrun | lost | CRC | interior |
+|---|---|---|---|---|---|
+| 50 ms | 2 130 | 0 / 0 | 0 | 0 | 0 |
+| **500 ms** (the client's) | 19 955 | **0 / 0** | **0** | 0 | 0 |
+| 2 000 ms | 77 410 | 0 / 0 | 0 | 0 | 0 |
+| 4 000 ms | **154 340** | **0 / 0** | **0** | 0 | 0 |
+
+**What the table shows is successful buffering and recovery at polling intervals up to eight times the intended one — NOT an eightfold throughput margin.** Throughput is fixed by the wire at 36 481 B/s whoever reads it; what varies is how much latency the path tolerates before losing data. It tolerated 4 s.
+
+**The `N_TTY_BUF_SIZE` = 4 096 ceiling I reasoned from is real and is not the ceiling.** The flip buffer in front of the line discipline grows dynamically, and with `-crtscts -ixoff` the driver is never throttled, so data queues instead of being dropped. **A single read returned 154 340 bytes with no overrun reported** — 37× the assumed limit.
+
+**🔺 Therefore the daemon pump thread proposed in journal 2026-10-13 (2) must NOT be implemented to fix a loss problem.** There is no loss problem. It would add a concurrency path to the one component between the instrument and the screen, in exchange for nothing measurable. If it is ever built, it must be justified by something other than throughput.
+
+**What remains, and it is small.** [`main.js`](../pi/web/static/main.js) stops polling when the page is hidden (`visibilitychange` → `stopPolling()`). Since acquisition *is* polling ([`server.py:51`](../pi/web/server.py#L51) is the only pump call site in `web/`, and there is no background reader), **a hidden page stops acquiring.** In a kiosk the page should never be hidden, and the status strip would honestly report `LINK STALE` if it were — so this is a real path with an honest failure mode, not a silent one.
+
+**Also unmeasured:** the true ceiling beyond 154 kB / 4 s; and the real `FrameService.frame()` builds its JSON payload inside the same lock, so its effective interval is 500 ms *plus* that work. With 8× margin neither is likely to matter, and neither has been measured.
+
+**Proof, if this is ever acted on:** a kiosk session in which the page is deliberately hidden and restored, showing what the panel displays throughout — and a cadence sweep that finds where `buf_overrun` first becomes non-zero, so the margin is a number rather than "at least 8×".
+
 ### TODO-85 — The instrument's power comes from a laptop USB port, and what else hangs off it has never been established 🔴 [bench] **found 2026-10-13; blocks nothing today, and is a single point of failure during any filmed take**
 
 **Why.** `RPT` 2026-10-13: the operator states the Teensy 4.1 is powered from the USB cable to the Mac. That makes the instrument's power source **a port on a laptop that sleeps and runs on battery**, and on which the kernel logged **three `hardware connection lost` events in 80 minutes** on the evening it was noticed (journal 2026-10-13 (5), (7)).
