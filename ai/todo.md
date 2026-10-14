@@ -17,7 +17,55 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
-### TODO-87 — A finger-drag on the LIVE view selects text instead of just scrolling 🔴 **found 2026-10-13 on the live panel. Cosmetic-to-operational; trivially fixed; would be visible on camera**
+### TODO-89 — LIVE updates twice a second because the client asks twice a second 🟡 **FIXED IN CODE 2026-10-13: measured 2.01 → 5.03 responses/s. Open until the operator confirms it reads as live**
+
+**The operator's report (`RPT`):** *"the LIVE page is noticeably slower than the previous UI."*
+
+**The measurement (`OBS`), taken on the running kiosk without disturbing it:**
+
+| | |
+|---|---|
+| `POLL_MS` | **500** — [`main.js:20`](../pi/web/static/main.js#L20) |
+| Tk UI's tick | **50 ms** — [`app.py:94`](../pi/analyzer_ui/app.py#L94) `refresh_ms: int = 50` |
+| `/api/frame` server latency | **11.1 ms mean, 10.5 median, 15.3 p90, 35.6 max** over 90 requests |
+| Sustained request rate achieved | **9.0/s** with the link unperturbed — `stale false`, `decode_errors 0` |
+| Whole-kiosk CPU | **11.7 % of one core** (transport 6.0, renderer 3.3, GPU 1.1, browser 1.1) |
+| Thermal | 45.5 °C, `throttled=0x0`, ARM at 2.4 GHz, load 0.32 |
+
+**So LIVE refreshes at 2 Hz and the Tk UI it is being compared against refreshed at 20 Hz. That is the entire finding.** It is not acquisition — Gate 4 §5 and §6 established the UART keeps up with large margin — and it is not CPU, GPU, thermal or layout. Nothing is slow; the client simply asks rarely.
+
+**Fix: lower `POLL_MS`.** At 100 ms the server costs ~11 % of one core, measured rather than estimated; at 200 ms, ~5.5 %. **200 ms (5 Hz) is the recommendation** — a 2.5× improvement in perceived responsiveness for about 5 % of one core, leaving the 60 fps TONE animation untouched. 100 ms is available if 5 Hz still reads as sluggish.
+
+**🔺 A second finding, worth fixing only if the first is not enough.** The payload is **31 764 B**, and **`spectra.geometry` is 9 769 B of it — 31 %** — a per-bin frequency table (`lo_hz`, `hi_hz`, `hz`, `dc` × 128) that is **constant for a given geometry and re-sent on every single poll**. Sending it once on change would cut payload and encode cost by about a third. That is a payload-shape change touching `payload.py`, `view_live.js` and `test_web_payload.py`, so it is **not** part of the minimal fix.
+
+**Proof:** a timed observation on the panel at the new cadence showing `decode_errors 0`, `stale false`, driver `overrun 0 / buf_overrun 0`, and the whole-kiosk CPU re-measured — plus the operator saying it reads as live.
+
+### TODO-90 — TONE is the committed design's geometry without its visual layer 🟡 **IMPLEMENTED 2026-10-13 — ring glow VERIFIED on the panel; pulse, emissive bars and the second easing channel NOT yet seen, because the one TONE capture had zero MEASURED bands**
+
+**The operator's report (`RPT`):** *"the TONE page is simplistic and does not match the sophisticated visual designs we previously created."*
+
+**The audit (`OBS`), against [`docs/visual_design_document.md`](../docs/visual_design_document.md) §1c — the specification of record per [`docs/ui/README.md`](../docs/ui/README.md) §2 — and its reference implementation [`concepts/ToneFingerprintSplit.jsx`](../docs/ui/concepts/ToneFingerprintSplit.jsx):**
+
+**Every geometric constant already matches**, which is the good news: `NUM_BANDS 48`, `DISC_RADIUS 3.15`, `MAX_BAR_HEIGHT 4.2`, arcs `0.62π–1.38π` / `−0.38π–0.38π`, two `InstancedMesh`es, pixel ratio 1, height easing at `lerp 0.16`. **The skeleton is right. The finish is missing.**
+
+| Specified in §1c / present in the concept | Shipping `fingerprint_split.js` |
+|---|---|
+| Baseline ring — *"thin white **pulsing** torus (same heartbeat as other versions)"* | ring present, **no pulse** — the concept's `0.45 + sin(t·0.0014)·0.12` opacity breathing is absent |
+| Ring **glow** — second torus, tube 0.075, opacity 0.18 | **absent** |
+| **Cyan reference line** — *"short cyan cylinder anchored to the ring, tracking the nearest frequency"* | **absent** |
+| **Frequency + dB readout** on a 2D overlay | **absent** — there is an HTML legend instead |
+| Overlay title, side labels *"Missing ▼ below ring"* / *"Augmented ▲ above ring"* | **absent** |
+| Bar materials with `emissive` (`0x0f2230` cold, `0x331400` warm) | `MeshLambertMaterial` with colour only — **no emissive**, so bars are lit entirely by the two scene lights and read flat |
+| Pause/resume orbit **button** | internal `pause()`/`resume()` exist for the tab-visibility rule, but **no user-facing control** |
+| Second easing channel (`lerp 0.14` on energy/thickness) | height eased at 0.16; the thickness channel is **not** eased |
+
+**🔺 What shipping has that the concept does not, and which must survive any change:** the **amber markers** for the *"value present, direction not established"* class. They come from `presentation_semantics` and exist because the instrument can report a band it cannot place. The concept predates that contract. **Do not "restore" the concept by deleting them** — that would transform absence into asserted measurement, which ADR-005's governing invariant forbids.
+
+**🛑 Scope fence.** [`docs/ui/README.md`](../docs/ui/README.md) §3.3 resolves TONE as *"the existing 3D Tone Fingerprint, full-bleed, cold/warm language and orbit preserved"*. **This item is fidelity work against §1c, not a redesign**, and nothing here authorises building `ToneFingerprintSurface`, the Waterfall, or anything from the October brief's candidate list.
+
+**Proof:** a panel capture with a range of MEASURED bands, compared against §1c element by element, with a stated verdict for each row of the table above.
+
+### TODO-87 — A finger-drag on the LIVE view selects text instead of just scrolling 🟡 **FIXED IN CODE 2026-10-13 (`#shell, #shell *`). NOT verified on the panel — no scroll occurred in the verification session**
 
 **What.** Dragging to scroll the LIVE view highlights the text it passes over. Captured on the panel at 2026-10-13 21:1x (journal 2026-10-13 (11)): `SOURCE`, `−49.7 dBFS`, `RETURN`, `−50.8 dBFS`, the dBFS explanatory paragraph and the `STATE` heading all left selected in blue.
 
@@ -37,7 +85,28 @@ The physical device is mid-breadboard. This track leads TODO priority over softw
 
 **What was observed (`OBS`).** `source 128 bins · 6 measured · 2 clamped · 120 unmeasured → ring 48 bins · 6 measured · 2 clamped · 40 unmeasured`, with cyan bars below the ring and amber markers on it — the attenuated side and the "value present, no direction asserted" class, both drawn for the first time.
 
-**🔺 The question the first look raises, stated as a question.** In that capture **the cyan bars extend past the bottom of the viewport**, running under the legend and off the frame. That may be correct — bar length encodes magnitude and these were large — or the scale may not be bounded to the view. **It has not been evaluated against the intended scale, and one screenshot of one moment is not enough to call it either way.**
+**🟢 THE QUESTION IS ANSWERED, from the source rather than from the screenshot — it is a layout defect.**
+
+```
+FIT_RADIUS     = DISC_RADIUS * 1.28 = 4.032     fingerprint_split.js:40
+MAX_BAR_HEIGHT = 4.2                            fingerprint_split.js:33
+```
+
+**The camera is fitted to 4.032 and the geometry it must contain extends to 4.2.** The comment on the fit says so plainly — *"The ring plus a margin must fit the NARROW axis"* — it fits **the ring**, and nothing in the fit accounts for a bar. So a fully-extended bar is outside the fitted radius **by construction**, and the 2026-10-13 capture is that arithmetic showing up on the panel. TODO-80 fixed *when* the fit is computed; it did not change *what* the fit contains.
+
+**The fix is one constant, and choosing it is a design decision rather than a maths one.** `FIT_RADIUS` must be at least `MAX_BAR_HEIGHT` plus a margin — but fitting the worst case shrinks the ring in every ordinary frame, where few bands are MEASURED and no bar is near full height. The alternatives are: fit the worst case and accept a smaller ring always; clamp bar height to the fit and accept that a very deep cut reads the same as a slightly less deep one (**which would transform a measurement into a display artefact and is therefore excluded by ADR-005's governing invariant**); or fit the ring and let bars leave the frame, which is today's behaviour and the one thing now known to be wrong.
+
+**🔴 THAT RECOMMENDATION WAS WRONG, and verifying it before implementing is what caught it (journal 2026-10-13 (13)).** `MAX_BAR_HEIGHT` is **not** a maximum: `target = (magnitude / MAX_DB) * MAX_BAR_HEIGHT` has no upper clamp, `MAX_DB = 18`, and the firmware clamps each bin into ±24 dB (`config.h:667`, `data_sender.h:284`). The tallest drawable bar is **(24/18)·4.2 = 5.6**. A scalar radius is also the wrong shape: the only bound invariant under a 360° orbit is a **sphere**, contained when `R/d ≤ sin(halfAngle)` — **sin, not tan**, and the shipping fit uses tan.
+
+| Fit | Bound | Distance | Ring across the panel |
+|---|---|---|---|
+| Today | 4.032 (ring only, tan) | 14.70 | **78 %**, bars clip |
+| Clamp height at 4.2, fit the sphere | 5.152 | 19.48 | 59 % |
+| No clamp, fit what the wire can carry | 6.345 | 23.99 | **48 %** |
+
+**🛑 This needs a decision, not an implementation.** The honest fix shrinks the ring by 39 % in answer to a complaint that it looks too simple, and clamping the height instead is excluded by the standing instruction not to clamp a measurement-driven height to fit a viewport. The arithmetic is pinned by `TestBarsAreNotTallerThanTheCameraIsToldToExpect` in [`test_web_tone.py`](../pi/tests/test_web_tone.py), which **fails on the day the defect is fixed** — update it then rather than loosening it now.
+
+**🔺 Still unevaluated, and separate from the clipping:** whether the ramps, side assignment and coverage-driven thickness match the design once a range of MEASURED bands is present. One screenshot of one moment cannot establish those either.
 
 **What.** Drive the instrument with a signal that produces a range of MEASURED bands, and check against `docs/visual_design_document.md`: does bar length saturate or clip; is the attenuated/boosted side assignment correct against the underlying values; do the colour ramps match the specification; is the legend readable over a fully-populated ring.
 

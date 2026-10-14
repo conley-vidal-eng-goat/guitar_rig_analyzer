@@ -12,6 +12,216 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (13) — **The UI correction pass: LIVE measured at 5.03 polls/s, TONE's glow restored — and the camera fix deliberately NOT made, because verifying it showed the premise was false**
+
+**2026-10-13, ~21:40–22:05 PDT. From `816cdc4`.** Items A, C and D of the
+approved plan implemented; **item B held back on purpose.** No firmware, wiring,
+protocol, autostart or Pi-checkout change.
+
+### 🔴 Item B: the instruction to verify the geometry was the right instruction
+
+The plan was `FIT_RADIUS = MAX_BAR_HEIGHT + margin`. Verifying it first — as
+required — showed **the premise is false**:
+
+```
+target = Math.max(0.03, (magnitude / MAX_DB) * MAX_BAR_HEIGHT)    // no upper clamp
+MAX_DB = 18            MAX_BAR_HEIGHT = 4.2
+config.h:667-668       TF_DB_MIN -18.0   TF_DB_MAX +18.0
+data_sender.h:284      each bin clamped into [TF_DB_MIN-6, TF_DB_MAX+6] = ±24 dB
+```
+
+**`MAX_BAR_HEIGHT` is not a maximum. It is the height of an 18 dB deviation**, and
+the height mapping has no upper clamp while the *colour* ramp does
+(`Math.min(1, magnitude / MAX_DB)`). The wire can carry ±24 dB, so the tallest bar
+the renderer can be asked to draw is **(24/18)·4.2 = 5.6 units** — a third beyond
+the constant whose name promised the bound.
+
+**And a scalar radius is the wrong shape anyway.** The only bound invariant under
+a full 360° orbit is a sphere about the origin, and a sphere of radius R is inside
+a frustum when `R/d ≤ sin(halfAngle)` — **sin, not tan**. The shipping fit uses
+`tan`, which fits a flat disc through the origin and places the camera too close.
+
+| Fit | Bounding radius | Distance | Ring across the panel |
+|---|---|---|---|
+| Today | 4.032 (ring only, `tan`) | 14.70 | **78 %** — and bars leave the frame |
+| Clamp height at 4.2, fit the sphere | 5.152 | 19.48 | 59 % |
+| **No clamp, fit what the wire can carry** | **6.345** | **23.99** | **48 %** |
+
+**So the honest fix shrinks the ring by 39 %, in response to a complaint that the
+ring looks too simple.** That is a design trade I should not make alone, and
+"clamp the height instead" is excluded by the instruction not to clamp a
+measurement-driven height merely to fit the viewport. **Held for a decision.** The
+arithmetic is now a live test (`test_web_tone.py`) that fails the day the defect
+is fixed, which is the right direction for it to fail in.
+
+### What was implemented
+
+| | Change | Verified |
+|---|---|---|
+| **A** | `POLL_MS` 500 → 200 | ✅ **measured** |
+| **C** | `user-select: none` + `-webkit-touch-callout: none` across `#shell` | ⚠️ ships, **not verified on the panel** |
+| **D** | ring pulse, ring glow, `emissive` bars, second easing channel | ⚠️ **glow verified; the rest not** |
+
+**Item C deliberately does not set `touch-action`.** Scrolling, tab taps and the
+TONE drag all depend on default touch behaviour; the nav buttons already set
+`manipulation` on themselves. Suppressing selection must not suppress gestures.
+
+### Item A, measured rather than assumed
+
+The client's poll rate was read **from the server socket's `bytes_sent`** divided
+by the payload size — a direct count, not an inference from CPU:
+
+| | before | after |
+|---|---|---|
+| responses/s | **2.01** | **5.03** (target 5.0) |
+| transport CPU | 6.6 % | **9.7 %** of one core |
+| link | `stale false`, `decode_errors 0` | `stale false`, `decode_errors 0` |
+| thermal | — | 45.5 °C, `throttled=0x0` |
+
+**2.01/s at `POLL_MS = 500` confirms the diagnosis of journal (12) exactly**, and
+5.03/s confirms the fix. The cost is 3.1 points of one core.
+
+### Deployment
+
+518 tests green on the Mac and on the Pi (505 + 13 new). Staged by `rsync`, the
+four changed files' sha256 compared on both machines and identical. **Supervised
+teardown behaved as designed**: one `kill` of supervisor 15401 took 14 processes
+to 0, released the UART, and the trap removed the profile — `[web] removed profile
+/tmp/gra-kiosk.EpXzXt`. Relaunched as supervisor 19456 with the transport (19461)
+the **sole** `ttyAMA0` holder. At no point did two processes hold the port.
+
+### 🔺 What was NOT verified, and will not be claimed
+
+The operator's session produced **one** TONE frame in 100 captures, and it
+carried `0 measured · 128 unmeasured`. From it:
+
+- ✅ **The ring glow is visibly present** — a soft halo the earlier captures do
+  not have.
+- ❌ **The pulse cannot be seen in a single frame.** It is a change over time.
+- ❌ **`emissive` bars cannot be seen when no bar is drawn.**
+- ❌ **The second easing channel** likewise.
+- ❌ **Text selection on scroll**: every capture is at the unscrolled LIVE size
+  (135–140 kB; the scrolled view was 154–161 kB on 2026-10-13 (11)), so **no
+  scroll occurred** and the fix is unverified on hardware.
+
+All five are covered by unit tests, and **a unit test proves the code says the
+thing, not that the panel shows it.** Closing TODO-87 and TODO-90 needs about
+sixty seconds on the panel: play a note, open TONE, hold it for two captures,
+return to LIVE and scroll.
+
+### 🔺 An observation to watch, not a diagnosis
+
+Driver framing errors went **94 → 196** (+102) across this window. `overrun 0`,
+`buf_overrun 0`, `parity 0`, `decode_errors 0`, and the link never went stale, so
+nothing corrupt reached the receiver. The window contains a port close/reopen
+(the teardown and relaunch, each of which reconfigures the line with `stty`) and
+operator activity at the bench. **Which of those it was is not established**, and
+the counter was flat across the whole of §6 before it. Worth re-reading next
+session before it is treated as either normal or a fault.
+
+## 2026-10-13 (12) — **Read-only UI audit: LIVE is not slow, it is infrequent — and TONE has the committed design's geometry without its finish**
+
+**2026-10-13, ~21:25–21:35 PDT. Repository `816cdc4` (the rollback point).
+Read-only: the kiosk was never restarted, the transport kept the UART
+throughout, and no UI file was edited.** Prompted by two operator reports
+(`RPT`): *LIVE is noticeably slower than the previous UI*, and *TONE is
+simplistic against the designs we developed*.
+
+### Separating the four things that could have meant "slow"
+
+The instruction was to measure before recommending, and not to assume the
+transport. Measured on the running kiosk:
+
+| Layer | Measurement | Verdict |
+|---|---|---|
+| UART acquisition | 25.6 frames/s, driver `overrun 0`, `buf_overrun 0` (§5, §6) | **not the bottleneck** |
+| HTTP response | **11.1 ms mean, 10.5 median, 15.3 p90, 35.6 max** over 90 requests | **not the bottleneck** |
+| Sustained request rate | **9.0/s achieved**, link unperturbed: `stale false`, `decode_errors 0` | **headroom exists** |
+| Browser rendering | renderer 3.3 %, GPU process 1.1 %, browser 1.1 % of one core | **not the bottleneck** |
+| Whole kiosk | **11.7 % of one core**, 45.5 °C, `throttled=0x0`, ARM 2.4 GHz, load 0.32 | **the Pi is nearly idle** |
+
+### 🔴 The answer: `POLL_MS = 500`
+
+[`main.js:20`](../pi/web/static/main.js#L20) polls every **500 ms**, so LIVE
+refreshes **twice a second**. The Tk UI it is being compared against ticks at
+`refresh_ms = 50` ([`app.py:94`](../pi/analyzer_ui/app.py#L94)) — **twenty times a
+second.**
+
+**The web client is ten times less frequent than the thing the operator is
+comparing it to.** That is the whole of the report. Nothing is slow; the client
+asks rarely. Subjective "sluggish" and objective "2 Hz" are the same observation
+seen from two sides, and the only reason it looked mysterious is that the word
+"slow" invites you to go looking for something consuming time.
+
+**The fix is one constant**, and the measurement sizes it: at 100 ms the server
+costs ~11 % of one core, at 200 ms ~5.5 %. **200 ms is the recommendation** —
+2.5× the refresh rate for about 5 % of one core, leaving TONE's 60 fps untouched.
+TODO-89.
+
+**A second finding, deliberately not part of the minimal fix.** The payload is
+**31 764 B**, of which **`spectra.geometry` is 9 769 B — 31 %** — a per-bin
+frequency table that is **constant for a given geometry and re-sent on every
+poll**. Sending it once would cut a third of the payload and its encode cost. It
+is a payload-shape change touching three files including the tests, so it is
+filed, not bundled.
+
+### TONE: the skeleton is right and the finish is missing
+
+Audited against `visual_design_document.md` **§1c Split Tone Fingerprint**, which
+[`docs/ui/README.md`](../docs/ui/README.md) §2 establishes as the specification of
+record, with `concepts/ToneFingerprintSplit.jsx` as its reference implementation.
+**I did not look for a better-looking design to adopt; §3.3 resolves TONE as "the
+existing 3D Tone Fingerprint, full-bleed", so this is fidelity work, not a
+redesign.**
+
+**Every geometric constant already matches**: `NUM_BANDS 48`, `DISC_RADIUS 3.15`,
+`MAX_BAR_HEIGHT 4.2`, both arcs, two `InstancedMesh`es, pixel ratio 1, height
+easing `lerp 0.16`.
+
+**Missing**: the ring's **pulse** (the spec says *"thin white pulsing torus"*; the
+concept breathes its opacity at `0.45 + sin(t·0.0014)·0.12`), the **ring glow**
+(a second torus at opacity 0.18), the **cyan reference line** tracking the
+nearest frequency, the **frequency and dB readout**, the overlay title and side
+labels, **`emissive` on the bar materials** (shipping is `MeshLambertMaterial`
+with colour only, so bars read flat), the **pause/resume orbit button**, and the
+second easing channel. TODO-90 has the full table.
+
+**🔺 One thing shipping has that the concept does not, and it must survive any
+fidelity work:** the amber markers for *"value present, direction not
+established"*. They exist because the instrument can report a band it cannot
+place, and the concept predates that contract. Restoring the concept by deleting
+them would transform absence into asserted measurement.
+
+### 🟢 TODO-88's open question, answered from the source
+
+```
+FIT_RADIUS     = DISC_RADIUS * 1.28 = 4.032
+MAX_BAR_HEIGHT = 4.2
+```
+
+**The camera is fitted to 4.032 and the geometry it must contain extends to
+4.2.** The fit's own comment says it fits *"the ring plus a margin"* — and that is
+exactly what it does; nothing in it accounts for a bar. **A fully-extended bar is
+outside the view by construction**, and last night's capture is that arithmetic
+appearing on the panel. TODO-80 fixed *when* the fit is computed; it never
+changed *what* the fit has to contain.
+
+**The fix is one constant, but choosing it is a design decision.** Fitting the
+worst case shrinks the ring in every ordinary frame. Clamping bar height instead
+would make a very deep cut read like a shallower one — **excluded**, because that
+is a measurement turned into a display artefact. Recommendation:
+`FIT_RADIUS = MAX_BAR_HEIGHT + DISC_RADIUS * 0.08`, a ~4 % smaller ring in
+exchange for never truncating a value the instrument reported.
+
+### What this audit did not do
+
+**No UI file was edited. The kiosk was not restarted and never lost the UART.**
+No measurement of the *rendered* frame rate was taken — that needs a probe in the
+page, and the previous one was a scratch-only modification. The CPU figures are
+process-level, not per-frame. And nothing here evaluates whether the bar ramps,
+side assignment or coverage-driven thickness match the design; that still needs a
+capture with a range of MEASURED bands.
+
 ## 2026-10-13 (11) — **The web client rendered a live Teensy frame on the physical panel. First time in the project's history, and it held for six minutes without losing a byte**
 
 **2026-10-13, 21:12:14–21:19:49 PDT. Repository `93a4d58`, staged tree

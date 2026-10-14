@@ -17,7 +17,14 @@ import { createInfoView } from "./view_info.js";
 import { esc } from "./ui.js";
 
 const TABS = ["live", "tone", "lab", "info"];
-const POLL_MS = 500;
+// 200 ms, not 500. Measured on the Pi 2026-10-13 (journal (12)): the transport
+// answers /api/frame in 11.1 ms mean / 15.3 ms p90 and sustains 9 req/s with the
+// link unperturbed, while the whole kiosk used 11.7% of one core. The 500 ms this
+// used to be meant LIVE refreshed twice a second against the Tk UI's twenty, and
+// that difference — not any slow code — is what "the web UI feels slower" was.
+// 5 Hz costs about 5.5% of one core. It is an intermediate target: if it still
+// reads as sluggish, lower it again rather than assuming something is wrong.
+const POLL_MS = 200;
 
 const host = (name) => document.querySelector(`.view[data-view="${name}"]`);
 

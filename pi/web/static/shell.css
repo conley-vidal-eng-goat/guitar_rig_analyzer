@@ -21,6 +21,22 @@ html, body {
   -webkit-text-size-adjust: none;
 }
 
+/* This is an appliance with no keyboard and no pointer. A finger-drag to scroll
+   used to select the text it passed over — observed on the panel 2026-10-13,
+   leaving SOURCE / RETURN / their values highlighted in blue (TODO-87). Selected
+   text persists, can raise a selection callout over the kiosk, and would appear
+   in any footage taken while scrolling.
+
+   Scoped to the shell rather than to `*`, and `touch-action` is deliberately NOT
+   set here: scrolling, tab taps and the TONE drag all depend on default touch
+   behaviour, and the nav buttons already set `touch-action: manipulation`
+   themselves. */
+#shell, #shell * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 #shell {
   position: absolute;
   inset: 0;

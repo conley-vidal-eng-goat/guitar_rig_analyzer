@@ -44,6 +44,14 @@ const LEFT_END = Math.PI * 1.38;
 const RIGHT_START = -Math.PI * 0.38;
 const RIGHT_END = Math.PI * 0.38;
 
+const RING_GLOW_COLOR = 0x38506b;      // §1c reference implementation
+const COLD_EMISSIVE = 0x0f2230;        // §1c reference implementation
+const WARM_EMISSIVE = 0x331400;        // §1c reference implementation
+// Two easing channels, per §1c: height at 0.16 and bar thickness at 0.14. The
+// second was not ported, so coverage changes snapped while height eased.
+const EASE_HEIGHT = 0.16;
+const EASE_COVERAGE = 0.14;
+
 const COLD_COLOR = new THREE.Color("#4cc9f0");
 const COLD_ALERT_COLOR = new THREE.Color("#90e0ef");
 const WARM_COLOR = new THREE.Color("#ff7b00");
@@ -126,12 +134,27 @@ export function createFingerprint(container) {
   scene.add(under);
 
   // Baseline ring — the zero reference. It is NOT data and never varies with it.
+  //
+  // The design document calls for a "thin white PULSING torus (same heartbeat as
+  // other versions)" (visual_design_document.md §1c) with a wider, dimmer glow
+  // behind it. Both were specified and neither was ported; restored 2026-10-13
+  // against concepts/ToneFingerprintSplit.jsx. The pulse is a property of the
+  // REFERENCE, not of the data — it must never be driven by a measurement, or a
+  // reader could mistake the instrument's heartbeat for the instrument's signal.
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(DISC_RADIUS, 0.025, 10, 160),
     new THREE.MeshBasicMaterial({ color: RING_COLOR, transparent: true, opacity: 0.75 })
   );
   ring.rotation.x = Math.PI / 2;
   scene.add(ring);
+
+  const ringGlow = new THREE.Mesh(
+    new THREE.TorusGeometry(DISC_RADIUS, 0.075, 8, 128),
+    new THREE.MeshBasicMaterial({ color: RING_GLOW_COLOR, transparent: true,
+                                 opacity: 0.18, depthWrite: false })
+  );
+  ringGlow.rotation.x = Math.PI / 2;
+  scene.add(ringGlow);
 
   const divider = new THREE.Mesh(
     new THREE.CylinderGeometry(0.012, 0.012, DISC_RADIUS * 2.25, 8),
@@ -144,8 +167,12 @@ export function createFingerprint(container) {
   const rightAngles = bandAngles(RIGHT_START, RIGHT_END);
 
   const barGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
-  const coldMat = new THREE.MeshLambertMaterial({ color: COLD_COLOR });
-  const warmMat = new THREE.MeshLambertMaterial({ color: WARM_COLOR });
+  // `emissive` is specified by the reference implementation and was not ported.
+  // Without it the bars are lit only by the two scene lights and read flat when a
+  // band faces away from the key light. It is a constant self-illumination, so it
+  // cannot encode a value and cannot vary with one.
+  const coldMat = new THREE.MeshLambertMaterial({ color: COLD_COLOR, emissive: COLD_EMISSIVE });
+  const warmMat = new THREE.MeshLambertMaterial({ color: WARM_COLOR, emissive: WARM_EMISSIVE });
   const missingBars = new THREE.InstancedMesh(barGeo, coldMat, NUM_BANDS);
   const boostBars = new THREE.InstancedMesh(barGeo, warmMat, NUM_BANDS);
   for (const m of [missingBars, boostBars]) {
@@ -170,6 +197,7 @@ export function createFingerprint(container) {
 
   // Eased bar heights, and the class each was eased under. A class change snaps.
   const eased = new Array(NUM_BANDS).fill(0);
+  const easedCov = new Array(NUM_BANDS).fill(1);
   const easedCls = new Array(NUM_BANDS).fill("UNMEASURED");
 
   let segments = [];
@@ -201,10 +229,14 @@ export function createFingerprint(container) {
         const target = Math.max(0.03, (magnitude / MAX_DB) * MAX_BAR_HEIGHT);
         // Ease only while the class is unchanged; otherwise snap. A band must
         // never animate through a magnitude it never had.
-        eased[i] = easedCls[i] === "MEASURED" ? lerp(eased[i], target, 0.16) : target;
+        eased[i] = easedCls[i] === "MEASURED" ? lerp(eased[i], target, EASE_HEIGHT) : target;
+
+        const cov = seg.coverage ?? 1;
+        easedCov[i] = easedCls[i] === "MEASURED"
+          ? lerp(easedCov[i], cov, EASE_COVERAGE) : cov;
         easedCls[i] = "MEASURED";
 
-        const radius = BAR_RADIUS_BASE + (seg.coverage ?? 1) * BAR_RADIUS_GAIN;
+        const radius = BAR_RADIUS_BASE + easedCov[i] * BAR_RADIUS_GAIN;
         const below = db < 0;
         const color = colorForMagnitude(magnitude, below ? "missing" : "boost");
         if (below) {
@@ -254,6 +286,12 @@ export function createFingerprint(container) {
   let rafId = 0;
 
   function draw() {
+    // The reference's heartbeat: opacity 0.45 +/- 0.12 at ~0.22 Hz, with the glow
+    // tracking it at a quarter depth. Driven by the wall clock, never by data.
+    const pulse = 0.45 + Math.sin(performance.now() * 0.0014) * 0.12;
+    ring.material.opacity = pulse;
+    ringGlow.material.opacity = pulse * 0.25;
+
     camera.position.set(
       Math.sin(yaw) * Math.cos(pitch) * cameraDistance,
       -Math.sin(pitch) * cameraDistance,
