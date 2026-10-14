@@ -1,8 +1,12 @@
 # Gate 4 — handing `/dev/ttyAMA0` from the Tk UI to the web client
 
-**Written 2026-10-13 after Gates 0–3 passed. Nothing in this document has been
-executed.** It is the procedure for the one step ADR-005 §2 condition 2 has
-never cleared: a browser on this Pi rendering a live Teensy frame.
+**Written 2026-10-13 after Gates 0–3 passed.** It is the procedure for the one
+step ADR-005 §2 condition 2 has never cleared: a browser on this Pi rendering a
+live Teensy frame.
+
+**Execution state: §1 has been run and passed (2026-10-13 ~20:45, `08dc450`,
+journal 2026-10-13 (6)). §2 onward has NOT been run.** Each section says so at
+its head; do not assume a section is proven because the one above it is.
 
 Companion to [`pi_resume_from_cold.md`](pi_resume_from_cold.md), which covers
 getting from cold to a trustworthy link. This covers the handoff itself.
@@ -48,20 +52,58 @@ XWayland, so an SSH session that inherits no `DISPLAY` is the obvious failure.
 It can be proven in advance, because **a second Tk instance backed by a fixture
 needs no serial port at all**:
 
+> ## ✅ EXECUTED AND PASSED — 2026-10-13, ~20:45, repository `08dc450`
+>
+> Journal 2026-10-13 (6). The command below is the one that **actually worked**,
+> not the one originally drafted here. **Do not reconstruct it from memory;
+> re-derive it from the live process as step 1 does.**
+
+**Step 1 — read the display environment, do not assume it.** The authority is the
+process that is drawing on the panel right now:
+
+```sh
+tr '\0' '\n' < /proc/1505/environ | grep -E '^(DISPLAY|WAYLAND_DISPLAY|XDG_RUNTIME_DIR|XAUTHORITY)='
+pgrep -af -i xwayland          # confirm the X server exists and how it was started
+ls -la /tmp/.X11-unix/         # confirm the socket
+python3 -c "import tkinter; print(tkinter.TkVersion)"
+```
+
+Observed 2026-10-13: `DISPLAY=:0`, `XAUTHORITY=/home/conley/.Xauthority`,
+`XDG_RUNTIME_DIR=/run/user/1000`, `WAYLAND_DISPLAY=wayland-0`; Xwayland pid 1568
+running **`-auth /home/conley/.Xauthority :0`**; socket `X0`; Tk 8.6.
+
+🔺 **`XAUTHORITY` was missing from the first draft of this procedure.** The X
+server runs with authority enabled, and while an X client defaults to
+`$HOME/.Xauthority` and would probably have connected anyway, *probably* is not
+a recovery path. This is why step 1 reads rather than assumes.
+
+**Step 2 — launch, with all four variables taken verbatim:**
+
 ```sh
 cd ~/gra-stage-todo82
-setsid nohup env DISPLAY=:0 XDG_RUNTIME_DIR=/run/user/$(id -u) \
+setsid nohup env DISPLAY=:0 \
+                XAUTHORITY=/home/conley/.Xauthority \
+                XDG_RUNTIME_DIR=/run/user/1000 \
   sh pi/run_ui.sh --fixture ../ai/evidence/phase10-result-1khz.bin \
   >/tmp/tk-rehearsal.log 2>&1 &
 echo $! > /tmp/tk-rehearsal.pid
-sleep 5
+sleep 8
 cat /tmp/tk-rehearsal.log
-ls -l /proc/$(cat /tmp/tk-rehearsal.pid)/fd | grep ttyAMA || echo "no serial device: correct"
-WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/$(id -u) grim /tmp/gate4-01-tk-rehearsal.png
+ls -l /proc/$(cat /tmp/tk-rehearsal.pid)/fd
+WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 grim /tmp/gate4-01-tk-rehearsal.png
 ```
 
 **Expected observation:** a second Tk window on the panel, drawing the fixture,
 holding **no** serial descriptor. Pid 1505 untouched throughout.
+
+**🛑 A started process is not a window.** Verify from the capture, by the three
+things that discriminate the rehearsal from production: the header reads
+**`fixture:phase10-result-1khz.bin`** not `serial:/dev/ttyAMA0`, the session is
+the fixture's (**7**) not the live one, and the link block shows a large *lead*
+discard with **interior 0** — the signature of attaching to a recorded stream
+mid-file. Observed 2026-10-13: `306 frames ok · discarded 1598 (lead 1598,
+interior 0)`, descriptors `/dev/null`, two log fds, **one X11 socket**, two
+pipes, and no serial device anywhere.
 
 **Failure response**
 
@@ -70,6 +112,13 @@ holding **no** serial descriptor. Pid 1505 untouched throughout.
 | `couldn't connect to display ":0"` | Try `DISPLAY=:1`, then `ls /tmp/.X11-unix/`. **Resolve it here.** This is the whole point of the rehearsal |
 | No window, no error | Check `/tmp/tk-rehearsal.log`. A Tk import failure is a staging problem, not a display one |
 | It works | **Record the exact command that worked.** That string is the rollback for the rest of the session |
+
+🔺 **Counting processes: use `pgrep -af`, never `pgrep -c`.** On 2026-10-13
+`pgrep -c analyzer_ui` returned **0** while `pgrep -af analyzer_ui` printed pid
+1505 — `-c` without `-f` matches the process *name*, which is `python3`, not the
+command line. A count taken that way reads as "Tk is gone" at the exact moment
+that misreading is most expensive. Count descriptor holders instead; that is the
+question actually being asked.
 
 Then stop it by pid and confirm the original is unaffected:
 

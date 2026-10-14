@@ -12,6 +12,120 @@ How to use this file:
 
 ---
 
+## 2026-10-13 (6) — **Gate 4 §1: the keyboard-free recovery path is proven, before the UART is given up rather than after.** Reading the running process's environment found a gap the drafted command had
+
+**2026-10-13, ~20:45 PDT. Repository `08dc450`. Staged tree
+`/home/conley/gra-stage-todo82` (content of `3399a94` + firmware headers +
+three fixtures), 505 tests green on the Pi.**
+
+**No firmware change, no wiring change, no autostart change, no UART access, no
+reboot.** The production Tk ran undisturbed on **pid 1505** throughout — started
+19:11:26, uptime 1:32:03 at the end — and held `fd 3 -> /dev/ttyAMA0` as the
+sole holder from first command to last.
+
+### Why this stage exists at all
+
+The documented recovery — relaunching Tk over SSH — had **never been run**.
+[`run_ui.sh`](../pi/run_ui.sh) has no display discovery (only `run_web.sh` does),
+and Tk draws through XWayland, so an SSH session inheriting no `DISPLAY` is the
+obvious failure. Finding that out *after* the handoff is the one outcome the
+procedure exists to prevent, and a fixture-backed second instance proves the
+mechanism without touching the serial port.
+
+### 🔺 The pre-flight found a gap in the procedure I had just committed
+
+`08dc450`'s §1 command set `DISPLAY` and `XDG_RUNTIME_DIR`. Reading the
+environment of the process that is **actually drawing on the panel right now**
+rather than assuming it (`/proc/1505/environ`, `OBS`):
+
+```
+WAYLAND_DISPLAY=wayland-0   XDG_RUNTIME_DIR=/run/user/1000
+DISPLAY=:0                  XAUTHORITY=/home/conley/.Xauthority
+```
+
+and Xwayland is **pid 1568, `-auth /home/conley/.Xauthority :0`** — so the X
+server is running with authority enabled, and `XAUTHORITY` was missing from the
+drafted command. It would most likely have worked anyway, because X clients
+default to `$HOME/.Xauthority` — **"most likely" is the problem.** The procedure
+has been corrected to carry all four variables, taken verbatim from the live
+process. Assuming a display environment and reading one are different acts, and
+only one of them is evidence.
+
+### What was run and what was observed — all `OBS`
+
+```sh
+setsid nohup env DISPLAY=:0 XAUTHORITY=/home/conley/.Xauthority \
+                XDG_RUNTIME_DIR=/run/user/1000 \
+  sh pi/run_ui.sh --fixture ../ai/evidence/phase10-result-1khz.bin &
+```
+
+Rehearsal **pid 10219**. Its complete descriptor table:
+
+```
+0 -> /dev/null   1,2 -> /tmp/tk-rehearsal.log   3 -> socket:[126209]   4,5 -> pipe
+```
+
+**No serial device, and an X11 socket** — which is the same fd proving it
+reached the display. `ttyAMA0` sweep across every process: **1505 only.**
+
+**The window was verified on the panel, not inferred from the process starting**
+(`grim` on the live compositor):
+
+| | |
+|---|---|
+| Source | **`fixture:phase10-result-1khz.bin`** — not `serial:/dev/ttyAMA0` |
+| Session | **7** — the fixture's recorded session, not 47 |
+| Link | `LINK STALE`, frames ok 306, `discarded 1598 (lead 1598, interior 0)` |
+
+Every one of those discriminates the rehearsal from the production instance
+unambiguously. 1598 bytes of **lead** discard with **zero interior** is the
+correct signature of attaching to a recorded stream mid-file.
+
+Stopped by pid after confirming the pid still named a `--fixture` process. The
+panel returned to `serial:/dev/ttyAMA0 · session 47 · LINK UP`.
+
+### An unplanned observation worth more than the rehearsal
+
+The production panel at the end read **`frames ok 122920 · CRC fail 1 ·
+discarded 1023 (lead 1, interior 1022)`**.
+
+Those loss counters are **identical to the ~20:23 reading**, after a further
+**33 126 frames**. So since the 20:05 event there has been **no further loss at
+all** — zero additional CRC failures, zero additional interior discards, over
+roughly half an hour of continuous reception.
+
+That is evidence the 20:05 anomaly was a **single event, not an ongoing fault**.
+It does not identify the event, and it does not bear on its cause. It does mean
+the link is presently healthy, which is a precondition for Gate 4 that nobody
+had checked.
+
+### A trap for anyone reading process counts
+
+`pgrep -c analyzer_ui` returned **0** in the same breath that
+`pgrep -af analyzer_ui` printed pid 1505. `-c` without `-f` matches the process
+*name* — which is `python3` — while `-af` matches the full command line. **A
+count taken that way reads as "Tk is gone".** Use `-f`, or better, count the
+descriptor holders, which is the thing actually being asked about.
+
+### Demonstrated vs. still unverified
+
+**Demonstrated:** a keyboard-free Tk relaunch over SSH puts a window on the
+physical panel, with the exact command now recorded; it needs no serial port;
+and stopping it by pid leaves the production instance and its UART descriptor
+untouched.
+
+**Not demonstrated, and not claimed:** the handoff itself; that the same command
+works with `--serial` (it will contend for a port that is free by then, which is
+a different condition); the acquisition cadence (TODO: still the open question);
+vertical scrolling on the web LIVE view; any run longer than ~25 s; ADR-005 §2
+condition 4, reconnect.
+
+### Next
+
+Gate 4 §2 onward, on authorisation. The safety prerequisite is met: there is now
+a way back that does not need a keyboard, and it was proven while the instrument
+was still working.
+
 ## 2026-10-13 (5) — **The Instrument In tip was shorted to GND, and the Teensy restarted during the evening. Three independent records bracket the same two minutes; the causal link is not established**
 
 Software session (web UI, launcher fix `3399a94`). **No firmware change, no
