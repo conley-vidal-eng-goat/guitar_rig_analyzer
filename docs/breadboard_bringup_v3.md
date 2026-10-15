@@ -10,7 +10,7 @@
 
 *v1 and v2 are kept alongside for cross-reference. v3 supersedes both.*
 
-**v1** ([breadboard_bringup.md](breadboard_bringup.md)) and **v2** ([breadboard_bringup_v2.md](breadboard_bringup_v2.md)) are kept alongside for cross-reference. v3 supersedes both.
+**v1** (`breadboard_bringup.md`) and **v2** (`breadboard_bringup_v2.md`) are superseded by v3. **Neither is present in this repository** — this project's version control began after v3 was in use, so they exist only outside it. Treat any reference to them below as a pointer to history, not to a file you can open.
 
 ---
 
@@ -1980,7 +1980,7 @@ Each check is one line you read out loud. Tick each as you confirm.
 - [ ] Phase 9: `1`, `2`, `3`, `4` all PASS.
 - [ ] Phase 10: Pi link — common ground verified, HELLO reports protocol v2, known data renders, **clamped bins marked rather than drawn**, CRC rejection and unknown-packet tolerance demonstrated, reboot recovery demonstrated, and the **T1 acceptance matrix** passed: all four runs recorded, runs 2-4 indistinguishable from the `_NONE` control on `block_ms_*`, and `blocks_skipped = 0` in every run.
 
-When every box is ticked: photograph the entire board, save the serial logs, and update [docs/bench_runbook.md](bench_runbook.md) §8 with the date. The breadboard is signed off and ready to translate into a KiCad schematic.
+When every box is ticked: photograph the entire board, save the serial logs, and record the date in [`ai/todo.md`](../ai/todo.md) against the sign-off item. *(This step originally pointed at a `docs/bench_runbook.md` §8 that does not exist in this repository; the as-built record in [`docs/asbuilt/`](asbuilt/) and the todo sign-off item carry that role instead.)* The breadboard is signed off and ready to translate into a KiCad schematic.
 
 ---
 
@@ -2591,4 +2591,4 @@ whose provenance nobody could vouch for. **The bytes remain in git history at
 
 ---
 
-*End of v3 bring-up document. v1 is preserved at [breadboard_bringup.md](breadboard_bringup.md), v2 at [breadboard_bringup_v2.md](breadboard_bringup_v2.md). When phase 9 signs off, update CHANGELOG.md and start the PCB layout.*
+*End of v3 bring-up document. v1 and v2 are superseded and are **not in this repository** (see the front matter). When Phase 9 signs off, start the PCB layout.*
