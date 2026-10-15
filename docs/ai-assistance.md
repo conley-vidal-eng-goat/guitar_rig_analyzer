@@ -41,10 +41,11 @@ diodes, the 1/4" and XLR audio jacks, and the Raspberry Pi with its
 touchscreen. My bosses at 4Wall taught me to solder; I did this assembly
 myself.
 
-**Every measurement.** Each voltage, resistance, continuity and scope reading
-in this repository was taken by me at the bench. In this project those readings
-are not a formality — they are repeatedly the thing that decided between two
-competing explanations.
+**The bench measurements.** I performed the physical bench measurements during
+construction and troubleshooting — the voltage, resistance, continuity and scope
+readings taken on the board. AI helped plan those tests, interpret what came
+back, and write the records. In this project the readings are not a formality;
+they are repeatedly the thing that decided between two competing explanations.
 
 **Questioning the written procedure.** The bring-up procedure was developed
 with AI, and building the board exposed **eleven defects in it**, two of which
@@ -54,12 +55,11 @@ the document said and what the board in front of me actually did.
 ## What AI did
 
 I came to Claude and ChatGPT because I knew considerably more about hardware
-than software. **Claude generated most of the Teensy firmware and most of the
-Raspberry Pi code. I am not the independent author of that code and I do not
-claim to be.** I understand what each subsystem is for and how the pieces fit
-together. I cannot explain much of the implementation line by line, and how
-well I understand it varies by subsystem — the measurement link and the
-presentation boundary I follow well, the DSP internals much less so.
+than software. **Claude generated most of the Teensy firmware and Raspberry Pi
+software. I am not the independent author of that code and I do not claim to
+be.** I directed parts of the architecture and behaviour, tested the
+implementation on physical hardware, and worked with AI to investigate
+problems.
 
 AI also co-wrote the breadboard bring-up procedure, the architecture decision
 records, and the engineering journal.
@@ -102,19 +102,16 @@ grew out of it is not mine alone.
 
 Mid-way through Phase 6, the procedure told me to run a jumper from breadboard
 column 45 to Teensy pin 14 and described that column as free. I had taken a
-continuity reading that did not behave, and I remembered building **"something
-else with 2 resistors"** there. I asked whether that was the cause before
-fitting the jumper.
+continuity reading that did not behave, and I remembered putting two resistors
+there earlier in the build. The instructions didn't match what was physically on
+my breadboard, so I stopped and asked about it before connecting anything.
 
-It was. Column 45 is the midpoint of the +5 V / ground divider that generates
-the analog reference rail, built back in Phase 1. The firmware already on the
-board sets pin 14 as an output and drives it high on command, so fitting that
-jumper would have put a 3.3 V push-pull output directly onto the analog
-reference — on the next power-up. Phase 6 was halted before the board was
+That was the right call. Column 45 is the midpoint of the +5 V / ground divider
+that generates the analog reference rail, built back in Phase 1. The firmware
+already on the board sets pin 14 as an output and drives it high on command, so
+fitting that jumper would have put a 3.3 V push-pull output directly onto the
+analog reference — on the next power-up. Phase 6 was halted before the board was
 energised.
-
-What I contributed was knowing my own board and not believing a document. No
-AI, no drawing and no photograph supplied "something else with 2 resistors."
 
 ### 3. The OPA1642 bias — **collaborative, and the record is specific about who did what**
 
@@ -127,10 +124,13 @@ was not.** That is what makes the defect easy to miss.
 
 - **AI found the defect**, by checking the manufacturer's datasheet against the
   bring-up procedure.
-- **My measurements proved it**: 2.480 V at the input with the chip removed,
-  2.153 V with it installed — a 327 mV droop showing the input stage loading a
-  node it should not — and 159 kΩ pin-to-pin establishing the part was **not
-  damaged** and should stay in service.
+- **My measurements localised it**: 2.480 V at the input with the chip removed
+  and 2.153 V with it installed — a 327 mV droop showing the input stage loading
+  a node it should not. A 159 kΩ pin-to-pin reading showed **no direct short**,
+  which was enough reason to investigate the bias conditions before replacing
+  the part. It did not by itself prove the IC was undamaged; what showed the
+  part was working was that it passed signal correctly after the bias was
+  fixed.
 - **The fix was developed together.** I remember suggesting a resistor-based
   approach to bring the bias down. AI had also written a divider up as one of
   three options, and had recommended a different one (raising the analog supply
@@ -180,7 +180,7 @@ automatically — sometimes I was right to push back, and sometimes the thing
 that turned out to be wrong was my own report.
 
 What I can defend is this: I identified a problem I wanted to measure, chose
-and bought the hardware, built the instrument with my hands, took every
-measurement, and insisted that the documentation tell the difference between
-what we had written and what we had actually proven. The code that runs on it
-is largely not mine.
+and bought the hardware, built the instrument with my hands, took the bench
+readings during construction and troubleshooting, and insisted that the
+documentation tell the difference between what we had written and what we had
+actually proven. The code that runs on it is largely not mine.

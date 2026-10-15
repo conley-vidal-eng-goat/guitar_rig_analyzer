@@ -11,11 +11,12 @@ presents truth"* — the display can never originate a measurement value or deci
 whether one is valid.
 
 > **I built the hardware. AI wrote most of the software.** I designed the
-> architecture, selected and bought the components, assembled the instrument and
-> took every measurement in this repository; Claude generated most of the
-> firmware and the Pi code. All 159 commits carry an AI co-authorship trailer.
-> The full accounting is in **[docs/ai-assistance.md](docs/ai-assistance.md)**.
-> — Conley Vidal
+> architecture, selected and bought the components, assembled the instrument,
+> and performed the physical bench measurements during construction and
+> troubleshooting. Claude generated most of the firmware and the Pi code, and
+> helped plan tests, interpret results and write the records. All 159 commits
+> carry an AI co-authorship trailer. The full accounting is in
+> **[docs/ai-assistance.md](docs/ai-assistance.md)**. — Conley Vidal
 
 | The panel, rendering live telemetry | A completed measurement |
 |---|---|
@@ -74,9 +75,13 @@ explicitly marked unproven, and the two are never collapsed.
   demonstrates it is the *correct* curve.
 - **T1 — "transmission must not perturb acquisition" — is not adjudicated.** The
   first hardware run of the timing harness exposed a defect *in the harness*: it
-  compared an audio-block counter against an analysis-block stride and reported
-  44,490 skipped blocks that never happened. Acquisition was healthy; the
-  instrument measuring it was not.
+  compared an audio-block counter against an analysis-block stride, and its
+  reported figure of 44,490 skipped blocks was **arithmetic, not observation.**
+  That count is invalidated. Acquisition did look healthy in that particular
+  run — three independent corroborations in the record — but **a defective
+  harness cannot adjudicate the requirement**, so T1 stays open rather than
+  passing. Invalidating one false number is not the same as demonstrating the
+  timing requirement is met.
   [The defect record](ai/evidence/2026-09-29-t1-harness-block-stride-defect.md).
 - **`RESULT` carries no per-bin clamp mask**, so a value sitting on the −24 dB
   rail cannot be distinguished from a real measurement. The UI says so on screen
@@ -167,13 +172,17 @@ graded.
 1. **[The OPA1642 common-mode defect](ai/journal.md)** *(journal `2026-09-05 (1)`)* —
    the buffer was biased outside the part's specified input range. Two plausible
    hardware hypotheses were wrong; the real defect was in the written procedure.
-   The suspect chip was **exonerated by measurement**, not replaced on suspicion.
+   A resistance reading showed no direct short, so the bias conditions were
+   investigated **before** replacing the part — which turned out to be the right
+   order.
 2. **[Phase 6 halted on column 45](ai/journal.md)** *(journal `2026-09-15 (1)`)* —
-   the procedure called a breadboard column free. I remembered building
-   something there and asked before fitting the jumper; the next power-up would
-   have driven a 3.3 V output onto the analog reference rail.
+   the procedure called a breadboard column free, but I remembered putting two
+   resistors there earlier in the build. The instructions did not match my
+   board, so I stopped and asked before connecting anything. The next power-up
+   would have driven a 3.3 V output onto the analog reference rail.
 3. **[The timing harness that lied](ai/evidence/2026-09-29-t1-harness-block-stride-defect.md)** —
-   44,490 skipped audio blocks that never happened.
+   a reported figure of 44,490 skipped audio blocks that was arithmetic rather
+   than observation.
 4. **[The buffer DC checkpoint](ai/evidence/2026-10-08-ampout-buffer-dc-checkpoint.md)** —
    a record that declines to promote its own claims: *"no numbers were recorded,
    so that is `RPT` and is not evidence of a value."*
@@ -289,12 +298,15 @@ proven"* above.
 ## My contribution, and AI's
 
 I identified the problem, chose the two-processor architecture, selected and
-bought the hardware, soldered and assembled the instrument, took every
-measurement in this repository, and insisted the documentation distinguish what
-had been *written* from what had been *proven* on the board.
+bought the hardware, soldered and assembled the instrument, performed the
+physical bench measurements during construction and troubleshooting, and
+insisted the documentation distinguish what had been *written* from what had
+been *proven* on the board.
 
-Claude generated most of the firmware and most of the Pi code. I am not its
-independent author.
+Claude generated most of the Teensy firmware and Raspberry Pi software. I
+directed parts of the architecture and behaviour, tested the implementation on
+physical hardware, and worked with AI to investigate problems. I am not the
+independent author of that code.
 
 Full accounting, with three cases graded individually:
 **[docs/ai-assistance.md](docs/ai-assistance.md)**.

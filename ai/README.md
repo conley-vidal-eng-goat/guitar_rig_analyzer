@@ -19,8 +19,9 @@ I am **Conley Vidal**. I designed the system architecture, selected and bought
 the hardware, and physically built this instrument — I soldered the OPA1642
 onto its surface-mount adapter, wired the breadboard, installed the relays and
 their flyback diodes, wired the audio jacks, and assembled the Raspberry Pi
-and its touchscreen. Every voltage, resistance and continuity reading recorded
-in this directory was taken by me at the bench.
+and its touchscreen. I performed the physical bench measurements recorded here
+during construction and troubleshooting; AI helped plan the tests, interpret the
+results and write them up.
 
 **`ai/journal.md` is written in the first person by an AI**, about work the AI
 and I did together. Its header says it is written for AI readers, and that is
@@ -100,18 +101,21 @@ of the system by myself.
 1. **[The OPA1642 common-mode defect](journal.md)** — journal entry
    `2026-09-05 (1)`. The buffer was biased at 2.5 V on a 5 V supply, outside
    the part's specified input common-mode range. Two plausible hardware
-   hypotheses were wrong; the real fault was in the written procedure. The
-   suspect chip was **exonerated by measurement** (159 kΩ pin-to-pin, no short)
-   rather than replaced on suspicion.
+   hypotheses were wrong; the real fault was in the written procedure. A 159 kΩ
+   pin-to-pin reading showed **no direct short**, so the bias conditions were
+   investigated before the part was replaced on suspicion — and the part turned
+   out to be fine.
 2. **[Phase 6 halted on column 45](journal.md)** — journal entry
-   `2026-09-15 (1)`. The procedure called a breadboard column free. I remembered
-   building "something else with 2 resistors" there and asked before fitting the
-   jumper. It was the analog reference divider, and the next boot would have
-   driven a 3.3 V output pin onto it.
+   `2026-09-15 (1)`. The procedure called a breadboard column free, but I
+   remembered putting two resistors there earlier in the build. The instructions
+   didn't match my board, so I stopped and asked before connecting anything. It
+   was the analog reference divider, and the next boot would have driven a 3.3 V
+   output pin onto it.
 3. **[The timing harness that lied](evidence/2026-09-29-t1-harness-block-stride-defect.md)**
-   — 44,490 "skipped audio blocks" that never happened. The measuring
-   instrument was broken, not the thing being measured. The conclusion recorded
-   was *"T1 is not adjudicated"*, not a pass.
+   — a reported 44,490 "skipped audio blocks" that was arithmetic rather than
+   observation. The count is invalidated, and acquisition looked healthy in that
+   run on three independent corroborations — but the conclusion recorded was
+   *"T1 cannot be adjudicated with the harness as built"*, not a pass.
 4. **[The buffer DC checkpoint](evidence/2026-10-08-ampout-buffer-dc-checkpoint.md)**
    — the tier discipline applied to a record's own contents, refusing to
    promote values that were reported but never read.
