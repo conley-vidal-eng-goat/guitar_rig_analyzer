@@ -169,11 +169,15 @@ reading.
 
 ## How I tried to use it
 
-I did not want AI to replace my thinking. I wanted it to help with the things I
-did not yet know how to do, and to learn from its explanations as I went. I
-evaluated what it told me instead of accepting it automatically — sometimes I
-was right to push back, and sometimes the thing that was wrong was my own
-report.
+In my own words, from when I was asked about this directly:
+
+> I didn't want to let AI diminish my cognitive thinking. I simply wanted to use
+> it as a tool to help with the things I didn't know what to do. I would then
+> learn from the AI and boom — we make progress.
+
+That is the whole approach. I evaluated what it told me instead of accepting it
+automatically — sometimes I was right to push back, and sometimes the thing
+that turned out to be wrong was my own report.
 
 What I can defend is this: I identified a problem I wanted to measure, chose
 and bought the hardware, built the instrument with my hands, took every

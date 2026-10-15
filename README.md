@@ -26,12 +26,14 @@ whether one is valid.
 
 ## The problem I wanted to solve
 
-Every pedal, cable and amplifier changes your tone, and you can only ever hear
-the result — not see what changed. A $200 buffer and a $20 one both "sound
-fine" until something in the chain is quietly rolling off your highs. I wanted
-an instrument that would measure the difference instead of arguing about it:
-put a known signal in, capture what comes back, and show the change
-frequency by frequency.
+I started this project because I was frustrated with how hard it was to
+understand what was happening to my guitar tone. I could spend hours changing
+amps, pedals and settings on my Headrush and still not actually *see* how any
+one of those changes affected the signal — I only ever heard the result.
+
+I wanted to build something that could measure those differences instead of
+relying entirely on my ears: put a known signal in, capture what comes back,
+and show the change frequency by frequency.
 
 ---
 
