@@ -18,6 +18,28 @@ RA8875. ADR-001 §*The governing invariant* remains binding in full and is
 `pi/analyzer_link/presentation_semantics.py`, the Phase 10 renderer acceptance
 matrix, and `docs/visual_design_document.md` (to be imported)
 
+> **📝 Attribution clarification, added 2026-10-14 by Conley Vidal. The
+> signature above is left exactly as written.**
+>
+> The *"Decided by"* line names the AI account identity, not the person. The
+> accounts used on this project belong to **the account holder**, my father, and I
+> use them with his permission; the AI sessions that wrote this document knew
+> their human counterpart only by that name. My father did not participate in
+> developing, debugging or building this instrument.
+>
+> **What is mine in this document, stated narrowly.** The two-processor
+> architecture it builds on — a Teensy that acquires and computes, a Pi that
+> displays — was my decision, and predates this ADR (see
+> [ADR-001](ADR-001-display-architecture.md)). **The rendering-stack and UI
+> decisions recorded below were collaborative work between Claude and me**, and
+> should not be read as independently mine. That includes the choice of a kiosk
+> web client over the Tk renderer, the WebGL/three.js direction, the deliberate
+> non-specification of a UI framework in §1a, and the presentation-semantics
+> contract.
+>
+> See [`../ai-assistance.md`](../ai-assistance.md) and
+> [`../../ai/README.md`](../../ai/README.md).
+
 ---
 
 ## Decision
