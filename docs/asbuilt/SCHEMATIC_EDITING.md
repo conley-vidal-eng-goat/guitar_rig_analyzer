@@ -13,8 +13,8 @@ versions can never drift apart:
 | File | What it is |
 |---|---|
 | `schematic_1sheet.svg` | Everything on one sheet — bench reconstruction reference |
-| `schematic_sheet1_analog.svg` | Sheet 1 of 2 — power, references, analog front end |
-| `schematic_sheet2_digital.svg` | Sheet 2 of 2 — digital interface, reserved future hardware |
+| `schematic_sheet1_analog.svg` | Sheet 1 of 2 — power, references, analog front end, relay signal routing |
+| `schematic_sheet2_digital.svg` | Sheet 2 of 2 — digital interface, reserved hardware |
 
 No dependencies beyond the Python standard library.
 
@@ -43,33 +43,48 @@ INTERCONNECT = [
 ]
 ```
 
-### 3. Promote a Phase 5–9 block from planned to built
+### 3. Promote a block from planned to built
 
-Two steps.
+Three steps, and **step zero is `netlist.md`** — see house rule 5.
 
 **Step one — remove the row from `FUTURE_ITEMS`** so it stops appearing in the
-reserved block.
+reserved block. A row leaves that list only when its `draw_*()` block exists,
+**never because a phase is finished.** Hardware decided *against* stays in the
+list with a `NOT BUILT` phase, which is why the four jack-detect rows are still
+there.
 
-**Step two — write a `draw_*()` function for the new hardware** and call it from
-`build()`. Every block follows the same shape:
+**Step two — write a `draw_*()` function** and call it from every composer in
+`build()` that should carry it. Every block follows the same shape:
 
 ```python
 def draw_relay_send(s, ox, oy):
     s.origin(ox, oy)                       # all coords below are block-relative
-    s.blockframe(-30, -30, 700, 400, "E — RELAY_SEND DRIVER (PHASE 6)")
+    s.blockframe(-30, -30, 1200, 600, "E — RELAY_SEND · K1 · PHASE 6 · cols 49–59")
 
-    a, b = s.res(100, 120, "R6", "1k")     # returns (left_pin, right_pin)
-    s.wire([a, (40, 120)])                 # wire() takes a list of points
-    s.junction(100, 120)
-    s.gnd(100, 260)
-    s.netlabel(300, 120, "RELAY_SEND")
+    a, b = s.res(200, 250, "R6", "1k")     # returns (left_pin, right_pin)
+    s.wire([b, (280, 250)])                # wire() takes a list of points
+    s.junction(280, 250)
+    s.gnd(280, 368)
+    s.netlabel(130, 250, "TEENSY 14", "left")
 ```
 
 Then in `build()`:
 
 ```python
-draw_relay_send(s, 90, 1150)               # place at absolute (90, 1150)
+draw_relay_send(s, 90, 1290)               # place at absolute (90, 1290)
 ```
+
+**Step three — sweep the frozen blocks for statements the new hardware has just
+falsified.** This is the step that gets skipped. Adding block F did not only add
+a drawing: it made block C's `RETURN_NODE — NOT CONNECTED` callout **wrong**, and
+made block B's J2 open stub **wrong**. A new block almost always invalidates
+something older, and a drawing that still asserts "not connected" about a driven
+input is worse than one that omits it — that is finding **A2** in `netlist.md`,
+repeated.
+
+**Blocks E and F are the working template** for anything with a relay, a driver
+and panel connectors. `_driver_and_relay()` holds the half the two share, because
+driver #2 physically *is* driver #1 shifted left 41 columns.
 
 ---
 
@@ -84,7 +99,11 @@ returned tuples rather than recomputing offsets by hand.
 | `s.cap(x, y, ref, val, pol=False, vert=True, lside=True)` | `(pin_a, pin_b)` | `pol=True` draws a polarised electrolytic with a `+` |
 | `s.opamp(x, y, ref, pin_p, pin_m, pin_o)` | `(p, m, out)` | `x` is the **left edge**, `y` the centre. `+` on top |
 | `s.icbox(x, y, w, h, ref, name, sub="")` | — | Plain rectangular part |
-| `s.connbox(x, y, w, h, ref, name, pins, side, note)` | `{label: (x,y)}` | `pins` is `[(label, y_offset), …]` |
+| `s.connbox(x, y, w, h, ref, name, pins, side, note)` | `{label: (x,y)}` | `pins` is `[(label, y_offset), …]`; `side` is which edge the leads leave from |
+| `s.npn(x, y, ref, part)` | `(base, collector, emitter)` | Centre at `(x,y)`. `part` prints under the emitter — put the C/E/B hole map there |
+| `s.diode(x, y, ref, val)` | `(cathode, anode)` | Vertical, **band at the top**. For a flyback the cathode goes to the +V node |
+| `s.relay(x, y, ref, name, holes)` | `{P, M, COM, NC, NO}` | TQ2 pole 1, drawn **de-energised** (COM resting on NC). `(x,y)` is the coil box's top-left. `holes` maps `P/M/NC/COM/NO` to hole labels |
+| `s.dashline([(x1,y1), …])` | — | Non-electrical link — the relay's coil-to-armature actuation line |
 | `s.wire([(x1,y1), (x2,y2), …])` | — | Orthogonal runs; list every corner |
 | `s.junction(x, y)` | — | **Required** at every 3-way connection |
 | `s.gnd(x, y)` / `s.pwr(x, y, "+5V")` / `s.vgnd(x, y)` | — | `(x,y)` is the connection point |
@@ -103,6 +122,10 @@ returned tuples rather than recomputing offsets by hand.
 3. **Blocks must not overlap.** `build()` places each block at an absolute
    origin; the frames are the true extents. After moving anything, re-render and
    look at it. The composite sheet is the one that breaks first.
+   **Long `note` lines are the usual cause of a broken layout** — text has no
+   measured width here, so a line that reads fine in the source silently runs out
+   through the dashed frame. Keep note lines under ~95 characters at the 1200-wide
+   block size, and split rather than shrink.
 4. **Keep the schematic honest.** If something is not verified, say so on the
    drawing. The verification note on the single-sheet version and the `NYV`
    callouts exist because the board, not the runbook, is the authority.
@@ -110,6 +133,15 @@ returned tuples rather than recomputing offsets by hand.
    these drawings are a rendering of it. Update the netlist first.
 
 ---
+
+## Which blocks are frozen, and which are transcribed
+
+**Blocks A, B and C** were captured against the physical board and photographs on
+2026-09-07. **Blocks E and F were assembled on 2026-09-22 from `ai/journal.md`
+and `ai/todo.md`** — from evidence already taken, not from a fresh inspection.
+The drawing says so on its face, in the VERIFICATION panel, and it must keep
+saying so. **Do not quietly raise E or F to the same standing as A–C**; that is
+the tier promotion `netlist.md` §9 exists to prevent.
 
 ## Frozen content — do not casually redraw
 

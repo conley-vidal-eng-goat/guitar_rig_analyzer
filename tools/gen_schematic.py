@@ -20,9 +20,9 @@ import os
 SANS = "'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif"
 MONO = "'DejaVu Sans Mono',Menlo,Consolas,monospace"
 
-REV   = "2026-09-07"
+REV   = "2026-09-22"
 PROJ  = "Guitar Rig Analyzer"
-TITLE = "As-Built Breadboard - Known-Good Configuration"
+TITLE = "As-Built Breadboard - Through Phase 8"
 DRAWN = "C. Vidal"
 
 # ---------------------------------------------------------------- interconnect
@@ -49,14 +49,16 @@ INTERCONNECT = [
     ("gray",   "23",  "23",   "I2S_MCLK",  "r", "master clock · 11.2896 MHz · 256×Fs"),
 ]
 
-# ---------------------------------------------------------------- future work
+# ---------------------------------------------------------------- reserved
+# Phases 6, 7 and 8 have been BUILT - see draw_relay_send() / draw_relay_return().
+# What remains here is (a) hardware deliberately never built, and (b) the Pi link.
+# A row leaves this list only when its block exists above, never because a phase
+# is "done".
 FUTURE_ITEMS = [
-    ("RELAY_SEND",    "Teensy 14", "TQ2-5V + MMBT3904 driver", "Phase 6"),
-    ("RELAY_RETURN",  "Teensy 15", "TQ2-5V + MMBT3904 driver", "Phase 7"),
-    ("JACK_INSTRUMENT", "Teensy 16", "Switchcraft #11 detect", "Phase 5"),
-    ("JACK_RIG_SEND",   "Teensy 17", "jack detect",            "Phase 7"),
-    ("JACK_RETURN_TS",  "Teensy 22", "jack detect",            "Phase 7"),
-    ("JACK_RETURN_XLR", "Teensy 24", "XLR return",             "Phase 8"),
+    ("JACK_INSTRUMENT detect", "Teensy 16", "none - #11 has no switch contact", "NOT BUILT · ADR-003"),
+    ("JACK_RIG_SEND detect",   "Teensy 17", "none",                             "NOT BUILT · ADR-003"),
+    ("JACK_RETURN_TS detect",  "Teensy 22", "none",                             "NOT BUILT · ADR-004"),
+    ("JACK_RETURN_XLR detect", "Teensy 24", "D2F-01L omitted by decision",      "NOT BUILT · ADR-004"),
     # ADR-001 (2026-09-11): the Pi 5 UART link is the PRODUCTION display
     # interface and was missing from this list entirely, while the RA8875 — now
     # demoted to debug hardware — was the only display entry present. That
@@ -97,6 +99,10 @@ class Sheet:
         pts = " ".join(f"{float(a)+self.ox},{float(b)+self.oy}"
                        for a, b in (q.split(",") for q in pts.split()))
         self.add(f'<polygon class="jn" points="{pts}"/>')
+
+    def dashline(self, pts):
+        p = " ".join(f"{x+self.ox},{y+self.oy}" for x, y in pts)
+        self.add(f'<polyline class="dash" points="{p}"/>')
 
     def nc(self, x, y):
         """IEEE no-connect cross."""
@@ -168,6 +174,58 @@ class Sheet:
         self.t(x, y - 24, ref, "lbl", "middle")
         self.t(x, y + 32, val, "val", "middle")
         return (x - 16, y), (x + 16, y)
+
+    def npn(self, x, y, ref, part=""):
+        """NPN BJT, centre (x,y). Returns (base, collector, emitter)."""
+        cx, cy = self._(x, y)
+        self.add(f'<circle class="sym" cx="{cx}" cy="{cy}" r="27"/>')
+        self.path(x, y, "M-46 0 H-14 M-14 -18 V18")
+        self.path(x, y, "M-14 -8 L14 -26 M14 -26 V-48")
+        self.path(x, y, "M-14 8 L14 26 M14 26 V48")
+        self.path(x, y, "M8 22 L0.6 13.1 L-3.1 19 Z", "jn")
+        self.t(x - 6, y - 32, ref, "lbl", "end")
+        if part:
+            self.t(x + 30, y + 52, part, "val")
+        return (x - 46, y), (x + 14, y - 48), (x + 14, y + 48)
+
+    def diode(self, x, y, ref, val=""):
+        """Vertical, cathode band at TOP. Returns (cathode, anode)."""
+        self.path(x, y, "M0 -22 V-8 M-13 -8 H13 M-13 8 L13 8 L0 -8 Z M0 8 V22")
+        self.t(x - 18, y - 4, ref, "lbl", "end")
+        if val:
+            self.t(x - 18, y + 11, val, "val", "end")
+        return (x, y - 22), (x, y + 22)
+
+    def relay(self, x, y, ref, name, holes, sub=""):
+        """TQ2 pole 1, drawn DE-ENERGISED (COM resting on NC). Coil box
+        top-left at (x,y). holes: dict of P/M/NC/COM/NO -> hole label.
+        Returns {'P','M','COM','NC','NO'} connection points."""
+        self.rect(x, y, 62, 80)
+        self.t(x + 31, y + 34, ref, "lbl", "middle")
+        self.t(x + 31, y + 52, name, "val", "middle")
+        self.t(x + 7, y + 16, "+", "lbl")
+        self.wire([(x, y + 18), (x - 18, y + 18)])
+        self.wire([(x, y + 62), (x - 18, y + 62)])
+        self.t(x - 22, y + 14, f"1 · {holes['P']}", "pin", "end")
+        self.t(x - 22, y + 76, f"10 · {holes['M']}", "pin", "end")
+
+        px, py = x + 150, y + 40
+        self.dashline([(x + 62, y + 40), (px - 5, py)])
+        self.junction(px, py)
+        self.wire([(px, py), (px, py + 60)])
+        self.wire([(px, py), (px + 68, py - 28)])          # armature, on NC
+        self.wire([(px + 70, py - 28), (px + 110, py - 28)])
+        self.wire([(px + 70, py + 28), (px + 110, py + 28)])
+        self.junction(px + 70, py - 28)
+        self.junction(px + 70, py + 28)
+        self.t(px + 108, py - 36, f"NC · 2 · {holes['NC']}", "pin", "end")
+        self.t(px + 108, py + 46, f"NO · 4 · {holes['NO']}", "pin", "end")
+        self.t(px - 6, py + 58, f"COM · 3 · {holes['COM']}", "pin", "end")
+        if sub:
+            self.t(x + 31, y + 100, sub, "note", "middle")
+        return {"P": (x - 18, y + 18), "M": (x - 18, y + 62),
+                "COM": (px, py + 60),
+                "NC": (px + 110, py - 28), "NO": (px + 110, py + 28)}
 
     def opamp(self, x, y, ref, pin_p, pin_m, pin_o):
         """x = left edge, y = centre. + on top. Returns (p, m, out) coords."""
@@ -313,10 +371,13 @@ def draw_analog(s, ox, oy):
     s.origin(ox, oy)
     s.blockframe(-30, -30, 1160, 500, "B — OPA1642 HIGH-IMPEDANCE BUFFER (SOURCE PATH)")
 
-    j1 = s.connbox(20, 60, 92, 118, "J1", "3.5 mm IN",
-                   [("T", 55), ("R", 82), ("S", 108)], "right",
-                   "tip = white cond.")
-    s.t(20, 232, "R — no connect (taped off)", "note")
+    j1 = s.connbox(20, 60, 92, 118, "J4", "1/4in IN",
+                   [("T", 55), ("S", 108)], "right",
+                   "Switchcraft #11")
+    s.t(20, 232, "2-conductor jack — NO switch contact, so", "note")
+    s.t(20, 248, "presence detect is NOT BUILT (ADR-003).", "note")
+    s.t(20, 272, "J4 superseded the J1 3.5 mm breakout as the", "note")
+    s.t(20, 288, "guitar input on 2026-09-08.", "note")
     s.t(20, 500, "VALUE PROVENANCE:  C1 read from its marking (BC103 = 10nF).  C2 / C6 / C8 and the 0.1µF ceramics", "note")
     s.t(20, 517, "stated at the bench (reported, not read back).  R1–R4 derived from the measured 0.874 V bias node;", "note")
     s.t(20, 534, "R5 derived from the measured 1 kHz response (0.9848 vs 0.9867 predicted).  See netlist.md §2 and §4a.", "note")
@@ -337,14 +398,14 @@ def draw_analog(s, ox, oy):
     a, b = s.cap(578, 115, "C2", "10µF", pol=True, vert=False)
     s.wire([(528, 115), a]); s.wire([b, (700, 115)]); s.junction(700, 115)
 
-    j2 = s.connbox(654, 235, 92, 105, "J2", "3.5 mm",
-                   [("S", 92)], "right", "NOT PLUGGED IN — open stub")
-    s.wire([(700, 115), (700, 235)])
-    s.t(688, 230, "T", "pin", "end")
-    s.wire([j2["S"], (790, 327), (790, 350)]); s.gnd(790, 350)
-
     s.wire([(700, 115), (742, 115)])
     s.netlabel(742, 115, "SOURCE_NODE")
+    s.wire([(700, 115), (700, 235), (742, 235)])
+    s.netlabel(742, 235, "K1 NC · 56a")
+    s.t(700, 285, "col 48 A–E fans out two ways: the permanent", "note")
+    s.t(700, 301, "48e → LINE-IN-L tap, and 48e → RELAY_SEND NC.", "note")
+    s.t(700, 325, "⚠ J2 (3.5 mm open stub, 48a) was DISCONNECTED", "note")
+    s.t(700, 341, "2026-09-21. No conductor remains on col 48.", "note")
 
     # U1 power pins + W1
     s.icbox(900, 60, 130, 62, "U1", "power pins")
@@ -398,12 +459,11 @@ def draw_digital(s, ox, oy):
     s.t(696, 484, "LINE IN L", "pin")
     s.t(600, 506, "red jumper: breadboard 48e → U3 LINE-IN-L pad", "note", "end")
 
-    s.wire([(690, 545), (658, 545)])
-    s.nc(648, 545)
+    s.wire([(690, 545), (600, 545)])
+    s.netlabel(600, 545, "RETURN_NODE", "left")
     s.t(696, 549, "LINE IN R", "pin")
-    s.t(628, 541, "RETURN_NODE  (I²S ch 1)  —  NOT CONNECTED", "lbl", "end")
-    s.t(628, 561, "No conductor is fitted. The −56 dBFS this channel reports", "note", "end")
-    s.t(628, 578, "is crosstalk from LINE IN L, not a measurement.", "note", "end")
+    s.t(600, 567, "fed from RELAY_RETURN COM (16a), block F — TS or XLR return", "note", "end")
+    s.t(600, 585, "⚠ supersedes the 2026-09-07 capture, when this input had no conductor", "note", "end")
 
     s.rect(30, 600, 640, 142, "dash", rx=4)
     s.t(42, 620, "PROVENANCE & CONVENTIONS", "lbl")
@@ -424,12 +484,110 @@ def draw_digital(s, ox, oy):
     s.t(560, 830, "   Do not re-seat this bundle from memory. Risk R3.", "note")
 
 
+def _driver_and_relay(s, ref_q, ref_r6, ref_r7, ref_d, ref_k, pin, holes, sat):
+    """The half both relay blocks share: GPIO → base resistor → BJT → coil.
+    Drawn identically because it IS identical — driver #2 is driver #1's
+    as-built line shifted left 41 columns (journal 2026-09-17)."""
+    s.netlabel(130, 250, f"TEENSY {pin}", "left")
+    s.wire([(130, 250), (172, 250)])
+    a, b = s.res(200, 250, ref_r6, "1k")
+    s.wire([(228, 250), (280, 250)]); s.junction(280, 250)
+    c, d = s.res(280, 310, ref_r7, "10k", vert=True)
+    s.wire([(280, 250), c]); s.wire([d, (280, 368)]); s.gnd(280, 368)
+
+    base, col, emi = s.npn(380, 250, ref_q, "MMBT3904 · " + holes["q"])
+    s.wire([(280, 250), base])
+    s.wire([emi, (394, 368)]); s.gnd(394, 368)
+    s.wire([col, (394, 172), (470, 172)]); s.junction(470, 172)
+
+    cat, an = s.diode(470, 150, ref_d, "1N4148")
+    s.wire([(470, 172), (542, 172)])
+    s.junction(470, 128); s.wire([(470, 128), (542, 128)])
+    s.wire([(470, 128), (470, 80)]); s.pwr(470, 80, "+5V")
+
+    k = s.relay(560, 110, ref_k, "TQ2-5V", holes)
+    s.t(130, 200, holes["drv"], "pin")
+    s.t(560, 238, sat, "note", "middle")
+    return k
+
+
+def draw_relay_send(s, ox, oy):
+    s.origin(ox, oy)
+    s.blockframe(-30, -30, 1200, 600,
+                 "E — RELAY_SEND · K1 · PHASE 6 · breadboard cols 49–59")
+
+    k = _driver_and_relay(s, "Q1", "R6", "R7", "D1", "K1", 14,
+                          {"P": "55a", "M": "55f", "NC": "56a",
+                           "COM": "57a", "NO": "58a",
+                           "drv": "pin 14 → col 53;  R6 col 53 → 51, 0.993 kΩ meas",
+                           "q": "C 49 · E 50 · B 51"},
+                          "collector 49: 129.1 mV energised / 4.99 V off")
+
+    s.wire([k["NC"], (860, 122)]); s.netlabel(860, 122, "SOURCE_NODE")
+    s.wire([k["NO"], (860, 178)]); s.netlabel(860, 178, "U3 LINE OUT L")
+    s.wire([k["COM"], (710, 302), (866, 302)])
+    j5 = s.connbox(880, 260, 150, 86, "J5", "RIG SEND",
+                   [("T", 42), ("S", 68)], "left", "Switchcraft #11")
+    s.wire([j5["S"], (846, 328), (846, 366)]); s.gnd(846, 366)
+    s.t(846, 396, "sleeve → Audio Shield GND", "note", "middle")
+
+    s.t(0, 412, "pin 14 LOW  = buffer output → Rig Send   (default, and the boot state)", "note")
+    s.t(0, 430, "pin 14 HIGH = codec LINE OUT L → Rig Send (monitor / injection path)", "note")
+    s.t(0, 458, "Contact map is proven BY STATE, not from the datasheet. 56a↔58a read OPEN in BOTH states,", "note")
+    s.t(0, 476, "which is what rules out a welded or make-before-break contact.", "note")
+    s.t(0, 494, "Pole 2 (56f / 57f / 58f) is NOT wired and has never been tested — NYV.", "note")
+    s.t(0, 522, "⚠ The coil is POLARIZED and was built backwards first: runbook step 7 inverts pins 1 and 10.", "note")
+    s.t(0, 540, "Built that way the coil energises normally and the contacts never transfer.", "note")
+
+
+def draw_relay_return(s, ox, oy):
+    s.origin(ox, oy)
+    s.blockframe(-30, -30, 1200, 600,
+                 "F — RELAY_RETURN · K2 · PHASE 7 · breadboard cols 8–18")
+
+    k = _driver_and_relay(s, "Q2", "R8", "R9", "D2", "K2", 15,
+                          {"P": "14a", "M": "14f", "NC": "15a",
+                           "COM": "16a", "NO": "17a",
+                           "drv": "pin 15 → col 12;  R8 col 12 → 10",
+                           "q": "C 8 · E 9 · B 10"},
+                          "14f: 4.98 V at rest · coil 4.78 V energised")
+
+    s.wire([k["COM"], (710, 340), (600, 340)])
+    s.netlabel(600, 340, "RETURN_NODE", "left")
+    s.t(600, 362, "→ U3 LINE IN R  ·  I²S ch 1", "note", "end")
+
+    j6 = s.connbox(880, 20, 150, 86, "J6", "RIG RTN TS",
+                   [("T", 42), ("S", 68)], "left")
+    s.wire([k["NC"], (840, 122), (840, 62), j6["T"]])
+    s.wire([j6["S"], (852, 88), (852, 114)]); s.gnd(852, 114)
+
+    j7 = s.connbox(880, 136, 150, 116, "J7", "XLR RETURN",
+                   [("2", 42), ("1", 72), ("3", 96)], "left")
+    s.wire([k["NO"], j7["2"]])
+    s.wire([j7["1"], (846, 208), (846, 268)])
+    s.wire([j7["3"], (846, 232)]); s.junction(846, 232)
+    s.gnd(846, 268)
+
+    s.t(0, 412, "pin 15 LOW  = TS return  → LINE IN R   (default, and the boot state)", "note")
+    s.t(0, 430, "pin 15 HIGH = XLR return → LINE IN R", "note")
+    s.t(0, 458, "J6 sleeve → GND, 0.9 Ω.  ⚠ J7 pins 1 AND 3 land on the BREADBOARD TOP_GND rail,", "note")
+    s.t(0, 476, "not Audio Shield ground — and 33.1 dB was measured between those two reference", "note")
+    s.t(0, 494, "points on the SOURCE path (risk R5). Signal quality only: do NOT rewire on it.", "note")
+    s.t(0, 522, "J7's detect microswitch (D2F-01L) is NOT BUILT — ADR-004.  Pole 2 (15f / 16f / 17f)", "note")
+    s.t(0, 540, "not wired, and K2's own package marking has never been read back — both NYV.", "note")
+    s.t(620, 412, "⚠ This driver once stalled in the active region", "note")
+    s.t(620, 430, "(collector 3.556 V, emitter 291 mV) and recovered", "note")
+    s.t(620, 448, "during reseating. The bad connection was NEVER", "note")
+    s.t(620, 466, "identified. If it returns, measure the R8 drop", "note")
+    s.t(620, 484, "12a → 10a FIRST, before anything is touched.", "note")
+
+
 def draw_future(s, ox, oy):
     s.origin(ox, oy)
     s.blockframe(-30, -30, 990, 300,
-                 "D — PHASES 5–10: NOT INSTALLED (reserved)")
-    s.t(0, 6, "Firmware pin definitions exist in config.h:77-101. NO HARDWARE IS FITTED.", "note")
-    s.t(0, 22, "Add each block here as its phase is built, then regenerate.", "note")
+                 "D — RESERVED, AND HARDWARE DELIBERATELY NOT BUILT")
+    s.t(0, 6, "Phases 6, 7 and 8 have been BUILT — see blocks E and F. What is left here is not \"pending\": the four jack-detect", "note")
+    s.t(0, 22, "inputs are decided against (ADR-003, ADR-004) and nothing lands on those pins. Firmware defines them at config.h:77-101.", "note")
     s.t(0, 56, "NET / FUNCTION", "pin"); s.t(300, 56, "PIN", "pin")
     s.t(430, 56, "PLANNED PART", "pin"); s.t(760, 56, "PHASE", "pin")
     s.wire([(0, 64), (930, 64)])
@@ -438,6 +596,24 @@ def draw_future(s, ox, oy):
         s.t(0, yy, net, "gh"); s.t(300, yy, pin, "gh")
         s.t(430, yy, part, "gh"); s.t(760, yy, phase, "gh")
         yy += 22
+
+
+def verification(s, ox, oy):
+    """Evidence-tier statement. Identical on every sheet that carries it."""
+    s.origin(ox, oy)
+    s.t(0, 0, "VERIFICATION", "ttl")
+    s.t(0, 28, "TIERS ARE NOT INTERCHANGEABLE. A part's POSITION and its VALUE are separate claims and are tagged separately.", "note")
+    s.t(0, 46, "Strip/column assignments are PHYS. Hole-level row letters are RPT (builder-reported), including every coordinate in blocks E and F.", "note")
+    s.t(0, 70, "NYV BY DECISION — open on purpose, not by oversight:", "lbl")
+    s.t(0, 90, "•  TOP_RED continuity col 5 ↔ col 55 (GAP-5).  A Phase 7 rail check would close it, but top-vs-bottom was never confirmed.", "note")
+    s.t(0, 108, "•  Carrier 5V terminal provenance (X-5)  ·  C3/C4/C5/C7 values (A1)  ·  whether Rev D uses the 5V pad (D2).", "note")
+    s.t(0, 126, "•  K2's and J7's package markings — never read back.  Pole 2 of both relays — wired to nothing, never tested.", "note")
+    s.t(0, 156, "BLOCKS E AND F ARE TRANSCRIBED FROM THE BENCH RECORD, NOT FROM A FRESH INSPECTION.", "lbl")
+    s.t(0, 176, "Blocks A–C were captured against the board and photographs on 2026-09-07. E and F were assembled on 2026-09-22 from", "note")
+    s.t(0, 194, "ai/journal.md and ai/todo.md. Nothing was promoted in transcription; see netlist.md §14 for what is NOT evidence.", "note")
+    s.t(0, 224, "THIS DRAWING REFLECTS THE PHYSICAL BOARD, NOT docs/breadboard_bringup_v3.md.", "lbl")
+    s.t(0, 244, "The runbook carries documented defects in Phase 6 coil polarity, the transistor pin order and the Phase 7 column siting.", "note")
+    s.t(0, 262, "Where they conflict, the board governs. Construction complete ≠ signed off ≠ validated — Phase 9 has not been run.", "note")
 
 
 # ================================================================== COMPOSERS
@@ -449,36 +625,38 @@ def build():
     made = []
 
     # ---- single sheet
-    s = Sheet(2320, 1560, 1, 1, "Single-sheet bench reconstruction reference")
+    s = Sheet(2320, 2580, 1, 1, "Single-sheet bench reconstruction reference")
     draw_power(s, 90, 110)
     draw_analog(s, 90, 620)
     draw_digital(s, 1300, 110)
     draw_future(s, 1300, 1050)
+    draw_relay_send(s, 90, 1290)
+    draw_relay_return(s, 90, 1960)
     s.origin(0, 0)
-    s.t(90, 1230, "VERIFICATION", "ttl")
-    s.t(90, 1258, "All connections shown are PHYS (direct physical observation) or PHOTO.", "note")
-    s.t(90, 1276, "Hole-level row letters are RPT (builder-reported); strip/column assignments are PHYS.", "note")
-    s.t(90, 1294, "NYV by decision: TOP_RED col5-col55 continuity (GAP-5); carrier 5V provenance (X-5).", "note")
-    s.t(90, 1318, "THIS DRAWING REFLECTS THE PHYSICAL BOARD, NOT docs/breadboard_bringup_v3.md.", "lbl")
-    s.t(90, 1338, "The runbook contains 6 documented defects; where they conflict, the board governs.", "note")
+    verification(s, 1300, 1450)
     s.titleblock()
     p = f"{OUT}/schematic_1sheet.svg"; open(p, "w").write(s.render()); made.append(p)
 
     # ---- sheet 1 of 2
-    s = Sheet(1360, 1400, 1, 2, "Power, references and analog front end")
+    s = Sheet(1360, 2790, 1, 2,
+              "Power, references, analog front end and relay signal routing")
     draw_power(s, 90, 110)
     draw_analog(s, 90, 620)
+    draw_relay_send(s, 90, 1290)
+    draw_relay_return(s, 90, 1960)
     s.origin(0, 0)
-    s.t(90, 1210, "Continues on sheet 2: SOURCE_NODE → U3 LINE-IN-L; Teensy ↔ Audio Shield.", "note")
+    s.t(90, 2580, "Continues on sheet 2: SOURCE_NODE → U3 LINE-IN-L; RETURN_NODE → U3 LINE-IN-R; Teensy ↔ Audio Shield.", "note")
     s.titleblock()
     p = f"{OUT}/schematic_sheet1_analog.svg"; open(p, "w").write(s.render()); made.append(p)
 
     # ---- sheet 2 of 2
-    s = Sheet(1360, 1620, 2, 2, "Digital interface and reserved future hardware")
+    s = Sheet(1360, 1900, 2, 2, "Digital interface and reserved future hardware")
     draw_digital(s, 130, 110)
     draw_future(s, 130, 1050)
     s.origin(0, 0)
-    s.t(130, 1390, "SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).", "note")
+    s.t(130, 1362, "SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).", "note")
+    s.t(130, 1380, "RETURN_NODE arrives on sheet 1 from RELAY_RETURN COM (16a) — TS or XLR return, operator-selected.", "note")
+    verification(s, 130, 1430)
     s.titleblock()
     p = f"{OUT}/schematic_sheet2_digital.svg"; open(p, "w").write(s.render()); made.append(p)
 

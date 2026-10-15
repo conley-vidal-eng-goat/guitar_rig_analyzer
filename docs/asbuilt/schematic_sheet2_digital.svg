@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="1620" viewBox="0 0 1360 1620">
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="1900" viewBox="0 0 1360 1900">
 <style>
     .w{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .sym{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round}
@@ -13,8 +13,8 @@
     .ttl{font:700 15px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111;letter-spacing:.07em}
     .pin{font:10.5px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#666}
     .gh{font:12px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#9a9a9a}</style>
-<rect width="1360" height="1620" fill="#ffffff"/>
-<rect class="box" x="18" y="18" width="1324" height="1584" fill="none"/>
+<rect width="1360" height="1900" fill="#ffffff"/>
+<rect class="box" x="18" y="18" width="1324" height="1864" fill="none"/>
 <rect class="dash" x="100" y="80" width="990" height="910" rx="6"/>
 <text class="ttl" x="104" y="71" text-anchor="start">C — TEENSY ↔ AUDIO SHIELD INTERFACE  (FROZEN GEOMETRY — DO NOT DISTURB)</text>
 <rect class="box" x="160" y="165" width="215" height="405" rx="0"/>
@@ -88,12 +88,12 @@
 <text class="net" x="713" y="594" text-anchor="end">SOURCE_NODE</text>
 <text class="pin" x="826" y="594" text-anchor="start">LINE IN L</text>
 <text class="note" x="730" y="616" text-anchor="end">red jumper: breadboard 48e → U3 LINE-IN-L pad</text>
-<polyline class="w" points="820,655 788,655"/>
-<path class="sym" transform="translate(778,655)" d="M-7 -7 L7 7 M-7 7 L7 -7"/>
+<polyline class="w" points="820,655 730,655"/>
+<polygon class="tag" points="730.0,655.0 719.0,643.0 627.7,643.0 627.7,667.0 719.0,667.0"/>
+<text class="net" x="713" y="659" text-anchor="end">RETURN_NODE</text>
 <text class="pin" x="826" y="659" text-anchor="start">LINE IN R</text>
-<text class="lbl" x="758" y="651" text-anchor="end">RETURN_NODE  (I²S ch 1)  —  NOT CONNECTED</text>
-<text class="note" x="758" y="671" text-anchor="end">No conductor is fitted. The −56 dBFS this channel reports</text>
-<text class="note" x="758" y="688" text-anchor="end">is crosstalk from LINE IN L, not a measurement.</text>
+<text class="note" x="730" y="677" text-anchor="end">fed from RELAY_RETURN COM (16a), block F — TS or XLR return</text>
+<text class="note" x="730" y="695" text-anchor="end">⚠ supersedes the 2026-09-07 capture, when this input had no conductor</text>
 <rect class="dash" x="160" y="710" width="640" height="142" rx="4"/>
 <text class="lbl" x="172" y="730" text-anchor="start">PROVENANCE &amp; CONVENTIONS</text>
 <text class="note" x="172" y="751" text-anchor="start">Net names are CODEC-REFERENCED:  I2S_DIN = codec data IN (Teensy 7, SAI1_TX_DATA0);</text>
@@ -111,59 +111,65 @@
 <text class="note" x="690" y="922" text-anchor="start">   DOUT is the conductor that caused the corruption fault.</text>
 <text class="note" x="690" y="940" text-anchor="start">   Do not re-seat this bundle from memory. Risk R3.</text>
 <rect class="dash" x="100" y="1020" width="990" height="300" rx="6"/>
-<text class="ttl" x="104" y="1011" text-anchor="start">D — PHASES 5–10: NOT INSTALLED (reserved)</text>
-<text class="note" x="130" y="1056" text-anchor="start">Firmware pin definitions exist in config.h:77-101. NO HARDWARE IS FITTED.</text>
-<text class="note" x="130" y="1072" text-anchor="start">Add each block here as its phase is built, then regenerate.</text>
+<text class="ttl" x="104" y="1011" text-anchor="start">D — RESERVED, AND HARDWARE DELIBERATELY NOT BUILT</text>
+<text class="note" x="130" y="1056" text-anchor="start">Phases 6, 7 and 8 have been BUILT — see blocks E and F. What is left here is not "pending": the four jack-detect</text>
+<text class="note" x="130" y="1072" text-anchor="start">inputs are decided against (ADR-003, ADR-004) and nothing lands on those pins. Firmware defines them at config.h:77-101.</text>
 <text class="pin" x="130" y="1106" text-anchor="start">NET / FUNCTION</text>
 <text class="pin" x="430" y="1106" text-anchor="start">PIN</text>
 <text class="pin" x="560" y="1106" text-anchor="start">PLANNED PART</text>
 <text class="pin" x="890" y="1106" text-anchor="start">PHASE</text>
 <polyline class="w" points="130,1114 1060,1114"/>
-<text class="gh" x="130" y="1134" text-anchor="start">RELAY_SEND</text>
-<text class="gh" x="430" y="1134" text-anchor="start">Teensy 14</text>
-<text class="gh" x="560" y="1134" text-anchor="start">TQ2-5V + MMBT3904 driver</text>
-<text class="gh" x="890" y="1134" text-anchor="start">Phase 6</text>
-<text class="gh" x="130" y="1156" text-anchor="start">RELAY_RETURN</text>
-<text class="gh" x="430" y="1156" text-anchor="start">Teensy 15</text>
-<text class="gh" x="560" y="1156" text-anchor="start">TQ2-5V + MMBT3904 driver</text>
-<text class="gh" x="890" y="1156" text-anchor="start">Phase 7</text>
-<text class="gh" x="130" y="1178" text-anchor="start">JACK_INSTRUMENT</text>
-<text class="gh" x="430" y="1178" text-anchor="start">Teensy 16</text>
-<text class="gh" x="560" y="1178" text-anchor="start">Switchcraft #11 detect</text>
-<text class="gh" x="890" y="1178" text-anchor="start">Phase 5</text>
-<text class="gh" x="130" y="1200" text-anchor="start">JACK_RIG_SEND</text>
-<text class="gh" x="430" y="1200" text-anchor="start">Teensy 17</text>
-<text class="gh" x="560" y="1200" text-anchor="start">jack detect</text>
-<text class="gh" x="890" y="1200" text-anchor="start">Phase 7</text>
-<text class="gh" x="130" y="1222" text-anchor="start">JACK_RETURN_TS</text>
-<text class="gh" x="430" y="1222" text-anchor="start">Teensy 22</text>
-<text class="gh" x="560" y="1222" text-anchor="start">jack detect</text>
-<text class="gh" x="890" y="1222" text-anchor="start">Phase 7</text>
-<text class="gh" x="130" y="1244" text-anchor="start">JACK_RETURN_XLR</text>
-<text class="gh" x="430" y="1244" text-anchor="start">Teensy 24</text>
-<text class="gh" x="560" y="1244" text-anchor="start">XLR return</text>
-<text class="gh" x="890" y="1244" text-anchor="start">Phase 8</text>
-<text class="gh" x="130" y="1266" text-anchor="start">PI_LINK_UART TX / RX</text>
-<text class="gh" x="430" y="1266" text-anchor="start">Teensy 1 / 0</text>
-<text class="gh" x="560" y="1266" text-anchor="start">Pi 5 display link (Serial1)</text>
-<text class="gh" x="890" y="1266" text-anchor="start">Phase 10</text>
-<text class="gh" x="130" y="1288" text-anchor="start">RA8875_CS / INT / RESET</text>
-<text class="gh" x="430" y="1288" text-anchor="start">Teensy 10 / 9 / 5</text>
-<text class="gh" x="560" y="1288" text-anchor="start">SPI display (debug only)</text>
-<text class="gh" x="890" y="1288" text-anchor="start">deferred</text>
-<text class="note" x="130" y="1390" text-anchor="start">SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).</text>
-<rect class="box" x="710" y="1440" width="620" height="150" rx="0"/>
-<polyline class="w" points="710,1486 1330,1486"/>
-<polyline class="w" points="710,1540 1330,1540"/>
-<polyline class="w" points="1110,1540 1110,1590"/>
-<text class="ttl" x="724" y="1470" text-anchor="start">GUITAR RIG ANALYZER</text>
-<text class="lbl" x="724" y="1510" text-anchor="start">As-Built Breadboard - Known-Good Configuration</text>
-<text class="note" x="724" y="1530" text-anchor="start">Digital interface and reserved future hardware</text>
-<text class="pin" x="724" y="1562" text-anchor="start">SOURCE OF TRUTH</text>
-<text class="val" x="724" y="1580" text-anchor="start">docs/asbuilt/netlist.md</text>
-<text class="pin" x="1124" y="1562" text-anchor="start">REV</text>
-<text class="val" x="1124" y="1580" text-anchor="start">2026-09-07</text>
-<text class="pin" x="1234" y="1562" text-anchor="start">SHEET</text>
-<text class="val" x="1234" y="1580" text-anchor="start">2 of 2</text>
-<text class="val" x="1316" y="1470" text-anchor="end">C. Vidal</text>
+<text class="gh" x="130" y="1134" text-anchor="start">JACK_INSTRUMENT detect</text>
+<text class="gh" x="430" y="1134" text-anchor="start">Teensy 16</text>
+<text class="gh" x="560" y="1134" text-anchor="start">none - #11 has no switch contact</text>
+<text class="gh" x="890" y="1134" text-anchor="start">NOT BUILT · ADR-003</text>
+<text class="gh" x="130" y="1156" text-anchor="start">JACK_RIG_SEND detect</text>
+<text class="gh" x="430" y="1156" text-anchor="start">Teensy 17</text>
+<text class="gh" x="560" y="1156" text-anchor="start">none</text>
+<text class="gh" x="890" y="1156" text-anchor="start">NOT BUILT · ADR-003</text>
+<text class="gh" x="130" y="1178" text-anchor="start">JACK_RETURN_TS detect</text>
+<text class="gh" x="430" y="1178" text-anchor="start">Teensy 22</text>
+<text class="gh" x="560" y="1178" text-anchor="start">none</text>
+<text class="gh" x="890" y="1178" text-anchor="start">NOT BUILT · ADR-004</text>
+<text class="gh" x="130" y="1200" text-anchor="start">JACK_RETURN_XLR detect</text>
+<text class="gh" x="430" y="1200" text-anchor="start">Teensy 24</text>
+<text class="gh" x="560" y="1200" text-anchor="start">D2F-01L omitted by decision</text>
+<text class="gh" x="890" y="1200" text-anchor="start">NOT BUILT · ADR-004</text>
+<text class="gh" x="130" y="1222" text-anchor="start">PI_LINK_UART TX / RX</text>
+<text class="gh" x="430" y="1222" text-anchor="start">Teensy 1 / 0</text>
+<text class="gh" x="560" y="1222" text-anchor="start">Pi 5 display link (Serial1)</text>
+<text class="gh" x="890" y="1222" text-anchor="start">Phase 10</text>
+<text class="gh" x="130" y="1244" text-anchor="start">RA8875_CS / INT / RESET</text>
+<text class="gh" x="430" y="1244" text-anchor="start">Teensy 10 / 9 / 5</text>
+<text class="gh" x="560" y="1244" text-anchor="start">SPI display (debug only)</text>
+<text class="gh" x="890" y="1244" text-anchor="start">deferred</text>
+<text class="note" x="130" y="1362" text-anchor="start">SOURCE_NODE originates on sheet 1 (C2 output, breadboard column 48).</text>
+<text class="note" x="130" y="1380" text-anchor="start">RETURN_NODE arrives on sheet 1 from RELAY_RETURN COM (16a) — TS or XLR return, operator-selected.</text>
+<text class="ttl" x="130" y="1430" text-anchor="start">VERIFICATION</text>
+<text class="note" x="130" y="1458" text-anchor="start">TIERS ARE NOT INTERCHANGEABLE. A part's POSITION and its VALUE are separate claims and are tagged separately.</text>
+<text class="note" x="130" y="1476" text-anchor="start">Strip/column assignments are PHYS. Hole-level row letters are RPT (builder-reported), including every coordinate in blocks E and F.</text>
+<text class="lbl" x="130" y="1500" text-anchor="start">NYV BY DECISION — open on purpose, not by oversight:</text>
+<text class="note" x="130" y="1520" text-anchor="start">•  TOP_RED continuity col 5 ↔ col 55 (GAP-5).  A Phase 7 rail check would close it, but top-vs-bottom was never confirmed.</text>
+<text class="note" x="130" y="1538" text-anchor="start">•  Carrier 5V terminal provenance (X-5)  ·  C3/C4/C5/C7 values (A1)  ·  whether Rev D uses the 5V pad (D2).</text>
+<text class="note" x="130" y="1556" text-anchor="start">•  K2's and J7's package markings — never read back.  Pole 2 of both relays — wired to nothing, never tested.</text>
+<text class="lbl" x="130" y="1586" text-anchor="start">BLOCKS E AND F ARE TRANSCRIBED FROM THE BENCH RECORD, NOT FROM A FRESH INSPECTION.</text>
+<text class="note" x="130" y="1606" text-anchor="start">Blocks A–C were captured against the board and photographs on 2026-09-07. E and F were assembled on 2026-09-22 from</text>
+<text class="note" x="130" y="1624" text-anchor="start">ai/journal.md and ai/todo.md. Nothing was promoted in transcription; see netlist.md §14 for what is NOT evidence.</text>
+<text class="lbl" x="130" y="1654" text-anchor="start">THIS DRAWING REFLECTS THE PHYSICAL BOARD, NOT docs/breadboard_bringup_v3.md.</text>
+<text class="note" x="130" y="1674" text-anchor="start">The runbook carries documented defects in Phase 6 coil polarity, the transistor pin order and the Phase 7 column siting.</text>
+<text class="note" x="130" y="1692" text-anchor="start">Where they conflict, the board governs. Construction complete ≠ signed off ≠ validated — Phase 9 has not been run.</text>
+<rect class="box" x="710" y="1720" width="620" height="150" rx="0"/>
+<polyline class="w" points="710,1766 1330,1766"/>
+<polyline class="w" points="710,1820 1330,1820"/>
+<polyline class="w" points="1110,1820 1110,1870"/>
+<text class="ttl" x="724" y="1750" text-anchor="start">GUITAR RIG ANALYZER</text>
+<text class="lbl" x="724" y="1790" text-anchor="start">As-Built Breadboard - Through Phase 8</text>
+<text class="note" x="724" y="1810" text-anchor="start">Digital interface and reserved future hardware</text>
+<text class="pin" x="724" y="1842" text-anchor="start">SOURCE OF TRUTH</text>
+<text class="val" x="724" y="1860" text-anchor="start">docs/asbuilt/netlist.md</text>
+<text class="pin" x="1124" y="1842" text-anchor="start">REV</text>
+<text class="val" x="1124" y="1860" text-anchor="start">2026-09-22</text>
+<text class="pin" x="1234" y="1842" text-anchor="start">SHEET</text>
+<text class="val" x="1234" y="1860" text-anchor="start">2 of 2</text>
+<text class="val" x="1316" y="1750" text-anchor="end">C. Vidal</text>
 </svg>
