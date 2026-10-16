@@ -1,0 +1,37 @@
+# ~/.config/labwc/autostart  --  Guitar Rig Analyzer
+# Created 2026-09-30. CORRECTED the same day after the first reboot test.
+#
+# *** labwc 0.20.1 RUNS THIS FILE IN ADDITION TO /etc/xdg/labwc/autostart,
+# *** NOT INSTEAD OF IT.
+#
+# The first version of this file was a copy of the system file minus
+# pcmanfm-pi, on the assumption that a user file SHADOWS the system one. It
+# does not. The reboot test proved it: TWO 'lwrespawn wf-panel-pi'
+# supervisors (pids 1501 and 1507) and TWO kanshi processes were running,
+# one set from each file -- and pcmanfm-pi started anyway, from the system
+# file, which this file cannot prevent.
+#
+# So this file now contains ONLY what must be ADDED to the stock session.
+# Everything else -- pcmanfm-pi, wf-panel-pi, kanshi,
+# lxsession-xdg-autostart -- comes from /etc/xdg/labwc/autostart, which is
+# NOT modified (sha256 3a53212ad85afb47ef60ebb66c5a6c911cba210ff5577492acfafa2c68edb719).
+#
+# DESKTOP ICONS: pcmanfm-pi still runs and still draws them. That is fine
+# and needs no further action -- the analyzer sets -topmost, and the
+#2026-09-30 boot screenshot confirms it renders above the icon layer with
+# nothing compositing over it. The earlier 'pcmanfm --desktop-off'
+# workaround is no longer needed.
+#
+# DELIBERATELY NOT WRAPPED IN lwrespawn (operator decision, 2026-09-30):
+#   - Escape must terminate the application normally.
+#   - /dev/ttyAMA0 must stay free for diagnostics afterwards.
+#   - A crashing application must not enter a restart loop.
+#   - This is a development instrument, not a locked-down kiosk.
+# Verified on the first boot test: after terminating the UI, it did NOT
+# come back, and a fresh capture.sh on /dev/ttyAMA0 succeeded immediately.
+#
+# ROLLBACK, COMPLETE AND EXACT:
+#     rm ~/.config/labwc/autostart
+# Nothing else needs undoing; no system file was ever touched.
+
+/home/conley/guitar_rig_analyzer/pi/run_ui.sh --serial /dev/ttyAMA0 &

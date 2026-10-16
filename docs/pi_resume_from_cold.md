@@ -30,8 +30,11 @@ Each stage has four parts, and **the failure response is not optional reading**:
 
 1. **No keyboard can be attached to the Pi.** Everything is done from the Mac
    over SSH. Any step that would need a keypress on the Pi is a design fault,
-   not an instruction. The one known exception is `Escape` to close the Tk UI,
-   and §5 gives the keyboard-free equivalent.
+   not an instruction. The one known exception was `Escape` to close the Tk UI;
+   since 2026-10-15 the kiosk ships instead and §5 gives the keyboard-free way
+   to stop it. **Rebooting is the one action that still needs a password** —
+   `ssh -t conley@guitar-rig-analyzer.local 'sudo reboot'` from the Mac, where
+   `-t` is what lets the prompt appear. Still no Pi keyboard.
 2. **Do not advance a stage on a partial pass.** If a stage is amber, it is
    failed. The whole point of staging is that a later observation cannot be
    contaminated by an earlier unverified one.
@@ -126,23 +129,33 @@ failure gives you two candidate causes.
 
 > ### ⚠️ The single most important fact in this document
 >
-> **The Pi autostarts the Tk UI from its own repository checkout, and that
-> checkout is stale.**
+> **🔺 CHANGED 2026-10-15 — the Pi now autostarts the WEB KIOSK, not the Tk UI.**
 >
 > `~/.config/labwc/autostart` contains one line:
 > ```sh
-> /home/conley/guitar_rig_analyzer/pi/run_ui.sh --serial /dev/ttyAMA0 &
+> /home/conley/gra-ui/pi/run_kiosk_boot.sh &
 > ```
-> As of 2026-10-12 that checkout sat at **`ce682cd` with 16 modified and 30
-> untracked files** — it is *not* this repository's HEAD and has been fed by
-> hand. So on every boot:
+> ADR-005 §2's four conditions were met on 2026-10-13 and 2026-10-15, and the
+> migration was verified by a controlled reboot. See
+> [`../pi/deploy/README.md`](../pi/deploy/README.md) and
+> [`../ai/evidence/2026-10-15-pi-web-autostart-reboot.md`](../ai/evidence/2026-10-15-pi-web-autostart-reboot.md).
 >
-> 1. **Old code is running**, not the code you just tested on the Mac.
-> 2. **`/dev/ttyAMA0` is already held.** Nothing else can open it until that
->    process ends.
+> So on every boot:
+>
+> 1. **`~/gra-ui/` is what runs** — a durable deployment kept byte-identical to
+>    this repository's `pi/` tree. It is *not* `~/gra-webtest` or `~/gra-stage-*`
+>    (scratch trees), and *not* the Pi's own checkout.
+> 2. **`/dev/ttyAMA0` is already held** — by `python3 -m web.server`, the
+>    transport. Nothing else can open it until that process ends.
 >
 > Neither of those is a fault. Both are facts you must establish *before*
 > interpreting anything.
+>
+> **The Tk UI is still installed and still works**, as ADR-005 §2's reference
+> renderer. It no longer starts by itself. `~/guitar_rig_analyzer` remains at
+> **`ce682cd` with 49 dirty/untracked entries**, deliberately untouched — it
+> holds the known-good Tk launcher the boot fallback uses, and uncommitted work
+> that exists nowhere else. **Do not `git checkout .` in it.**
 
 **Prerequisites:** Stage 1 passed.
 
@@ -150,11 +163,21 @@ failure gives you two candidate causes.
 
 1. What is running, and does it hold the UART?
    ```sh
-   pgrep -af analyzer_ui
-   pgrep -af 'web.server'
+   pgrep -af 'web.server'          # expect ONE — the production transport
+   pgrep -af analyzer_ui           # expect NONE since 2026-10-15
+   pgrep -af run_kiosk_boot        # expect ONE — the boot supervisor
    ls -l /dev/ttyAMA0 /dev/serial0
-   sudo lsof /dev/ttyAMA0 2>/dev/null || echo "no holder"
    ```
+   🔺 **`sudo lsof` needs a password on this Pi and `pgrep -af <pattern>` matches
+   your own command line** — both bit real sessions. Count the descriptor
+   holders instead, which is the thing actually being asked about:
+   ```sh
+   for p in /proc/[0-9]*; do for f in $p/fd/*; do
+     case "$(readlink "$f" 2>/dev/null)" in */ttyAMA0)
+       echo "pid ${p#/proc/}: $(tr '\0' ' ' < $p/cmdline)";; esac
+   done; done 2>/dev/null
+   ```
+   Expect **exactly one**, and expect it to be `web.server`.
 2. What state is the Pi's own checkout in?
    ```sh
    git -C ~/guitar_rig_analyzer log --oneline -1
@@ -165,16 +188,18 @@ failure gives you two candidate causes.
    ls -la ~/gra-webtest 2>/dev/null
    ```
 
-**Expected observation:** exactly **one** `analyzer_ui` process, holding
-**one** fd on `/dev/ttyAMA0`; the checkout at a commit that is probably not
-HEAD; `~/gra-webtest` present from the 2026-10-12/13 web sessions.
+**Expected observation:** exactly **one** `web.server` process holding **one** fd
+on `/dev/ttyAMA0`, one `run_kiosk_boot.sh` supervisor, one `chromium --kiosk`,
+and **no** `analyzer_ui`; the Pi's own checkout at a commit that is not HEAD;
+`~/gra-ui` present and matching this repository's `pi/` tree.
 
 **Failure response**
 
 | Symptom | Response |
 |---|---|
-| No `analyzer_ui` process | Autostart did not fire. Check `journalctl --user -b`. **Do not fix it by editing autostart yet** — first establish whether the file still exists |
-| More than one | A duplicate-service defect of the kind the 2026-09-30 reboot exposed. Kill all, relaunch one by hand, record it |
+| No `web.server` process | The kiosk did not start. **Read `~/gra-ui-boot.log` first** — the supervisor records every attempt, the reason, and whether it fell back |
+| An `analyzer_ui` process is running | The Tk **fallback** fired, meaning the kiosk failed three times. The log says why. The panel is not blank, so this is a degraded success, not an outage |
+| More than one of anything | A duplicate-startup defect of the kind the 2026-09-30 reboot exposed. Check for a second supervisor; the lock in `$XDG_RUNTIME_DIR/gra-kiosk-boot.lock` should make this impossible |
 | `/dev/ttyAMA0` missing | The UART is not configured. On a Pi 5 **`/dev/serial0` is the wrong device** — it maps to `ttyAMA10`. Do not substitute it |
 | Checkout is dirty in ways you do not recognise | Record it. **Do not `git checkout .`** — those modifications may be the only copy of something |
 
@@ -274,39 +299,49 @@ primary evidence and everything downstream is derived from it.
 
 **POWER: both ON.**
 
-Only one process may hold `/dev/ttyAMA0`. The Tk UI claims it at boot. This is
-the stage the whole session has been building toward, and it is also the first
-place where **no verified procedure exists**.
+Only one process may hold `/dev/ttyAMA0`. **Since 2026-10-15 the holder at boot
+is the web transport, not the Tk UI** — stopping it is the same operation with a
+different target.
 
 **Prerequisites:** Stage 4 gave a good raw capture.
 
 **Steps**
 
-1. Identify and stop the holder:
+1. Stop the kiosk **by its supervisor**, so cleanup runs:
    ```sh
-   pgrep -af analyzer_ui
-   kill <pid>                       # SIGTERM. Not -9 unless it refuses
-   sleep 2
-   sudo lsof /dev/ttyAMA0 || echo "UART free"
+   pkill -f run_kiosk_boot.sh       # the boot supervisor
+   pkill -f 'sh run_web.sh'         # the launcher; its trap reaps both children
+   sleep 5
    ```
-   `Escape` on the panel does the same thing, but no keyboard is attached;
-   `SIGTERM` is the keyboard-free equivalent and the 2026-09-30 test confirmed
-   the UART goes to **0 fds** and the process **does not respawn** (the
-   autostart line is deliberately *not* wrapped in `lwrespawn`).
-2. Confirm **0 fds** before continuing. Not "probably free".
+   🛑 **Signal `run_web.sh`, not the transport directly.** The launcher's trap
+   is what stops the browser, reaps both children and removes the ephemeral
+   Chromium profile. Killing `web.server` alone orphans the browser and leaks
+   the profile — that is TODO-82/83, and it cost 171 MB in one evening.
+2. Confirm **0 fds** before continuing. Not "probably free":
+   ```sh
+   for p in /proc/[0-9]*; do for f in $p/fd/*; do
+     case "$(readlink "$f" 2>/dev/null)" in */ttyAMA0) echo HELD;; esac
+   done; done 2>/dev/null | wc -l       # expect 0
+   ```
 
-**Expected observation:** no `analyzer_ui` process; `lsof` reports no holder;
-the panel shows the desktop.
+**Expected observation:** no `web.server`, no `chromium --kiosk`, **0** fds on
+`/dev/ttyAMA0`, and the panel showing the desktop.
+
+**The supervisor will NOT restart it**, provided the kiosk had been running for
+at least 60 s — retries are scoped to startup, exactly so that freeing the UART
+for diagnostics stays possible. That is the same operator decision that kept the
+Tk line out of `lwrespawn` on 2026-09-30.
 
 **Failure response**
 
 | Symptom | Response |
 |---|---|
-| Process returns by itself | Something wrapped it in a respawner. Inspect `~/.config/labwc/autostart` before going further |
-| UART still held after the process is gone | A stale fd. Record it — this is a real defect worth a TODO |
-| You need the Tk UI back | `sh ~/guitar_rig_analyzer/pi/run_ui.sh --serial /dev/ttyAMA0 &` from the **Pi's own checkout**, which is what boot would have run |
+| The kiosk returns by itself | It had been up **less than 60 s**, so the supervisor read the exit as a startup failure and retried. Wait for it to settle, or `touch ~/gra-ui/DISABLE_KIOSK_AUTOSTART` and stop it again |
+| UART still held after the processes are gone | A stale fd. Record it — this is a real defect worth a TODO |
+| You need the **Tk** UI back | `setsid sh ~/guitar_rig_analyzer/pi/run_ui.sh --serial /dev/ttyAMA0 &` from the **Pi's own checkout**. To make it boot again: `sh ~/gra-rollback/restore-tk-startup.sh` |
+| You need the **kiosk** back | `cd ~/gra-ui/pi && setsid ./run_kiosk_boot.sh &` |
 
-**Evidence to preserve:** the before/after `lsof` output. "The UART was free"
+**Evidence to preserve:** the before/after descriptor count. "The UART was free"
 is a claim; `0` fds is an observation.
 
 ---
@@ -383,8 +418,11 @@ session log honest.
 
 | Added | Remove with | Effect |
 |---|---|---|
-| `~/.config/labwc/autostart` | `rm ~/.config/labwc/autostart` | No analyzer at boot. labwc falls back to the untouched system file |
-| `~/gra-webtest` | `rm -rf ~/gra-webtest` | Scratch tree gone. The Pi's own checkout is unaffected |
+| `~/.config/labwc/autostart` (**now the kiosk line**) | `sh ~/gra-rollback/restore-tk-startup.sh` to go back to **Tk**, or `rm ~/.config/labwc/autostart` for **nothing** at boot | The script restores the Tk file byte-for-byte and verifies the hash both sides. `rm` leaves only the untouched system file. 🔺 **Exercised for real on 2026-10-15** before the migration reboot — not merely written |
+| Kiosk at boot, without restoring Tk | `touch ~/gra-ui/DISABLE_KIOSK_AUTOSTART` | Supervisor exits immediately on the next boot. Needs no root and no file editing |
+| `~/gra-ui` (**the production deployment**) | `rm -rf ~/gra-ui` | 🛑 **Roll the autostart back FIRST.** Deleting this while the kiosk line is installed leaves boot with nothing to run — the supervisor itself lives here, so even the Tk fallback is gone |
+| `~/gra-webtest`, `~/gra-stage-cc994de`, `~/gra-stage-todo82` | `rm -rf` each | Scratch trees from the 2026-10-12/13 sessions. **Nothing boots from these.** The Pi's own checkout is unaffected |
+| `~/gra-rollback` | leave it | The way back. Removing it removes the recovery path |
 | Chromium kiosk profile | `du -sh /tmp/gra-kiosk.*`, then `rm -rf` the ones you have confirmed belong to no running kiosk | 🔺 **CORRECTED 2026-10-13.** This row used to read *"nothing — deletes it on exit"*. It did not: `exec` destroyed the trap (TODO-82), and two launches leaked **171 MB**. Fixed in `run_web.sh`, so launches from 2026-10-13 onward do clean up after themselves — but **anything left by an earlier launch is still there** |
 
 🔺 **A rollback table that is wrong is worse than one that is missing**, because it is what an operator consults *instead of* checking. The row above was believed for a day and was false for the whole of it. Verify a rollback claim before relying on it.

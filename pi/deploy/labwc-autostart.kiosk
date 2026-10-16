@@ -1,0 +1,69 @@
+# ~/.config/labwc/autostart  --  Guitar Rig Analyzer
+#
+# Created 2026-09-30 (Tk UI). MIGRATED 2026-10-15 to the web kiosk.
+#
+# *** labwc 0.20.1 RUNS THIS FILE IN ADDITION TO /etc/xdg/labwc/autostart,
+# *** NOT INSTEAD OF IT.
+#
+# The first version of this file was a copy of the system file minus
+# pcmanfm-pi, on the assumption that a user file SHADOWS the system one. It
+# does not. The 2026-09-30 reboot test proved it: TWO 'lwrespawn wf-panel-pi'
+# supervisors and TWO kanshi processes were running, one set from each file --
+# and pcmanfm-pi started anyway, from the system file, which this file cannot
+# prevent.
+#
+# So this file contains ONLY what must be ADDED to the stock session.
+# Everything else -- pcmanfm-pi, wf-panel-pi, kanshi, lxsession-xdg-autostart
+# -- comes from /etc/xdg/labwc/autostart, which is NOT modified (sha256
+# 3a53212ad85afb47ef60ebb66c5a6c911cba210ff5577492acfafa2c68edb719).
+#
+# ==============================================================================
+# 2026-10-15 -- THE PRODUCTION UI IS NOW THE WEB KIOSK (ADR-005 §2)
+# ==============================================================================
+#
+# ADR-005 §2 makes the web client the production default once it can, on the Pi:
+#   §2.1 boot directly into Chromium        -- this line
+#   §2.2 connect to analyzer_link           -- met 2026-10-13
+#   §2.3 render real protocol-v2 frames     -- met 2026-10-13
+#   §2.4 survive disconnect and reconnect   -- met 2026-10-15
+#        ai/evidence/2026-10-15-pi-web-disconnect-reconnect.md
+#
+# The Tk line below is COMMENTED, NOT DELETED. ADR-005 §2 retains the Tk
+# renderer as the reference/debug renderer -- the one that has been run against
+# the real UART on the physical display, and the one a disagreement is
+# adjudicated against. Its launcher and the Pi's own checkout are untouched.
+#
+#   OLD (Tk), kept verbatim for rollback:
+# /home/conley/guitar_rig_analyzer/pi/run_ui.sh --serial /dev/ttyAMA0 &
+#
+# ROLLBACK, COMPLETE AND EXACT, over SSH and with no keyboard:
+#
+#     sh ~/gra-rollback/restore-tk-startup.sh
+#
+# which restores this file byte-for-byte to the Tk original
+# (sha256 b40fbc70653ccfa53a808b170877f1cc9ab589f6e17d95498064ea5c6f986c60)
+# and verifies the hash before and after. To stop the kiosk taking the panel on
+# the next boot WITHOUT restoring Tk:
+#
+#     touch ~/gra-ui/DISABLE_KIOSK_AUTOSTART
+#
+# WHY A SUPERVISOR AND NOT run_web.sh DIRECTLY: boot needs three things that the
+# launcher deliberately does not do -- wait for the compositor socket, retry a
+# bounded number of times, and fall back to the Tk UI rather than leave a
+# keyboard-less panel blank. run_kiosk_boot.sh adds exactly those and calls the
+# same proven run_web.sh underneath. It is NOT a restart loop: retries are
+# scoped to startup, so terminating a running kiosk frees /dev/ttyAMA0 and stays
+# terminated -- the same operator decision that kept the Tk line out of
+# lwrespawn on 2026-09-30.
+#
+# DELIBERATELY NOT WRAPPED IN lwrespawn, unchanged from 2026-09-30:
+#   - terminating the UI must free /dev/ttyAMA0 for diagnostics;
+#   - a crashing application must not enter a restart loop;
+#   - this is a development instrument, not a locked-down appliance.
+#
+# CODE LOCATION: ~/gra-ui/ is the DURABLE production deployment, byte-identical
+# to the repository's pi/ tree. It is deliberately NOT ~/gra-webtest or
+# ~/gra-stage-*, which are scratch trees that may be deleted, and NOT
+# ~/guitar_rig_analyzer, which is the stale dirty checkout the Tk line used.
+
+/home/conley/gra-ui/pi/run_kiosk_boot.sh &

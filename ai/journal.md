@@ -12,6 +12,149 @@ How to use this file:
 
 ---
 
+## 2026-10-15 (1) — **The Pi boots into the web kiosk. ADR-005 §2 is closed, and the gate was closed in the order the gate specified**
+
+**2026-10-15, 20:17–21:05 PDT. Repository `b68d648` → `651dbaa`.** One
+configuration file changed, one script added, one controlled reboot. **No
+firmware, protocol, wiring, DSP or measurement-semantics change.**
+
+Evidence:
+[`evidence/2026-10-15-pi-web-disconnect-reconnect.md`](evidence/2026-10-15-pi-web-disconnect-reconnect.md)
+(§2.4) and
+[`evidence/2026-10-15-pi-web-autostart-reboot.md`](evidence/2026-10-15-pi-web-autostart-reboot.md)
+(§2.1). Deployment record:
+[`../pi/deploy/README.md`](../pi/deploy/README.md).
+
+### The instruction was to migrate autostart. Inspection said not yet, and that was right
+
+The session opened with an authorisation to make the web UI boot automatically.
+**Inspection found a documented gate forbidding exactly that:** todo.md carried
+*"Do not replace the Tk autostart until ADR-005 §2's four conditions hold"*, and
+**§2.4 — survive disconnect and reconnect — had never been tested.** Two of four
+were met, not three.
+
+I stopped before editing and reported it. The operator chose to **close §2.4
+first rather than waive it**, which cost one bench action and produced the
+evidence the gate was asking for. Had I treated the authorisation as overriding
+the gate, the project would have shipped a production default with its stated
+precondition unmet, and the record would have said four conditions held when
+three did.
+
+**The generalisable bit:** an instruction to do X is not evidence that X's
+preconditions hold. The preconditions live in the repository, and checking them
+is cheap compared with un-shipping a default.
+
+### §2.4 — the Teensy was power-cycled under the running kiosk
+
+Sampler at 1 Hz on `/api/frame`, 286 samples. Session **49 → 50**; `stale` raised
+within ≤2 s; **`frames_in` froze at exactly 7911** for all 16 stale samples;
+recovery to live 3 s after the receiver reset; `decode_errors` **0 in every
+sample that carried one**. Supervisor, transport and browser pids were unchanged
+across the event — **nothing restarted**.
+
+The frozen counter is the load-bearing observation. `stale=True` is the
+receiver's own opinion; `frames_in` not advancing by a single frame is
+independent of that opinion, and the session advance is the Teensy's EEPROM
+counter corroborating a real restart from a third direction.
+
+🔺 **Stated at its true strength.** The sampler is `curl` plus `sleep 1`, not a
+1 Hz clock — gaps measured 1–2 s and two seconds are missing entirely, so every
+figure carries ±1–2 s. And the 3 s is measured from the Pi's first sight of the
+Teensy returning, **not** from the physical replug, which nobody recorded. The
+Teensy's own boot time is inside the 17 s stale window and is not separable.
+
+**An unplanned second instance arrived free.** Later that evening the operator
+restarted the MacBook, which power-cycled the Teensy — the instrument is
+USB-powered from the laptop (**TODO-85**). Session went 50 → 51 and the kiosk
+rode through it unattended, still at zero decode errors. TODO-85 now has a
+concrete instance behind it instead of a concern.
+
+### labwc autostart, not a systemd user service — decided by measurement
+
+`systemctl --user is-active graphical-session.target` returns **inactive**:
+lightdm → labwc never activates it. A unit with
+`WantedBy=graphical-session.target` would have been installed, enabled, and
+**silently never fired**. That is a failure mode which looks like a working
+configuration, and it was one command away from being discovered the hard way.
+
+labwc autostart is also already proven here, inherits the session environment
+directly (`WAYLAND_DISPLAY=wayland-0` was already exported into the Tk process's
+`/proc/environ`, so `run_web.sh`'s socket discovery is a no-op at boot), and
+rolls back with one file restore. **No second startup manager was added.**
+
+### The supervisor exists for three things the launcher deliberately does not do
+
+[`run_kiosk_boot.sh`](../pi/run_kiosk_boot.sh) waits for the compositor socket
+(bounded 30 s), retries a bounded 3 times, and falls back to the Tk UI. It
+**calls `run_web.sh`** and reimplements none of its cleanup — the TODO-82/83
+supervision, the port guard and the profile removal are the proven code and were
+left alone.
+
+**🛑 The design point that could have gone wrong.** `run_web.sh` returns both
+when the kiosk never came up *and* when an operator kills it to free the UART. A
+naive supervisor restarts both — and the second case means **seizing
+`/dev/ttyAMA0` back from the person who just freed it**, which is precisely what
+the 2026-09-30 decision refused `lwrespawn` for. So retries are scoped to
+*startup*: an exit after ≥60 s of running is read as a deliberate teardown and
+the supervisor exits with it. The 2026-09-30 operator decision is preserved by a
+threshold rather than by not having a supervisor at all.
+
+### Rollback was exercised, not asserted
+
+The rollback script was **run for real before the reboot** — it restored the Tk
+file byte-for-byte, the hash was verified, and the kiosk config was re-applied.
+This file already carries the lesson (2026-10-13, TODO-83): *a rollback table
+that is wrong is worse than one that is missing*, because it is what an operator
+consults instead of checking. A rollback path that has never been run is the
+same class of claim.
+
+### The reboot, and a system fact worth recording
+
+New `boot_id`, new `btime`. Kernel boot → transport **+10 s** → Chromium
+**+11 s**, attempt 1 of 3, no fallback. Session **51** afterwards, confirming the
+Pi reboot did not disturb the Teensy. One UART holder, no Tk, no duplicates,
+`throttled=0x0`.
+
+**I could not perform the reboot.** `sudo` needs a password and polkit refuses
+`systemctl reboot` from SSH — the session is `Remote=yes`, so `allow_active=yes`
+does not apply. The operator ran `ssh -t … 'sudo reboot'` from the Mac, where
+`-t` is what lets the prompt appear. **No Pi keyboard was needed**, consistent
+with the standing rule, and this is recorded because it will recur every time a
+reboot is wanted.
+
+### 🔺 What this does NOT establish, recorded against the temptation to round up
+
+**First-paint was not measured.** The timeline is process *exec* times from
+`/proc`. "Boot to usable UI" is **not** a number this work produced; "boot + 11 s
+to Chromium exec" is. Closing that needs the client to report its first render.
+
+**Touch is unverified since the migration.** Confirmed 2026-10-13 on the same
+client code; nobody has touched the panel since.
+
+**The Tk fallback has never fired.** Written, syntax-checked, and its disable-flag
+and lock guards were exercised — but no boot has failed three times, so the
+fallback itself is untested in anger.
+
+### The Pi-local configuration was not in the repository, and now is
+
+The operator asked whether a commit presenting this migration actually contains
+the configuration. **It did not.** `~/.config/labwc/autostart` lives outside any
+checkout; only the supervisor script was tracked. `pi/deploy/` now holds verbatim
+copies of the installed autostart, the Tk original and the rollback script, each
+verified byte-identical to the Pi, **with a README stating plainly that they are
+copies and that editing them changes nothing until installed.**
+
+A commit that appeared to contain a machine-local change while not containing it
+is a worse failure than one that omits it honestly, because the next reader would
+restore from it and get the wrong file.
+
+### Next
+
+LIVE polls at 5 Hz (`POLL_MS = 200`) against Tk's 20 Hz, which is the entire
+content of the operator's *"the new UI is laggy"* report — measured, not
+inferred: 5.09 req/s observed, server p50 6.4 ms, kiosk 24.6 % of one core of
+four. Raising it is TODO-89 and is the next authorised work.
+
 ## 2026-10-13 (15) — **Why TONE showed zero measured bands, and why a guitar cannot be the stimulus for an A/B**
 
 **2026-10-13, ~22:10 PDT. Repository `db46cb3`. Read-only: firmware and
