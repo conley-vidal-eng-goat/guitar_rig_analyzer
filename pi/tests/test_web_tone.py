@@ -80,7 +80,7 @@ class TestToneVisualFinish(unittest.TestCase):
         """§1c specifies height at 0.16 AND thickness at 0.14."""
         self.assertAlmostEqual(_const(self.src, "EASE_HEIGHT"), 0.16, places=4)
         self.assertAlmostEqual(_const(self.src, "EASE_COVERAGE"), 0.14, places=4)
-        self.assertRegex(self.src, r"lerp\(easedCov\[i\], cov, EASE_COVERAGE\)",
+        self.assertRegex(self.src, r"lerp\(easedCov\[d\], cov, EASE_COVERAGE\)",
                          "bar thickness is not eased")
 
     def test_the_amber_markers_survive_the_fidelity_pass(self):
@@ -101,58 +101,70 @@ class TestToneVisualFinish(unittest.TestCase):
 
 
 class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
-    """TODO-88. The arithmetic behind the clipping, kept as a live assertion.
+    """TODO-88, **CLOSED 2026-10-15**. The arithmetic, kept as a live assertion.
 
-    🔺 THIS TEST CURRENTLY DOCUMENTS A KNOWN DEFECT rather than preventing one.
-    The camera fit is deliberately unchanged pending a design decision (journal
-    2026-10-13 (13)): the honest fix shrinks the ring by about 39 %, which works
-    against the complaint that prompted the work. What this does is make the
-    inequality explicit and keep it from drifting further.
+    🔺 THIS TEST USED TO DOCUMENT THE DEFECT. It now prevents it. Two changes
+    made the bound real: `magnitude` is clamped to `MAX_DB` before scaling, so
+    the firmware's ±24 dB rail can no longer ask for a taller bar than the
+    scale's own maximum; and `MAX_BAR_HEIGHT` was sized so the bar TIP sits
+    inside the orbit-invariant bounding sphere the camera contains.
+
+    The ring was **not** shrunk to achieve it — that was the alternative the
+    2026-10-13 analysis rejected, because it works against the complaint that
+    prompted the work.
     """
 
     @classmethod
     def setUpClass(cls):
         cls.src = FINGERPRINT.read_text()
 
-    def test_max_bar_height_is_a_scale_factor_and_not_a_maximum(self):
-        """`MAX_BAR_HEIGHT` is the height of a MAX_DB deviation, and `target` has
-        no upper clamp — so the name promises a bound the code does not provide.
+    def test_bar_height_is_clamped_to_the_scale(self):
+        """The wire can carry ±24 dB; the scale is MAX_DB. Without a clamp the
+        renderer draws a bar for a magnitude its own scale does not define, and
+        the reader has no way to know the bar is off-scale.
 
-        The firmware clamps each TF bin into [TF_DB_MIN-6, TF_DB_MAX+6] = ±24 dB
-        (`config.h:667`, `data_sender.h:284`), so the tallest bar the renderer can
-        be asked to draw is (24/18)·4.2 = 5.6 — a third beyond the constant.
+        Clamped **and** marked: an over-range bar carries a cap, so a bar pinned
+        at full length is never mistaken for a value of exactly MAX_DB.
         """
         src = self.src
-        self.assertRegex(src, r"target\s*=\s*Math\.max\(0\.03,\s*\(magnitude / MAX_DB\)",
-                         "the height mapping changed; re-derive the bound below")
-        self.assertNotRegex(src, r"Math\.min\([^)]*MAX_BAR_HEIGHT",
-                            "height is now clamped — update this test and TODO-88")
+        self.assertRegex(
+            src, r"Math\.min\(magnitude,\s*MAX_DB\)",
+            "magnitude is no longer clamped to the scale — TODO-88 has reopened")
+        self.assertIn("OVER_RANGE_MARK", src,
+                      "a clamped bar must be marked, or it asserts a wrong value")
 
         max_db = _const(src, "MAX_DB")
         max_bar = _const(src, "MAX_BAR_HEIGHT")
+        over = _const(src, "OVER_RANGE_MARK")
         wire_db_max = 24.0                      # config.h TF_DB_MIN/MAX plus the 6 dB rail
-        tallest = (wire_db_max / max_db) * max_bar
-        self.assertGreater(tallest, max_bar,
-                           "the wire can no longer exceed MAX_DB; TODO-88 may be closeable")
-        self.assertAlmostEqual(tallest, 5.6, places=2)
+        self.assertGreater(wire_db_max, max_db,
+                           "the wire no longer exceeds the scale; the clamp is moot")
+        # However tall the wire asks for, the drawn tip is bounded by this:
+        self.assertAlmostEqual(max_bar + over, 2.46, places=2)
 
-    def test_the_current_fit_does_not_contain_the_tallest_drawable_bar(self):
-        """A sphere about the origin is the only bound invariant under orbit, and
-        a sphere of radius R is inside a frustum only when R/d <= sin(halfAngle).
-        The shipping fit uses tan and a radius derived from the ring alone.
+    def test_the_fit_contains_the_tallest_drawable_bar_at_every_orbit_position(self):
+        """The containment assertion the previous version was standing in for.
 
-        When this test starts FAILING, the defect has been fixed — update it then,
-        rather than loosening it now.
+        A sphere about the origin is the only bound invariant under orbit — yaw
+        is unrestricted, so any bar can be carried to any bearing — and a sphere
+        of radius R sits inside a frustum only when R <= d·sin(halfAngle), using
+        the NARROW half-angle on a 720x1280 portrait panel.
+
+        If this fails, a bar can leave the frame at some orbit position. Do not
+        loosen it: either lower MAX_BAR_HEIGHT or raise FIT_RADIUS, and say in
+        the constant's comment which was chosen and why.
         """
         src = self.src
         disc = _const(src, "DISC_RADIUS")
-        max_db = _const(src, "MAX_DB")
         max_bar = _const(src, "MAX_BAR_HEIGHT")
+        over = _const(src, "OVER_RANGE_MARK")
         fov = _const(src, "CAMERA_FOV")
         base = _const(src, "BAR_RADIUS_BASE")
         gain = _const(src, "BAR_RADIUS_GAIN")
 
-        tallest = (24.0 / max_db) * max_bar
+        # Height is clamped to the scale now, so the tallest tip is the bar at
+        # full scale plus its over-range cap -- NOT a function of the wire rail.
+        tallest = max_bar + over
         bar_ring = disc * 0.92                  # placeBar() radius
         bound = math.hypot(bar_ring + base + gain, tallest)
 
@@ -164,10 +176,45 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
         half_narrow = math.atan(math.tan(half_fov) * aspect)
         contained = distance * math.sin(half_narrow)
 
-        self.assertLess(
-            contained, bound,
-            "the camera now contains the tallest drawable bar — TODO-88 is fixed, "
-            "so replace this test with the containment assertion it was standing in for")
+        self.assertLessEqual(
+            bound, contained,
+            f"a full-scale bar (bound {bound:.3f}) leaves the frame "
+            f"(contains {contained:.3f}) at some orbit position")
+
+    def test_the_window_is_fixed_and_not_driven_by_the_data(self):
+        """The ring shows VIEW_BANDS of 48, starting at VIEW_BAND_LO.
+
+        🛑 An auto-zoom that followed the data would change what a position on
+        the ring MEANS between two frames, so two moments could not be compared
+        — and comparing two moments is what this instrument is for. The window
+        must be a constant, never computed from `segments`.
+        """
+        src = FINGERPRINT.read_text()
+        lo = _const(src, "VIEW_BAND_LO")
+        n = _const(src, "VIEW_BANDS")
+        self.assertGreaterEqual(lo, 0)
+        self.assertLessEqual(lo + n, _const(src, "NUM_BANDS"),
+                             "the window runs off the end of the band array")
+        self.assertNotRegex(
+            src, r"VIEW_BAND_LO\s*=\s*[^;]*segments",
+            "the window is being derived from the data — it must be fixed")
+
+    def test_the_trail_encodes_age_as_brightness_only(self):
+        """A held bar is history, not a current measurement.
+
+        Age may darken a bar; it must never move or resize one, or the trail
+        becomes an animation of magnitudes the instrument never reported.
+        """
+        src = FINGERPRINT.read_text()
+        self.assertIn("TRAIL_MS", src)
+        # The decayed colour is the captured colour scaled by k = 1 - age/life.
+        self.assertRegex(src, r"const k = 1 - age / TRAIL_MS",
+                         "the trail no longer decays linearly to black")
+        self.assertRegex(src, r"setRGB\(trailCol\[s \* 3\] \* k",
+                         "age is not being applied to colour")
+        # Height comes from the stored sample, never recomputed from age.
+        self.assertRegex(src, r"scl\.set\(trailR\[s\], h, trailR\[s\]\)",
+                         "trail height is no longer the height that was captured")
 
 
 class TestLivePollCadence(unittest.TestCase):

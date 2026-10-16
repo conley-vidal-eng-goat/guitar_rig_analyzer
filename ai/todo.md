@@ -151,7 +151,21 @@ Observed 2026-10-15: ring showed `1 MEASURED` band at **68.0 Hz**, value −0.04
 
 **Proof:** a finger-drag across the LIVE cards scrolls the view and leaves no highlighted text, confirmed from a `grim` capture rather than from the CSS.
 
-### TODO-88 — The MEASURED bar path rendered for the first time and has never been evaluated 🔴 **found 2026-10-13. ADR-005's longest-standing open evidence debt is now closeable — and the first look raises a question**
+### TODO-88 — The MEASURED bar path rendered for the first time and has never been evaluated 🟢 **CLIPPING FIXED 2026-10-15. Visual evaluation under sustained stimulus still open**
+
+**✅ THE CLIPPING IS FIXED, AND THE RING WAS NOT SHRUNK TO DO IT.** The 2026-10-13 analysis framed this as a choice between a smaller ring and bars that leave the frame. It was a false choice: the real defect was that `target` had **no upper clamp**, so the firmware's ±24 dB rail could ask for `(24/18)·4.2 = 5.6` — a third beyond the constant named `MAX_BAR_HEIGHT`.
+
+Two changes, both in [`fingerprint_split.js`](../pi/web/static/fingerprint_split.js):
+1. **`magnitude` is clamped to `MAX_DB` before scaling**, so the renderer can never draw a bar for a magnitude its own scale does not define. An over-range bar is **capped with a marker** rather than silently pinned, so full length is never mistaken for exactly `MAX_DB`.
+2. **`MAX_BAR_HEIGHT` 4.2 → 2.3**, sized so the bar *tip* sits inside the orbit-invariant bounding sphere the camera actually contains: that sphere is **3.888**, the bar ring sits at **2.983**, leaving **2.494** of height; `2.3 + 0.16` cap = **2.46**.
+
+`test_the_fit_contains_the_tallest_drawable_bar_at_every_orbit_position` now asserts containment instead of documenting the overflow — the replacement the old test asked for by name.
+
+**🔺 STILL OPEN:** the bars have never been *evaluated* under sustained stimulus. Both pinned fixtures classify to zero MEASURED bands in the 68–589 Hz window, so emissive, easing, the cyan/orange ramps and the new decay trail remain visually unconfirmed with real data. **Only live playing closes it**, and that is TODO-91's session.
+
+**Original entry, retained:**
+
+### TODO-88 (original) — The MEASURED bar path rendered for the first time and has never been evaluated 🔴 **found 2026-10-13**
 
 **Why this could not be done before.** Both pinned fixtures classify to **zero** MEASURED bands, so bar heights, side assignment, the cyan/orange ramps, coverage-driven thickness and frame easing were **visually unconfirmed** no matter how many fixture sessions were run. ADR-005 carried that as an open evidence debt, and the 2026-10-12 record flagged it explicitly. **Only live guitar input could ever close it, and on 2026-10-13 it did.**
 

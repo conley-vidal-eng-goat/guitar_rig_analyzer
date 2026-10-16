@@ -12,6 +12,119 @@ How to use this file:
 
 ---
 
+## 2026-10-15 (3) — **TONE: a window instead of the whole spectrum, a scale that states itself, and a clipping defect that turned out not to need the trade-off everyone assumed**
+
+**2026-10-15, ~22:30 PDT.** `fingerprint_split.js`, `view_tone.js`, `shell.css`,
+two tests updated and three added. **No firmware, protocol, wiring, payload or
+measurement-semantics change** — every number still comes from the wire and the
+classification contract is untouched.
+
+Evidence:
+[`evidence/2026-10-15-tone-windowed-labels.png`](evidence/2026-10-15-tone-windowed-labels.png).
+
+### The operator's complaint, and the measurement under it
+
+*"We are unable to quickly determine what frequencies we are seeing… a guitar
+playing 6 strings takes up too small a portion… sometimes less than 1 % of the
+circle."*
+
+Measured from the live wire rather than inferred: the 48 bands span **21.5 Hz –
+18.6 kHz at 2.47 semitones each**, and the six open strings (E2 82.4 → E4 329.6)
+occupy **9 of 48 = 19 % of the circle**. The *drawn* fraction is smaller again,
+because only MEASURED bands draw bars and `TF_SOURCE_GATE` leaves most of them
+UNMEASURED — **1 of 48 at the time of measurement, 2.1 %**.
+
+**Two different problems were being seen as one.** Occupancy is the instrument
+working correctly (2026-10-13 (15)) and no visual change fixes it. Range is a
+rendering problem and is fixed here.
+
+### The ring is now a window, and the window is FIXED
+
+16 consecutive bands from index 8 — **68 Hz to 589 Hz**, covering E2 to D5 —
+spread over the full arcs, with per-band frequency labels on **both** arcs
+(a band sits left when attenuated and right when boosted, so one arc would leave
+half the positions unnamed).
+
+**🛑 The window is a constant, and an auto-zoom was rejected.** A window that
+followed the data would change what a *position on the ring means* between two
+frames, so two moments could not be compared — and comparing two moments is what
+this instrument is for. Pinned by
+`test_the_window_is_fixed_and_not_driven_by_the_data`.
+
+### Note names were asked for and refused, with the arithmetic
+
+The request was labels like "D3" or "E2". **The wire cannot support them.**
+Transmitted bins are **172.1 Hz** wide and bin 0 spans **0–150.73 Hz**, so:
+
+```
+E2  82.41 Hz -> bin 0      G3 196.00 Hz -> bin 1
+A2 110.00 Hz -> bin 0      B3 246.94 Hz -> bin 1
+D3 146.83 Hz -> bin 0      E4 329.63 Hz -> bin 2
+```
+
+**The bottom three strings are the same number on the wire.** A semitone at
+100 Hz is 6 Hz; note labels only become honest above **~2.9 kHz**, where a bin is
+finally narrower than a semitone. Labelling a spike "D3" would be inventing a
+distinction the instrument never transmitted. The operator accepted frequencies
+alone, which the payload already carries per band.
+
+This also opened **TODO-92**: the ring draws a MEASURED bar from bin 0 while
+`view_live.js` hatches that same bin as untrustworthy. Two views of one frame
+disagreeing about whether a bin can be believed is a defect regardless of which
+is right. Marked with a bullet and dimmed for now; the real fix is a protocol
+change and needs its own ADR.
+
+### 🔺 The clipping trade-off everyone had accepted did not exist
+
+TODO-88 was framed on 2026-10-13 as a choice: shrink the ring by ~39 % and keep
+bars in frame, or keep the ring and let bars leave it. The 2026-10-13 note even
+says the honest fix *"works against the complaint that prompted the work"*.
+
+**It was a false choice.** The actual defect was that `target` had **no upper
+clamp**, so the ±24 dB wire rail could ask for `(24/18)·4.2 = 5.6` — a third
+beyond the constant that calls itself the maximum. Clamp `magnitude` to `MAX_DB`
+first and the tallest bar becomes a *design* constant rather than a function of
+the wire; then `MAX_BAR_HEIGHT` can simply be **sized to fit**: containable
+sphere **3.888**, bar ring **2.983**, leaving **2.494** — so 2.3 plus a 0.16 cap
+fits with room. **The ring did not shrink at all.**
+
+The lesson is the same shape as this morning's duty-cycle error: **a trade-off
+inherited from an earlier analysis is still an assumption.** Re-derive it before
+paying for it.
+
+### Persistence had to be history, not a held measurement
+
+Bars now persist for **7 s**, darkening to black. **A held bar is not a current
+measurement**, so age maps to **brightness only** — never to height or position —
+the trail is drawn thinner than the live bar so "now" always reads first, and the
+legend says it in those words. Pinned by
+`test_the_trail_encodes_age_as_brightness_only`.
+
+### The legend now states the scale, because a 3D bar chart invites confident wrong readings
+
+*"There should be no doubt as to how to read this visualization."* The scale line
+is **read from the scene**, never restated in the view, so the two cannot drift:
+bar length = |dB|, full bar = 12 dB, a bar at the minimum means *measured and
+small* rather than a value, ▲ = capped, and which 16 of 48 bands are on screen.
+
+`MAX_DB` went 18 → 12 so an ordinary rig change is legible, and a visibility
+floor means any MEASURED band is visible at all — the "blips" that could not be
+seen. **The mapping stays linear**, so the legend's promise is true everywhere
+above the floor.
+
+### Verification, and its limit
+
+Rendered headlessly from a **scratch copy** with the default tab overridden —
+production untouched, a second server on :8712 fed by a fixture, never the UART.
+Labels at 0.0085 scale collided into an unreadable wall on the first render;
+0.0030 is legible. The WebGL-failure containment still works: with `--disable-gpu`
+TONE says so plainly and the other three views are unaffected.
+
+**🛑 The bars themselves are still unevaluated.** Both pinned fixtures classify to
+zero MEASURED bands inside the 68–589 Hz window, so the ramps, the easing and the
+new trail have **never been seen with real data**. Only live playing closes that,
+and a headless render of an empty ring must not be written up as though it had.
+
 ## 2026-10-15 (2) — **LIVE at 20 Hz, and two measurements that corrected me — one before the change, one after**
 
 **2026-10-15, ~21:30 PDT. Repository `5bf79a0` → this commit.** One constant and

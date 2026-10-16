@@ -264,12 +264,27 @@ html, body {
 .tone-stage { position: absolute; inset: 0; }
 
 .tone-census,
+.tone-scale,
 .tone-legend {
   position: absolute;
   left: var(--gutter);
   right: var(--gutter);
   pointer-events: none;
 }
+
+/* How to read the picture. Sits directly above the legend because the two are
+   one statement: the legend names the colours, this names the SCALE. Without it
+   a 3D bar chart invites a confident wrong reading of its own lengths. */
+.tone-scale {
+  bottom: 106px;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  border-bottom: 1px solid #1b2330;
+  padding-bottom: 6px;
+}
+.tone-scale b { color: var(--text); font-weight: 600; }
+.tone-scale i { color: var(--muted); }
 
 .tone-census {
   top: 10px;
@@ -298,6 +313,12 @@ html, body {
 .sw-warm    { background: var(--warm); }
 .sw-unknown { background: transparent; border: 2px solid var(--unknown); }
 .sw-none    { background: #0d1117; border: 1px solid #21262d; }
+/* History: the same hue decaying to black, which is exactly what the trail does
+   on the ring. The swatch has to show the decay, not a single colour, or it
+   would read as another measurement class. */
+.sw-trail   { background: linear-gradient(90deg, var(--cold), #000); }
+
+.tone-legend b { color: var(--text); font-weight: 600; }
 
 /* Shown only when a WebGL context cannot be created. The measurement readouts
  * on the other three screens are unaffected and must stay that way. */

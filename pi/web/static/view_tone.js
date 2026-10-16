@@ -29,11 +29,19 @@
 import { createFingerprint } from "./fingerprint_split.js";
 import { esc } from "./ui.js";
 
+// The legend is not decoration. Every rule a reader needs in order to not
+// misread this picture is stated here, because a 3D view with an implicit scale
+// invites confident wrong readings — and under ADR-005 the renderer carries the
+// burden of saying what it is showing.
+//
+// Written 2026-10-15 after the operator's report: "there should be no doubt as
+// to how to read this visualization."
 const LEGEND = [
-  ["sw-cold", "measured · attenuated (left, below ring)"],
-  ["sw-warm", "measured · boosted (right, above ring)"],
-  ["sw-unknown", "value present, not established — no direction asserted"],
-  ["sw-none", "unmeasured — nothing drawn"],
+  ["sw-cold", "<b>attenuated</b> — the rig took this away (left, below the ring)"],
+  ["sw-warm", "<b>boosted</b> — the rig added this (right, above the ring)"],
+  ["sw-unknown", "value present, direction <b>not established</b> — nothing asserted"],
+  ["sw-none", "<b>unmeasured</b> — nothing drawn. Absence of a bar is not a zero"],
+  ["sw-trail", "fading bars are <b>history</b>, darkening to black over 7 s"],
 ];
 
 export function createToneView(root) {
@@ -46,26 +54,58 @@ export function createToneView(root) {
   census.textContent = "connecting…";
   root.appendChild(census);
 
+  const scaleLine = document.createElement("div");
+  scaleLine.className = "tone-scale";
+  root.appendChild(scaleLine);
+
   const legend = document.createElement("div");
   legend.className = "tone-legend";
+  // The LEGEND strings carry deliberate <b> markup and are authored in this
+  // file, so they are not escaped. Nothing from the wire reaches this string.
   legend.innerHTML = LEGEND
-    .map(([c, t]) => `<div><span class="sw ${c}"></span>${esc(t)}</div>`)
+    .map(([c, t]) => `<div><span class="sw ${c}"></span>${t}</div>`)
     .join("");
   root.appendChild(legend);
+
+  // Everything about the scale is READ FROM THE SCENE, never restated here, so
+  // the legend cannot drift away from the geometry it describes.
+  function renderScale() {
+    if (!scene || !scene.scale) { scaleLine.textContent = ""; return; }
+    const s = scene.scale();
+    const span = (s.loHz && s.hiHz)
+      ? `${fmtHz(s.loHz)} – ${fmtHz(s.hiHz)}`
+      : "…";
+    scaleLine.innerHTML =
+      `<b>bar length = |dB|</b>, full bar = ${s.maxDb} dB` +
+      ` · a bar at the minimum means <i>measured and small</i>, not a value` +
+      ` · <b>▲ capped</b> = beyond ${s.maxDb} dB` +
+      `<br>showing <b>${s.bands} of 48 bands</b>, ${span}` +
+      ` — the rest of the spectrum is not on this ring` +
+      (dcEdge ? ` · <b>•</b> marks bands under ${fmtHz(dcEdge)}, where the` +
+                ` transmitted bin contains DC and LIVE will not plot it (TODO-92)` : "");
+  }
+
+  function fmtHz(hz) {
+    return hz < 1000 ? `${Math.round(hz)} Hz` : `${(hz / 1000).toFixed(1)} kHz`;
+  }
 
   let scene = null;
   let failed = false;
   let pending = [];
   let live = false;
+  let dcEdge = 0;
 
   function build() {
     if (scene || failed) return;
     try {
       scene = createFingerprint(stage);
       scene.setSegments(pending);
+      scene.setDcEdge(dcEdge);
+      renderScale();
     } catch (e) {
       failed = true;
       legend.hidden = true;
+      scaleLine.hidden = true;
       stage.innerHTML = `<div class="tone-unavailable">
         <h2>3D view unavailable</h2>
         <p class="note">This device could not create a WebGL context, so the
@@ -84,7 +124,23 @@ export function createToneView(root) {
       // visible frame after activation is the current one rather than whatever
       // happens to arrive next.
       pending = f.segments || [];
-      if (scene) scene.setSegments(pending);
+
+      // The DC edge is the low edge of the first transmitted bin that is NOT
+      // flagged `dc`. Derived from the frame the instrument sent, so if the
+      // geometry changes the mark follows it. TODO-92 is the real fix; until
+      // then the ring at least says which bands carry the contamination.
+      const geo = f.spectra && f.spectra.geometry;
+      if (Array.isArray(geo)) {
+        const firstClean = geo.find((g) => g && g.dc === false);
+        const edge = firstClean && firstClean.lo_hz;
+        if (typeof edge === "number" && edge !== dcEdge) dcEdge = edge;
+      }
+
+      if (scene) {
+        scene.setSegments(pending);
+        scene.setDcEdge(dcEdge);
+      }
+      renderScale();
       census.textContent = f.kind === "unknown"
         ? f.reason
         : `source ${f.census_source.text}   →   ring ${f.census_bands.text}`;
