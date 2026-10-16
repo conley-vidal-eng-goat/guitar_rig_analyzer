@@ -80,7 +80,7 @@ class TestToneVisualFinish(unittest.TestCase):
         """§1c specifies height at 0.16 AND thickness at 0.14."""
         self.assertAlmostEqual(_const(self.src, "EASE_HEIGHT"), 0.16, places=4)
         self.assertAlmostEqual(_const(self.src, "EASE_COVERAGE"), 0.14, places=4)
-        self.assertRegex(self.src, r"lerp\(easedCov\[d\], cov, EASE_COVERAGE\)",
+        self.assertRegex(self.src, r"lerp\(easedCov\[i\], cov, EASE_COVERAGE\)",
                          "bar thickness is not eased")
 
     def test_the_amber_markers_survive_the_fidelity_pass(self):
@@ -140,7 +140,7 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
         self.assertGreater(wire_db_max, max_db,
                            "the wire no longer exceeds the scale; the clamp is moot")
         # However tall the wire asks for, the drawn tip is bounded by this:
-        self.assertAlmostEqual(max_bar + over, 2.46, places=2)
+        self.assertAlmostEqual(max_bar + over, 2.41, places=2)
 
     def test_the_fit_contains_the_tallest_drawable_bar_at_every_orbit_position(self):
         """The containment assertion the previous version was standing in for.
@@ -181,40 +181,89 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
             f"a full-scale bar (bound {bound:.3f}) leaves the frame "
             f"(contains {contained:.3f}) at some orbit position")
 
-    def test_the_window_is_fixed_and_not_driven_by_the_data(self):
-        """The ring shows VIEW_BANDS of 48, starting at VIEW_BAND_LO.
+    def test_the_chromatic_range_is_fixed_and_not_driven_by_the_data(self):
+        """The circle is 53 semitone sections, C2 (65.41 Hz) to E6 (1318.51 Hz).
 
         🛑 An auto-zoom that followed the data would change what a position on
         the ring MEANS between two frames, so two moments could not be compared
-        — and comparing two moments is what this instrument is for. The window
-        must be a constant, never computed from `segments`.
+        — and comparing two moments is what this instrument is for. The range
+        must be constants, never computed from `segments`.
         """
         src = FINGERPRINT.read_text()
-        lo = _const(src, "VIEW_BAND_LO")
-        n = _const(src, "VIEW_BANDS")
-        self.assertGreaterEqual(lo, 0)
-        self.assertLessEqual(lo + n, _const(src, "NUM_BANDS"),
-                             "the window runs off the end of the band array")
+        self.assertEqual(_const(src, "NOTE_LO_MIDI"), 36, "C2 is MIDI 36")
+        self.assertEqual(_const(src, "NOTE_SECTIONS"), 53,
+                         "C2..E6 inclusive is 53 semitones, not 76")
         self.assertNotRegex(
-            src, r"VIEW_BAND_LO\s*=\s*[^;]*segments",
-            "the window is being derived from the data — it must be fixed")
+            src, r"NOTE_SECTIONS\s*=\s*[^;]*segments",
+            "the range is being derived from the data — it must be fixed")
 
-    def test_the_trail_encodes_age_as_brightness_only(self):
-        """A held bar is history, not a current measurement.
+    def test_the_circle_is_not_mirrored_and_direction_is_the_axis(self):
+        """Angle means ONE thing now: frequency.
 
-        Age may darken a bar; it must never move or resize one, or the trail
-        becomes an animation of magnitudes the instrument never reported.
+        The ring used to draw every band twice — a left arc for attenuation and
+        a right arc for boost — which halved the space each band got and made a
+        reader check two places for one value. Direction moved to the axis it
+        was always available on: above the ring the rig added energy, below it
+        the rig took energy away.
         """
         src = FINGERPRINT.read_text()
-        self.assertIn("TRAIL_MS", src)
-        # The decayed colour is the captured colour scaled by k = 1 - age/life.
-        self.assertRegex(src, r"const k = 1 - age / TRAIL_MS",
-                         "the trail no longer decays linearly to black")
-        self.assertRegex(src, r"setRGB\(trailCol\[s \* 3\] \* k",
-                         "age is not being applied to colour")
-        # Height comes from the stored sample, never recomputed from age.
-        self.assertRegex(src, r"scl\.set\(trailR\[s\], h, trailR\[s\]\)",
-                         "trail height is no longer the height that was captured")
+        for gone in ("LEFT_START", "RIGHT_START", "leftAngles", "rightAngles"):
+            self.assertNotIn(gone, src,
+                             f"{gone} is back — the mirrored arcs have returned")
+        self.assertIn("sectionAngle", src)
+
+    def test_note_labels_are_a_ruler_and_never_come_from_the_data(self):
+        """Note names label a POSITION on a fixed chromatic axis.
+
+        🛑 They must be computed from the section index alone. A note name
+        derived from a measurement would assert that the instrument identified
+        a pitch, and it cannot: one transmitted bin spans 44 semitones at C2 and
+        2.2 at E6, so note identity is not on the wire anywhere in this range.
+        """
+        src = FINGERPRINT.read_text()
+        self.assertRegex(src, r"const noteName = \(i\) =>",
+                         "note names are no longer a pure function of the index")
+        self.assertNotRegex(src, r"noteName\([^)]*seg",
+                            "a note name is being derived from a segment")
+        self.assertIn("NOTE_NAMES", src)
+
+    def test_a_lit_group_is_not_claimed_to_be_one_note(self):
+        """Several adjacent sections share one payload band, by design.
+
+        The renderer maps each section to the band covering its centre
+        frequency, so a measurement lights the group of sections that band
+        covers. That group width IS the instrument's resolution. Lighting one
+        section per band would assert a precision the wire never carried.
+        """
+        src = FINGERPRINT.read_text()
+        self.assertIn("bandForSection", src)
+        self.assertRegex(src, r"segments\[bandForSection\[i\]\]",
+                         "sections are no longer fed by the covering band")
+        # The view must be able to state the caveat, so the scene must expose
+        # how many distinct bands actually feed the ring.
+        self.assertIn("bandsInRange", src,
+                      "the resolution caveat cannot be stated without this")
+
+    def test_there_is_no_decay_trail(self):
+        """Removed 2026-10-15 at the operator's request: live notes only.
+
+        Recorded as a test so it is not reintroduced as an improvement — the
+        objection was clutter, not honesty.
+        """
+        src = FINGERPRINT.read_text()
+        for gone in ("TRAIL_MS", "trailH", "coldTrail", "TRAIL_SLOTS"):
+            self.assertNotIn(gone, src, f"the decay trail is back ({gone})")
+
+    def test_a_drag_does_not_permanently_stop_the_orbit(self):
+        """`spin` was set false on pointer-down and never restored, so one
+        accidental touch stopped the orbit for the rest of the session.
+        Releasing resumes it from the current yaw and pitch.
+        """
+        src = FINGERPRINT.read_text()
+        self.assertRegex(src, r"spin = true;\s*//",
+                         "release no longer resumes the spin")
+        self.assertIn("touchcancel", src,
+                      "a cancelled touch would leave the orbit stopped")
 
 
 class TestLivePollCadence(unittest.TestCase):

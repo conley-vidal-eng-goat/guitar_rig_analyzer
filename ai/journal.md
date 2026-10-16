@@ -12,6 +12,97 @@ How to use this file:
 
 ---
 
+## 2026-10-15 (4) — **TONE becomes a chromatic circle: 53 semitones, one full turn, and three of the operator's numbers corrected rather than implemented**
+
+**2026-10-15, ~23:05 PDT.** `fingerprint_split.js`, `view_tone.js`,
+`shell.css`, six tests replaced. **No firmware, protocol, wiring, payload or
+measurement-semantics change.** Evidence:
+[`evidence/2026-10-15-tone-chromatic-ring.png`](evidence/2026-10-15-tone-chromatic-ring.png).
+
+### What was asked, and the three numbers that were wrong
+
+> *"lets make the lowest note a 65.4 hz c1 … the highest a e6 1278.75hz … 360
+> degrees divided by the number of notes between c1 and e6. what is the 76
+> sections/notes?"*
+
+| Asked | Actual | Used |
+|---|---|---|
+| C1 = 65.4 Hz | 65.41 Hz is **C2**; C1 is 32.70 Hz | C2, scientific naming |
+| E6 = 1278.75 Hz | 1278.75 Hz is nearest **D#6**; E6 is 1318.51 Hz | E6 = 1318.51 |
+| 76 sections | C2→E6 is 52 semitones = **53** sections | 53, at **6.79°** each |
+
+76/77 sections would be C1→E7 or C0→E6 — 6.3 octaves, far wider than the range
+described. Guitar writing often drops an octave from scientific notation, which
+is the likely origin of the C1/C2 slip; **the frequencies were treated as the
+reliable part and the names recomputed from them.**
+
+### The circle stopped being mirrored, which is where the space came from
+
+The ring drew all 48 bands **twice** — a left arc for attenuation, a right arc
+for boost — so every band appeared at two positions and each got under half the
+circle. Angle now means **one** thing, frequency, and direction moved to the
+axis it was always available on: **above the ring the rig added energy, below it
+the rig took energy away.** Same information, twice the angular space, and no
+duplicate to cross-check.
+
+### 🛑 The thing this design could have lied about, and does not
+
+The request was that "the whole section lights up" for a note. **Note-level
+lighting is not supportable anywhere in this range**, and the arithmetic is
+blunt — one transmitted bin is 172.1 Hz, so:
+
+```
+C2    65.41 Hz : one semitone is  3.89 Hz -> the bin spans 44.2 semitones
+C4   261.63 Hz : one semitone is 15.56 Hz -> the bin spans 11.1 semitones
+E6  1318.51 Hz : one semitone is 78.40 Hz -> the bin spans  2.2 semitones
+```
+
+A bin is narrower than a semitone only above **~2894 Hz**, above this entire
+range. Within C2–E6 the payload carries **22 of its 48 bands**, so 22 values are
+shown across 53 sections.
+
+**So sections light in GROUPS of about 2.4, and the group width is the band that
+fed it.** Lighting one section per band would have asserted a precision the wire
+never carried — the same fabrication that keeps note names off the *data*. The
+scale line states the ratio from the scene's own numbers, so it cannot drift.
+
+**Note names are a ruler, not a measurement.** They are computed from the
+section index alone, label a position on a fixed axis exactly as "100 Hz" did,
+and a test fails if a name is ever derived from a segment.
+
+### The 7-second trail lasted one evening
+
+Built earlier the same day, removed at the operator's request — *"live notes
+only, as long as they sustain"*. **The objection was clutter, not honesty**:
+sustain is already visible in the live signal, so the history added noise
+without information. Recorded as a test so it is not re-proposed as an
+improvement.
+
+### Two small defects fixed on the way
+
+**A drag stopped the orbit forever.** `spin` was set false on pointer-down and
+never restored, so one accidental touch ended the animation for the session with
+no way back but a tab change. Release now resumes from the current yaw and
+pitch — the drag re-aims the view instead of ending it — and `touchcancel` is
+handled, which a cancelled gesture would otherwise have left stopped. Pitch is
+also clamped at ±85°, past which the view crosses the ring plane and the labels
+invert.
+
+**The camera fit needed re-deriving, not re-assuming.** Thicker bars moved the
+bar ring from 2.983 to 3.018, which ate the headroom TODO-88 had just bought, so
+`MAX_BAR_HEIGHT` came down 2.3 → 2.25. The containment test caught it
+immediately — which is the entire reason it was written as an assertion rather
+than a comment.
+
+### A rendering bug worth recording because the symptom was unintuitive
+
+The 53 section arcs first rendered as a ring of small hooks floating on a plane
+of their own, nowhere near the torus. A `TorusGeometry` sweeps about its **local
+Z**, so a section has to be rotated about Z *while still in its own plane* and
+only then tilted flat. Rotating about world Y first and flattening afterwards
+composes a different transform entirely. **Caught by looking at the render**, not
+by reasoning about the matrices.
+
 ## 2026-10-15 (3) — **TONE: a window instead of the whole spectrum, a scale that states itself, and a clipping defect that turned out not to need the trade-off everyone assumed**
 
 **2026-10-15, ~22:30 PDT.** `fingerprint_split.js`, `view_tone.js`, `shell.css`,

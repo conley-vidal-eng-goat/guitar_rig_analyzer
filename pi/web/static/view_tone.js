@@ -37,11 +37,10 @@ import { esc } from "./ui.js";
 // Written 2026-10-15 after the operator's report: "there should be no doubt as
 // to how to read this visualization."
 const LEGEND = [
-  ["sw-cold", "<b>attenuated</b> — the rig took this away (left, below the ring)"],
-  ["sw-warm", "<b>boosted</b> — the rig added this (right, above the ring)"],
+  ["sw-cold", "<b>attenuated</b> — the rig took this away (bar drops <b>below</b> the ring)"],
+  ["sw-warm", "<b>boosted</b> — the rig added this (bar rises <b>above</b> the ring)"],
   ["sw-unknown", "value present, direction <b>not established</b> — nothing asserted"],
-  ["sw-none", "<b>unmeasured</b> — nothing drawn. Absence of a bar is not a zero"],
-  ["sw-trail", "fading bars are <b>history</b>, darkening to black over 7 s"],
+  ["sw-none", "<b>unmeasured</b> — section stays dark. A dark section is not a zero"],
 ];
 
 export function createToneView(root) {
@@ -72,16 +71,18 @@ export function createToneView(root) {
   function renderScale() {
     if (!scene || !scene.scale) { scaleLine.textContent = ""; return; }
     const s = scene.scale();
-    const span = (s.loHz && s.hiHz)
-      ? `${fmtHz(s.loHz)} – ${fmtHz(s.hiHz)}`
-      : "…";
+    const perBand = (s.sections / s.bandsInRange).toFixed(1);
     scaleLine.innerHTML =
       `<b>bar length = |dB|</b>, full bar = ${s.maxDb} dB` +
       ` · a bar at the minimum means <i>measured and small</i>, not a value` +
       ` · <b>▲ capped</b> = beyond ${s.maxDb} dB` +
-      `<br>showing <b>${s.bands} of 48 bands</b>, ${span}` +
-      ` — the rest of the spectrum is not on this ring` +
-      (dcEdge ? ` · <b>•</b> marks bands under ${fmtHz(dcEdge)}, where the` +
+      `<br><b>${s.sections} semitone sections</b>, ${s.loNote} ${fmtHz(s.loHz)}` +
+      ` → ${s.hiNote} ${fmtHz(s.hiHz)}, ${s.degPerSection.toFixed(1)}° each` +
+      `<br>🔺 <b>a lit group is not one note.</b> The instrument sends` +
+      ` <b>${s.bandsInRange} values</b> across these ${s.sections} sections, so each` +
+      ` measurement lights about <b>${perBand} sections</b> — that width is its` +
+      ` resolution, not a note it identified` +
+      (dcEdge ? `<br><b>•</b> marks notes under ${fmtHz(dcEdge)}, where the` +
                 ` transmitted bin contains DC and LIVE will not plot it (TODO-92)` : "");
   }
 
