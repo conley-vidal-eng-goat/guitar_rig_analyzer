@@ -24,7 +24,15 @@ const TABS = ["live", "tone", "lab", "info"];
 // that difference — not any slow code — is what "the web UI feels slower" was.
 // 5 Hz costs about 5.5% of one core. It is an intermediate target: if it still
 // reads as sluggish, lower it again rather than assuming something is wrong.
-const POLL_MS = 200;
+// 50 ms = 20 Hz, matching the Tk UI this replaced. 500 ms gave 2 Hz and 200 ms
+// gave 5 Hz, and "the web UI is laggy" was that difference and nothing else:
+// measured 2026-10-15 at 5.09 req/s with the server answering in 6.4 ms p50 and
+// the whole kiosk at 24.6 % of ONE of four cores. Nothing was slow; the client
+// simply asked rarely.
+//
+// 🛑 MILLISECONDS, NOT HERTZ. 20 here would be 50 Hz, and the renderer costs
+// ~24.5 ms per poll — more than a 20 ms period, so it would saturate.
+const POLL_MS = 50;
 
 const host = (name) => document.querySelector(`.view[data-view="${name}"]`);
 
@@ -109,7 +117,33 @@ function renderStatus(f) {
 
 // --- poll --------------------------------------------------------------------
 
+// *** ONE POLL AT A TIME, AND A DROPPED TICK IS NOT A QUEUED ONE. ***
+//
+// `setInterval` does not wait for an async callback. At 200 ms that was
+// unreachable — an 8 ms fetch against a 200 ms period — but at 50 ms the margin
+// is roughly 2x, and the renderer was measured at ~24.5 ms of CPU per poll
+// (12.5 % of one core at 5.09 Hz, 2026-10-15), a 49 % duty cycle on a single JS
+// thread. One GC pause or layout spike is enough to overrun it.
+//
+// Without this guard the overrun is not merely slow, it is WRONG: two in-flight
+// requests can resolve out of order and `frame = f` is a bare assignment, so the
+// older response wins and the panel shows a stale measurement with nothing
+// saying so. That is absence-presented-as-measurement, which ADR-005's governing
+// invariant forbids.
+//
+// So a tick arriving while one is still running is DROPPED. The effective rate
+// degrades to whatever the Pi can sustain rather than accumulating work, and an
+// out-of-order frame becomes impossible rather than unlikely.
+let inFlight = false;
+let dropped = 0;
+
 async function poll() {
+  if (inFlight) {
+    dropped += 1;
+    window.__dropped = dropped;             // read by the cadence measurement
+    return;
+  }
+  inFlight = true;
   try {
     const f = await (await fetch("/api/frame", { cache: "no-store" })).json();
     frame = f;
@@ -122,6 +156,8 @@ async function poll() {
     kindPill.className = "pill none";
     statusText.textContent = `transport error: ${e.message}`;
     statusDetail.textContent = "";
+  } finally {
+    inFlight = false;
   }
 }
 

@@ -173,13 +173,43 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
 class TestLivePollCadence(unittest.TestCase):
 
     def test_poll_interval_matches_the_measured_decision(self):
-        """500 ms gave 2 Hz against the Tk UI's 20 Hz, which is what "the web UI
-        feels slower" was. 200 ms was chosen from measurement: 11.1 ms mean
-        response, ~5.5 % of one core at 5 Hz (journal 2026-10-13 (12))."""
+        """50 ms = 20 Hz, matching the Tk UI this replaced.
+
+        500 ms gave 2 Hz and 200 ms gave 5 Hz; the operator's "the new UI is
+        laggy" was that difference and nothing else. Measured on the Pi
+        2026-10-15 before the change: 5.09 req/s observed, server 6.4 ms p50,
+        whole kiosk 24.6 % of ONE of four cores, no throttling. The server was
+        never the constraint.
+
+        MILLISECONDS, NOT HERTZ -- 20 here would be 50 Hz, and the renderer
+        costs ~24.5 ms per poll, which exceeds a 20 ms period.
+        """
         src = MAIN.read_text()
         m = re.search(r"^const POLL_MS = (\d+);", src, re.M)
         self.assertIsNotNone(m, "POLL_MS is no longer a plain constant")
-        self.assertEqual(int(m.group(1)), 200)
+        self.assertEqual(int(m.group(1)), 50)
+
+    def test_a_poll_cannot_overlap_the_one_before_it(self):
+        """`setInterval` does not wait for an async callback.
+
+        At 200 ms an overlap was unreachable. At 50 ms the margin is ~2x against
+        a measured ~24.5 ms renderer cost per poll, so it is reachable -- and an
+        overlap is not merely slow, it is WRONG: two in-flight requests can
+        resolve out of order and `frame = f` is a bare assignment, so the older
+        response wins and the panel shows a stale measurement with nothing
+        saying so.
+
+        This pins the guard, not its wording: raising the rate again must not
+        quietly remove it.
+        """
+        src = MAIN.read_text()
+        self.assertIn("inFlight", src, "the in-flight guard is gone")
+        self.assertRegex(
+            src, r"if \(inFlight\)",
+            "poll() no longer refuses to start while one is already running")
+        self.assertIn("finally", src,
+                      "inFlight must be cleared in a finally, or one thrown "
+                      "error wedges polling permanently")
 
     def test_polling_still_stops_when_the_page_is_hidden(self):
         """Acquisition IS polling (TODO-86). Raising the rate must not quietly

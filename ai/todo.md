@@ -17,6 +17,36 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-92 — The TONE ring draws bars from the DC bin, and that bin is where half the guitar lives 🔴 **found 2026-10-15 while investigating "I cannot tell what frequency the spikes are". Latent presentation defect; no runtime fault**
+
+**Why this matters more than it looks.** The transmitted spectrum is 128 bins at **172.1 Hz each**, and bin 0 spans **0 – 150.73 Hz and contains DC**. Measured from the live wire 2026-10-15:
+
+| String | Hz | Transmitted bin |
+|---|---|---|
+| **E2** | 82.41 | **0** |
+| **A2** | 110.00 | **0** |
+| **D3** | 146.83 | **0** |
+| G3 | 196.00 | 1 |
+| B3 | 246.94 | 1 |
+| E4 | 329.63 | 2 |
+
+**The bottom three open strings are all the same number on the wire, and that number is the DC bin.** The next two share bin 1.
+
+**The inconsistency.** [`view_live.js`](../pi/web/static/view_live.js) **refuses** to plot bin 0 — it draws the region hatched and labelled *"not transmitted · bin 0 spans DC"*, because a large value there may be a DC offset rather than a tone, and the firmware decimates by MAXIMUM without recording which source bin won. But [`payload.py:379`](../pi/web/payload.py#L379) `_ring()` maps **every** bin through `band_of_hz()` with **no DC exclusion**, so TONE draws a MEASURED bar at ~68 Hz fed by that same bin. **Two views of one frame disagree about whether bin 0 is trustworthy**, and only one of them says so on screen.
+
+Observed 2026-10-15: ring showed `1 MEASURED` band at **68.0 Hz**, value −0.045 dB — transmitted bin 0's centre is 64.6 Hz, which lands in band 8 (63.2–72.9 Hz). That bar *is* the DC bin.
+
+**🛑 This is not fixed by relabelling.** The resolution genuinely is not on the wire. Three directions, and choosing between them is the operator's:
+1. **Exclude DC-fed bands from the ring** — consistent with LIVE, honest, but the low strings go dark and the instrument looks blind where a guitarist cares most.
+2. **Draw them marked as DC-contaminated** — keeps the information, states its weakness. **Operator's provisional choice 2026-10-15: show with the caveat, revisit properly.**
+3. **Change what the firmware transmits** — a smaller decimation, or a dedicated low-frequency band set, so bin 0 is not a 150 Hz bucket containing DC *and* three strings. **This is the only option that actually recovers the notes**, and it is a protocol/firmware change needing its own ADR.
+
+**🔺 Do not confuse this with TODO-81.** That is `linearToDbfs()` having no callers. This is about which *bins* reach the ring at all.
+
+**What.** Decide between the three. If (2), carry the `dc` flag already present in the spectrum geometry ([`payload.py:125`](../pi/web/payload.py#L125)) through to ring segments so the renderer can mark them, and make the legend say what the mark means. If (3), it blocks on an ADR and must not be slipped into a UI change.
+
+**Proof:** the ring and the LIVE spectrum agree about bin 0 — either both exclude it, or both mark it with the same words. Plus a stated, tested rule for what a band fed only by DC-contaminated bins displays.
+
 ### TODO-91 — The Headrush A/B: show the instrument detecting a real change in a real rig 🔴 [bench] **procedure written 2026-10-13, NOT executed. This is the portfolio's centrepiece**
 
 **Why.** Everything demonstrated so far is the instrument *working* — a link, a renderer, a panel. None of it is the instrument *measuring something*. The A/B is the first claim that is about the guitar rig rather than about the analyzer.
@@ -33,7 +63,33 @@ The physical device is mid-breadboard. This track leads TODO priority over softw
 
 **Proof:** two RESULTs from one session id with their grades and coherences, two LIVE payloads, panel captures of both states, the stimulus level and every Headrush setting recorded — and a stated difference between A and B that is larger than the variation observed within either.
 
-### TODO-89 — LIVE updates twice a second because the client asks twice a second 🟡 **FIXED IN CODE 2026-10-13: measured 2.01 → 5.03 responses/s. Open until the operator confirms it reads as live**
+### TODO-89 — LIVE updates twice a second because the client asks twice a second 🟢 **RESOLVED 2026-10-15 at 20 Hz, matching Tk. Deployed and measured on the panel; open only on the operator's subjective confirmation**
+
+**✅ 2026-10-15 — `POLL_MS` 200 → 50 (20 Hz), plus an in-flight guard.** 5 Hz was still 4× slower than the Tk UI it replaced and the operator reported it as laggy a second time. Measured on the running kiosk, 20 s windows:
+
+| | 5 Hz (before) | **20 Hz (after)** |
+|---|---|---|
+| Request rate | 5.09/s | **20.06/s** — every tick fired and completed; **none dropped** |
+| HTTP latency | p50 6.4 ms | **p50 9.9 ms · p90 12.2 · max 19.8** — all well inside the 50 ms period |
+| Renderer CPU | 12.5 % | **20.0 %** |
+| Whole kiosk | 40.5 % of one core | **62.4 % of one core** (machine has **4**) |
+| `decode_errors` | 0 | **0** |
+| Link | `stale false` | **`stale false`, session 51** |
+| Thermal | 46.1 °C | **47.2 °C, `throttled=0x0`** |
+
+🔺 **The two CPU figures are not the same view.** The 5 Hz baseline was taken on **LIVE**; after the supervised restart the kiosk came up on **TONE**, which is the *more expensive* view — it runs a continuous orbit animation where LIVE has none (2026-10-13: TONE 30.4 % vs LIVE 6.4 %). So the 20 Hz figure is **conservative**: LIVE at 20 Hz costs less than 62.4 %. A like-for-like comparison needs a tab change, which needs a finger.
+
+🔺 **A prediction in this file was wrong and is corrected here.** Before deploying, the renderer cost was estimated at **~24.5 ms per poll → a 49 % duty cycle**, by dividing renderer CPU by poll count. That attributed *all* renderer CPU to polling. Solving across both measured rates gives **≈5 ms per poll plus a ≈10 % constant floor** (compositing and animation, which do not scale with polls). The real duty cycle at 20 Hz is **≈10 %, not 49 %** — a 10× margin, not 2×.
+
+**The in-flight guard was kept anyway**, and should stay: it is three lines, it costs nothing, and what it prevents is not slowness but **wrongness**. `setInterval` does not wait for an async callback, and `frame = f` is a bare assignment — two in-flight requests resolving out of order would put an **older** frame on the panel with nothing saying so. Pinned by `test_a_poll_cannot_overlap_the_one_before_it`.
+
+**Still the operator's call:** whether it now reads as live, and **touch responsiveness and spectrum responsiveness to real guitar input**, neither of which can be measured over SSH.
+
+---
+
+**Original entry, retained:**
+
+### TODO-89 (original) — LIVE updates twice a second because the client asks twice a second 🟡 **FIXED IN CODE 2026-10-13: measured 2.01 → 5.03 responses/s**
 
 **The operator's report (`RPT`):** *"the LIVE page is noticeably slower than the previous UI."*
 

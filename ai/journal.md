@@ -12,6 +12,93 @@ How to use this file:
 
 ---
 
+## 2026-10-15 (2) — **LIVE at 20 Hz, and two measurements that corrected me — one before the change, one after**
+
+**2026-10-15, ~21:30 PDT. Repository `5bf79a0` → this commit.** One constant and
+one guard in `main.js`, one test updated, one added. **No firmware, protocol,
+wiring or measurement-semantics change.** Deployed to the running kiosk by a
+supervised restart that freed the UART before the replacement started.
+
+### The complaint was correct and the cause was one line
+
+`POLL_MS = 200`. The client asked 5 times a second; the Tk UI it replaced asked
+20. Measured rather than assumed — **5.09 req/s** by loopback byte accounting,
+against a server answering in **6.4 ms p50** with the whole kiosk at **24.6 % of
+one of four cores** and no throttling. **Nothing was slow. The client simply
+asked rarely.**
+
+### The pre-deployment check the operator asked for found a real defect
+
+The instruction was to report overlapping requests *before* deployment rather
+than assume changing a constant was harmless. It is not harmless:
+`setInterval(poll, POLL_MS)` with an **async** `poll` does not wait for the
+previous call, and `frame = f` is a **bare assignment** with no sequence number.
+Two in-flight requests resolving out of order would put an **older** frame on the
+panel with nothing saying so — absence presented as current measurement, which
+ADR-005's invariant forbids. At 200 ms this was unreachable; at 50 ms it is not.
+
+A three-line in-flight guard makes it impossible rather than unlikely: a tick
+arriving while one is running is **dropped, not queued**, so the effective rate
+degrades to whatever the Pi can sustain instead of accumulating work.
+
+### 🔺 My own estimate was wrong by 5×, and the correction is the interesting part
+
+I predicted the renderer at **~24.5 ms per poll → a 49 % duty cycle at 50 ms**,
+by dividing renderer CPU (12.5 % of one core) by the poll rate. **That attributed
+all renderer CPU to polling**, and most of it is not: compositing and the TONE
+orbit animation run whether or not a poll happens.
+
+Two rates give two equations:
+
+```
+12.5 % = base + k × 5.09 Hz
+20.0 % = base + k × 20.06 Hz
+  =>  k ≈ 0.50 %/Hz ≈ 5 ms per poll,  base ≈ 10 %
+```
+
+**≈5 ms per poll, not 24.5 — a ≈10 % duty cycle at 20 Hz, not 49 %.** A 10×
+margin where I had claimed 2×.
+
+**The lesson is not "be less cautious".** The guard was still right to add and is
+staying: it costs nothing and what it prevents is wrongness, not slowness. The
+lesson is that **a per-unit cost derived by dividing a total by a count assumes
+the total is proportional to the count**, and here a fixed floor made that
+assumption wrong. Two measurements at two rates separate the floor from the
+slope; one measurement cannot.
+
+### Results, and an honest caveat about them
+
+**20.06 req/s** — every tick fired and completed, **none dropped**, which is the
+direct evidence that no overlap occurred. Latency p50 9.9 ms, p90 12.2, max 19.8,
+all far inside the 50 ms period. `decode_errors` **0**, `stale false`, session 51,
+47.2 °C, `throttled=0x0`.
+
+🔺 **The before and after CPU figures are not the same view.** The 5 Hz baseline
+was taken on **LIVE**; after the restart the kiosk came up on **TONE**, which
+costs more (it animates continuously; LIVE does not). So **62.4 % of one core at
+20 Hz is a conservative number**, not a like-for-like one, and LIVE at 20 Hz is
+cheaper than that. Saying so is cheaper than quietly comparing two different
+things. A like-for-like figure needs a tab change, which needs a finger.
+
+### A `pkill` pattern killed the controlling SSH session
+
+`pkill -f run_kiosk_boot.sh` matched **its own command line**, because the
+pattern was a literal substring of the `ssh` invocation carrying it. The kiosk
+was untouched; only the controlling shell died. The restart now lives in a
+script on the Pi with bracketed patterns (`[r]un_kiosk_boot.sh`).
+
+This is the **third** instance of the same class this project has recorded —
+`pgrep -c` without `-f` (2026-10-13), `pgrep -af` matching my own shell
+repeatedly tonight, and now `pkill`. **Process-matching by command-line substring
+matches the matcher.** The reliable question is not "what is named X" but "what
+holds the descriptor", and the descriptor sweep has never once been wrong.
+
+### What is still the operator's to judge
+
+Whether it **reads** as live, **touch responsiveness**, and **spectrum
+responsiveness to real guitar input**. None is measurable over SSH, and a request
+rate is not a rendered frame.
+
 ## 2026-10-15 (1) — **The Pi boots into the web kiosk. ADR-005 §2 is closed, and the gate was closed in the order the gate specified**
 
 **2026-10-15, 20:17–21:05 PDT. Repository `b68d648` → `651dbaa`.** One
