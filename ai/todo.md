@@ -17,7 +17,17 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
-### TODO-93 — On 2026-10-16 the return channel did not carry the guitar 🔴 [bench] **observed on the panel, cause NOT established. Blocks TODO-91**
+### TODO-93 — On 2026-10-16 the return channel did not carry the guitar 🔴 [bench] **observed on the panel, cause NARROWED to the `16a` → LINE IN R conductor (not yet physically confirmed). Blocks TODO-91**
+
+**Update 2026-10-16, ~21:10 — firmware and settings ruled out; the break is between `16a` and LINE IN R.** The operator reported the wiring as J4 guitar → J5 send → rig → J6 return → J8 amp, and *hears the rig through the amp*. Read over the Teensy's USB serial (`u` and the 5 s diagnostics, read-only; nothing was sent that changes state):
+- Build `Sep 26 2026 16:36:53 v0.6.0`, uptime 21 298 s, so **no reflash or reboot today**.
+- SGTL5000 `SELECT_ADC = 1` (line-in), `ADC_VOL` L/R = 5/5, route `SOURCE_NODE=ch0, RETURN_NODE=ch1`, **`Route: TS return, no injection`**. All correct for J6.
+- Link 458 442 live frames, 0 dropped.
+- `RETURN_NODE peak −44 dBFS`. **RAWDUMP RETURN samples 4–35 counts**, against SOURCE hundreds to thousands, i.e. LINE IN R sees its own offset and noise.
+
+**The inference, stated at its strength (`DERIV`, from the netlist).** The amp path is `J6 → K2 NC 15a → COM 16a → C10 → U4 → J8`, and LINE IN R is fed from that **same node `16a`** (netlist §12.2). An audible rig at J8 puts signal on `16a`. With TS selected and LINE IN R at its floor, the open is in the **`16a` → U3 LINE IN R conductor or one of its two contacts**. Consistent with an intermittent contact: in one silent capture at ~19:58 the return read −39.7 dBFS ≈ source, at ~20:45 −37..−40 flat, and by ~21:05 −50 dBFS.
+
+**Confirm on the bench:** with power on and a strum, probe `16a` then the LINE IN R pad. Signal at the first and not the second confirms it. Reseat or replace that jumper, then check TONE shows cool bars and a gain near the rig's real level.
 
 **Observed.** With a Stratocaster strummed once a second, the source peak followed the strums (−11.7..−32.6 dBFS) while the return peak sat flat (−36.9..−40.5 dBFS) across two bursts. No displayed return bin (151 Hz – 2.9 kHz) reached the −60 dB floor (TF_SOURCE_GATE). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md). Earlier the same evening, one silent capture showed return ≈ source (−39.5 / −39.7 peak), so the setup was changing between captures.
 
