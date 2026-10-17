@@ -516,10 +516,15 @@ class GainMatcher:
     """Holds and smooths the displayed gain. The ONLY state in the TONE path.
 
     *** WHY STATE AT ALL ***
-    Between strums the input falls below the floor and a frame has no gain.
+    Between strums the input falls below the floor and a frame has no verdict.
     Snapping the return back to unmatched there would make every strum's decay
-    jump by the rig's gain. So the last established gain is HELD, and the
-    payload says it is held.
+    jump by the rig's gain, and the readout would flicker at the strum rate. So
+    the LATEST VERDICT is held -- a gain or a bound, whichever came last -- and
+    the payload says it is held.
+
+    The bound is held too since the Pi panel showed, 2026-10-16, the readout
+    flipping between "< -29.6 dB" and "not established yet: play" once a
+    second while the operator was playing.
 
     *** WHY IT ADVANCES ON THE BLOCK NUMBER, NOT ON THE POLL ***
     Every browser poll calls this. Smoothing per call would make the time
@@ -529,33 +534,40 @@ class GainMatcher:
 
     ALPHA 0.2 per frame at ~21.6 frames/s is a ~0.2 s time constant. Measured
     2026-10-16 while strumming, the per-frame gain moved within ±1.5 dB, so
-    this steadies the number without hiding a real change for long.
-
-    A BOUND is never held and never smoothed: it is reported for the frame
-    that produced it, and it does not overwrite a gain established earlier.
+    this steadies the number without hiding a real change for long. A bound is
+    never smoothed: it is a strict inequality, and an average of bounds is not
+    one.
     """
 
     ALPHA = 0.2
 
     def __init__(self) -> None:
         self.gain_db: float | None = None
+        self.bound_db: float | None = None
+        self._last: str | None = None          # "gain" | "bound": latest verdict
         self._last_block: int | None = None
 
-    def update(self, est: GainEstimate, block: int | None) -> tuple[float | None, str]:
-        """(gain to display and shift by, state). State is one of
-        live / held / below_floor / none."""
+    def update(self, est: GainEstimate, block: int | None
+               ) -> tuple[float | None, str, float | None]:
+        """(gain to shift by, state, bound). State is one of
+        live / held / below_floor / below_floor_held / none."""
         fresh = block is None or block != self._last_block
         self._last_block = block
         if est.gain_db is not None:
             if fresh:
                 self.gain_db = (est.gain_db if self.gain_db is None
                                 else self.gain_db + self.ALPHA * (est.gain_db - self.gain_db))
-            return self.gain_db, "live"
+            self._last = "gain"
+            return self.gain_db, "live", None
         if est.bound_db is not None:
-            return None, "below_floor"
-        if self.gain_db is None:
-            return None, "none"
-        return self.gain_db, "held"
+            self.bound_db = est.bound_db
+            self._last = "bound"
+            return None, "below_floor", est.bound_db
+        if self._last == "bound":
+            return None, "below_floor_held", self.bound_db
+        if self._last == "gain":
+            return self.gain_db, "held", None
+        return None, "none", None
 
 
 def tone_block(src_spec, ret_spec, geometry, *, gain_db: float | None,
@@ -565,7 +577,8 @@ def tone_block(src_spec, ret_spec, geometry, *, gain_db: float | None,
 
     ``gain_db`` is the matched gain to apply (live or held), or None -- then
     the return is drawn unshifted and ``gain_state`` says why ("none", or
-    "below_floor" with ``gain_bound_db`` saying how far down it is at least).
+    "below_floor"/"below_floor_held" with ``gain_bound_db`` saying how far
+    down it is at least).
 
     Classification happens HERE, not in the browser (ADR-005): which channel is
     above the floor, and whether a section is RIG-ONLY -- the return carries
@@ -649,10 +662,10 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS,
 
     est = frame_gain_db(src_spec, ret_spec)
     matcher = gain if gain is not None else GainMatcher()
-    g_db, g_state = matcher.update(est, live.output_block_number)
+    g_db, g_state, g_bound = matcher.update(est, live.output_block_number)
     tone = tone_block(src_spec, ret_spec, geometry, gain_db=g_db,
                       gain_state=g_state, gain_bins=est.bins,
-                      gain_bound_db=est.bound_db)
+                      gain_bound_db=g_bound)
 
     return {
         # ADDITIVE: TONE's input-over-return ring. `segments` below is kept,

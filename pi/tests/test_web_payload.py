@@ -654,9 +654,9 @@ def _spec(levels_db, n=128, rest_db=-80.0):
 def _tone(src, ret, matcher=None, block=1):
     est = payload.frame_gain_db(src, ret)
     m = matcher or payload.GainMatcher()
-    g, st = m.update(est, block)
+    g, st, bound = m.update(est, block)
     return payload.tone_block(src, ret, _GEO, gain_db=g, gain_state=st,
-                              gain_bins=est.bins, gain_bound_db=est.bound_db)
+                              gain_bins=est.bins, gain_bound_db=bound)
 
 
 class TestToneFloor(unittest.TestCase):
@@ -763,7 +763,27 @@ class TestToneGainMatch(unittest.TestCase):
         self.assertAlmostEqual(once, again, places=6)
         self.assertAlmostEqual(once, -8.0, places=2)                   # 0.2 of the way
 
-    def test_a_bound_neither_holds_nor_overwrites_an_established_gain(self):
+    def test_a_bound_is_held_through_the_gap_between_strums(self):
+        """Pi panel, 2026-10-16: the readout flipped between "< -29.6 dB" and
+        "not established yet: play" at the strum rate."""
+        m = payload.GainMatcher()
+        lv = {1: -38.0, 2: -40.0, 3: -45.0}
+        first = _tone(_spec(lv), _spec({}, rest_db=-75.0), m, block=1)
+        gap = _tone(_spec({}), _spec({}), m, block=2)
+        self.assertEqual(gap["gain_state"], "below_floor_held")
+        self.assertEqual(gap["gain_bound_db"], first["gain_bound_db"])
+        self.assertIsNone(gap["gain_db"])
+
+    def test_the_latest_verdict_is_the_one_held(self):
+        m = payload.GainMatcher()
+        lv = {1: -38.0, 2: -40.0, 3: -45.0}
+        _tone(_spec(lv), _spec({}, rest_db=-75.0), m, block=1)          # bound
+        _tone(_spec(lv), _spec({i: d - 4 for i, d in lv.items()}), m, block=2)
+        gap = _tone(_spec({}), _spec({}), m, block=3)
+        self.assertEqual(gap["gain_state"], "held")
+        self.assertAlmostEqual(gap["gain_db"], -4.0, places=2)
+
+    def test_a_bound_does_not_overwrite_an_established_gain(self):
         m = payload.GainMatcher()
         lv = {1: -38.0, 2: -40.0, 3: -45.0}
         _tone(_spec(lv), _spec({i: d - 3 for i, d in lv.items()}), m, block=1)

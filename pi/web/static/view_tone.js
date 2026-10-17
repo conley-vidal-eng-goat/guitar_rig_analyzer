@@ -99,17 +99,20 @@ export function createToneView(root) {
   // display offset. The shift applied to the return is the gain negated.
   function renderGain(t) {
     if (!t) { gainBox.innerHTML = ""; return; }
-    if (t.gain_state === "below_floor") {
+    if (t.gain_state === "below_floor" || t.gain_state === "below_floor_held") {
       // A bound, not a value: the return is under the floor in every bin
       // where the input is above it, so all that can be said is how far down
-      // it is AT LEAST. Never a held number in this state -- the current frame
-      // contradicts it.
-      gainBox.className = "tone-gain bound";
+      // it is AT LEAST. Held through the gaps between strums like a gain is,
+      // and dimmed when held.
+      gainBox.className = "tone-gain bound" +
+        (t.gain_state === "below_floor_held" ? " held" : "");
       gainBox.innerHTML = `<span class="k">rig gain</span>` +
         ` <span class="v">&lt; ${fmtSigned(t.gain_bound_db)} dB</span>` +
         `<div class="sub">return is below the ${t.floor_db} dB floor wherever the input` +
         ` is above it: at least ${Math.abs(t.gain_bound_db).toFixed(1)} dB down.` +
-        ` Check the return path.</div>`;
+        ` Check the return path.` +
+        (t.gain_state === "below_floor_held" ? " · <b>held</b>: no input above the floor" : "") +
+        `</div>`;
       return;
     }
     if (t.gain_db === null || t.gain_db === undefined) {
