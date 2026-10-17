@@ -204,7 +204,7 @@ class TestNoBrowserMeasurementPath(unittest.TestCase):
 
     def test_the_renderer_draws_nothing_for_unmeasured(self):
         js = (STATIC / "fingerprint_split.js").read_text()
-        self.assertIn('if (cls !== "MEASURED")', js)
+        self.assertIn('b.src_cls === "MEASURED"', js)
         self.assertIn("HIDDEN", js)
 
 
@@ -628,3 +628,160 @@ class TestBackwardCompatibility(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# =============================================================================
+# TONE — input over level-matched return (2026-10-16)
+# =============================================================================
+
+import math as _math
+import re as _re
+import types as _types
+
+from analyzer_link import presentation_semantics as _ps
+
+_GEO = _types.SimpleNamespace(sample_rate=44100, fft_bins=512, decim_ratio=4)
+
+
+def _spec(levels_db, n=128, rest_db=-80.0):
+    """A classified spectrum: {bin: dB}, every other bin at rest_db."""
+    vals = [10 ** (rest_db / 20.0)] * n
+    for i, db in levels_db.items():
+        vals[i] = 10 ** (db / 20.0)
+    return _ps.classify_spectrum(vals)
+
+
+def _tone(src, ret, matcher=None, block=1):
+    est = payload.frame_gain_db(src, ret)
+    m = matcher or payload.GainMatcher()
+    g, st = m.update(est, block)
+    return payload.tone_block(src, ret, _GEO, gain_db=g, gain_state=st,
+                              gain_bins=est.bins, gain_bound_db=est.bound_db)
+
+
+class TestToneFloor(unittest.TestCase):
+
+    def test_the_tone_floor_is_the_firmware_gate(self):
+        """The floor is the Teensy's own "energised" level, not a number chosen
+        on the Pi. If TF_SOURCE_GATE moves, this must fail."""
+        cfg = (REPO / "config.h").read_text()
+        m = _re.search(r"#define\s+TF_SOURCE_GATE\s+([\d.]+)f?", cfg)
+        self.assertIsNotNone(m)
+        self.assertAlmostEqual(payload.TONE_FLOOR_DB,
+                               20 * _math.log10(float(m.group(1))), places=6)
+
+    def test_bin_zero_is_never_on_the_tone_ring(self):
+        """It spans DC; it read -53 dB with the strings muted on 2026-10-16."""
+        self.assertEqual(payload.TONE_FIRST_BIN, 1)
+        t = _tone(_spec({0: -20.0}), _spec({0: -20.0}))
+        self.assertNotIn(0, [b["i"] for b in t["bins"]])
+        self.assertEqual(t["census"]["input_on"], 0)
+
+    def test_the_ring_ends_in_the_guitar_range(self):
+        t = _tone(_spec({}), _spec({}))
+        self.assertEqual(len(t["bins"]), 16)
+        self.assertLess(t["bins"][-1]["hi_hz"], 3000.0)
+
+
+class TestToneOnRealBytes(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        s = _snap(IDLE_BIN)
+        cls.p = payload.live_payload(s.live, s.geometry)
+
+    def test_an_idle_rig_lights_nothing(self):
+        c = self.p["tone"]["census"]
+        self.assertEqual((c["input_on"], c["return_on"], c["rig_only"]), (0, 0, 0))
+        self.assertEqual(self.p["tone"]["gain_state"], "none")
+        self.assertIsNone(self.p["tone"]["gain_db"])
+
+    def test_the_tone_block_is_strict_json(self):
+        json.dumps(self.p["tone"], allow_nan=False)
+
+
+class TestToneGainMatch(unittest.TestCase):
+
+    def test_a_flat_6db_loss_reads_minus_6_and_matches_exactly(self):
+        lv = {1: -38.0, 2: -40.0, 3: -45.0, 4: -50.0}
+        src = _spec(lv)
+        ret = _spec({i: db - 6.0 for i, db in lv.items()})
+        t = _tone(src, ret)
+        self.assertEqual(t["gain_state"], "live")
+        self.assertAlmostEqual(t["gain_db"], -6.0, places=2)
+        for b in t["bins"][:4]:
+            self.assertAlmostEqual(b["ret_matched_db"], b["src_db"], places=2)
+            self.assertTrue(b["ret_on"])
+
+    def test_matching_never_lifts_the_analysers_own_floor_into_view(self):
+        """2026-10-16, replayed: input -38..-58 dB, return -65..-78 dB in every
+        bin. The first version reported a confident -28 dB 'gain' and drew a
+        return bar on all 46 sections. The return was not energised."""
+        src = _spec({1: -38.0, 2: -38.4, 3: -44.3, 4: -50.0, 5: -57.6})
+        ret = _spec({}, rest_db=-72.0)
+        t = _tone(src, ret)
+        self.assertEqual(t["gain_state"], "below_floor")
+        self.assertIsNone(t["gain_db"])
+        self.assertLess(t["gain_bound_db"], 0.0)
+        self.assertEqual(t["census"]["return_on"], 0)
+        self.assertEqual(t["census"]["rig_only"], 0)
+
+    def test_the_bound_is_strict(self):
+        """Every return bin is under the floor F, so the power ratio is under
+        k·F²/Σsrc². Check against the actual ratio of what was sent."""
+        lv = {1: -38.0, 2: -41.0, 3: -47.0}
+        src = _spec(lv)
+        ret = _spec({}, rest_db=-61.0)
+        est = payload.frame_gain_db(src, ret)
+        actual = 10 * _math.log10(sum(10 ** (-61.0 / 10) for _ in lv)
+                                  / sum(10 ** (db / 10) for db in lv.values()))
+        self.assertGreater(est.bound_db, actual)
+
+    def test_rig_only_is_return_energy_with_no_input_under_it(self):
+        lv = {1: -38.0, 2: -40.0, 3: -45.0}
+        src = _spec(lv)
+        ret = _spec({**lv, 12: -45.0})
+        t = _tone(src, ret)
+        rig = [b["i"] for b in t["bins"] if b["rig_only"]]
+        self.assertEqual(rig, [12])
+
+    def test_silence_holds_the_last_gain_and_says_so(self):
+        lv = {1: -38.0, 2: -40.0, 3: -45.0}
+        m = payload.GainMatcher()
+        _tone(_spec(lv), _spec({i: d - 10 for i, d in lv.items()}), m, block=1)
+        t = _tone(_spec({}), _spec({}), m, block=2)
+        self.assertEqual(t["gain_state"], "held")
+        self.assertAlmostEqual(t["gain_db"], -10.0, places=2)
+
+    def test_the_gain_advances_per_instrument_frame_not_per_poll(self):
+        """Two polls of the same block must not smooth twice."""
+        m = payload.GainMatcher()
+        a = _spec({1: -38.0, 2: -40.0, 3: -45.0})
+        _tone(a, _spec({1: -48.0, 2: -50.0, 3: -55.0}), m, block=1)   # -10
+        once = _tone(a, _spec({1: -38.0, 2: -40.0, 3: -45.0}), m, block=2)["gain_db"]
+        again = _tone(a, _spec({1: -38.0, 2: -40.0, 3: -45.0}), m, block=2)["gain_db"]
+        self.assertAlmostEqual(once, again, places=6)
+        self.assertAlmostEqual(once, -8.0, places=2)                   # 0.2 of the way
+
+    def test_a_bound_neither_holds_nor_overwrites_an_established_gain(self):
+        m = payload.GainMatcher()
+        lv = {1: -38.0, 2: -40.0, 3: -45.0}
+        _tone(_spec(lv), _spec({i: d - 3 for i, d in lv.items()}), m, block=1)
+        t = _tone(_spec(lv), _spec({}, rest_db=-75.0), m, block=2)
+        self.assertEqual(t["gain_state"], "below_floor")
+        self.assertIsNone(t["gain_db"])
+        self.assertAlmostEqual(m.gain_db, -3.0, places=2)
+
+
+class TestToneIsAdditive(unittest.TestCase):
+
+    def test_the_tf_ring_is_still_there_for_anything_that_reads_it(self):
+        s = _snap(IDLE_BIN)
+        p = payload.live_payload(s.live, s.geometry)
+        self.assertIn("segments", p)
+        self.assertIn("tone", p)
+
+    def test_a_result_has_no_tone_block(self):
+        """RESULT carries no spectra, so there is no input or return to draw."""
+        rs = _snap(RESULT_BIN)
+        self.assertNotIn("tone", payload.result_payload(rs.result, rs.geometry))

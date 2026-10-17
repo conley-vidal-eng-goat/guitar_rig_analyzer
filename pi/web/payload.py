@@ -22,6 +22,7 @@ statement is "four sources here, none of them establishable", NOT "-24.0 dB".
 from __future__ import annotations
 
 import math
+from typing import NamedTuple
 
 from analyzer_link import presentation_semantics as ps
 from analyzer_link import protocol
@@ -365,11 +366,268 @@ def result_payload(result, geometry, *, bands: int = RING_BANDS) -> dict:
     }
 
 
-def live_payload(live, geometry, *, bands: int = RING_BANDS) -> dict:
+# =============================================================================
+# TONE — input over return, level-matched (2026-10-16)
+# =============================================================================
+#
+# *** TONE NO LONGER DRAWS THE TRANSFER FUNCTION. IT DRAWS THE TWO SIGNALS. ***
+#
+# The operator's brief: "it should be clear what the input signal looks like and
+# what the rig return signal looks like and we can compare them because they
+# are on top of each other." So each section of the ring is ONE TRANSMITTED BIN,
+# the input's level rises above the ring and the return's level drops below it.
+#
+# The tf_db ring drew every band at full length on 2026-10-16 (all readings
+# were -15..-24 dB against a 12 dB scale), so bar length carried nothing. It
+# also held its last value while the source was gated (`tf_persistence_active`)
+# and lit the DC bin permanently. Spectra have none of those properties: they
+# are the current 46 ms block, every finite bin is a measurement, and their
+# level IS the volume.
+#
+# *** THE RETURN IS DRAWN LEVEL-MATCHED, AND THE MATCH IS STATED AS A NUMBER. ***
+#
+# A rig that is 22 dB quieter than its input would otherwise draw a return too
+# short to compare shape against. So the return is drawn shifted by the
+# broadband gain, and the gain itself is shown: the number says "you are losing
+# / gaining level", the two shapes say "and this is what happened to the tone".
+#
+#     gain_db = 10 * log10( sum(ret^2) / sum(src^2) )
+#
+# summed over the displayed bins where the INPUT is above the floor -- the
+# bins where there is something to compare. Power, not mean-of-dB: a bin that
+# carries most of the energy should carry most of the verdict.
+#
+# 🔺 These are `decimateMax` values (the largest of four source bins), so this
+# is a ratio of peak-per-group powers, not of true band powers. The same
+# reduction is applied to both channels, so the ratio is like-for-like; it is
+# still not the TF the measurement core computes, and must not be presented as
+# one.
+#
+# *** THE FLOOR IS THE FIRMWARE'S OWN, NOT A NUMBER CHOSEN HERE. ***
+#
+# TF_SOURCE_GATE = 0.001 (config.h) is the level the Teensy calls "energised".
+# 20*log10(0.001) = -60 dB. Pinned against config.h by
+# test_the_tone_floor_is_the_firmware_gate. Below it a bin is still MEASURED --
+# it is quiet, not absent (`classify_spectrum`) -- it simply gets no bar.
+#
+# *** BIN 0 IS NOT ON THE RING. ***
+#
+# It spans 0-150.73 Hz and contains DC; on 2026-10-16 it read -53 dB with the
+# strings muted, which is why C2/C#2 never went dark. LIVE already refuses it.
+# Recovering the low strings needs a firmware change (TODO-92, phase 2).
+
+TONE_FIRST_BIN = 1          # bin 0 spans DC
+# *** THE RING IS THE RANGE A GUITAR ACTUALLY PLAYS IN (operator, 2026-10-16) ***
+# 46 bins (to 8.1 kHz) was the first cut; the operator's objection -- "my
+# guitar doesn't go that high" -- matched the data: in every strum frame
+# captured that day the input cleared the floor only up to bin 8 (~1.4-1.6
+# kHz). Bin 16 ends at 2.91 kHz: every fretted fundamental up to E6 (1.32 kHz)
+# plus the 2-3 kHz overtones where a rig's presence and bite changes show.
+TONE_LAST_BIN = 16          # 2.73-2.91 kHz
+TONE_FLOOR_DB = -60.0       # 20*log10(TF_SOURCE_GATE), config.h
+GAIN_MIN_BINS = 3           # fewer than this and one bin decides the verdict
+
+TONE_UNIT_NOTE = (
+    "dB relative to FFT magnitude 1.0, uncalibrated. NOT dBFS. Return levels "
+    "are also given shifted by gain_db so the two channels share one scale."
+)
+
+
+def _db(b: ps.BinSemantics) -> float | None:
+    """Level in dB, or None when there is no finite positive magnitude.
+
+    None covers two different facts, kept apart by the `*_cls` field beside it:
+    UNMEASURED (no number) and an exact zero (MEASURED, minus infinity dB).
+    """
+    if b.cls is not ps.BinClass.MEASURED:
+        return None
+    v = b.value
+    if not (isinstance(v, (int, float)) and math.isfinite(v)) or v <= 0.0:
+        return None
+    return 20.0 * math.log10(v)
+
+
+class GainEstimate(NamedTuple):
+    """One frame's verdict on the rig's broadband gain.
+
+    Exactly one of three outcomes:
+      gain_db set      -- enough bins where BOTH channels clear the floor.
+      bound_db set     -- the input clears the floor in enough bins and the
+                          return clears it in NONE of them: the return is at
+                          least this far down, and nothing more can be said.
+      both None        -- not enough input to judge. Silence has no gain.
+    """
+    gain_db: float | None
+    bins: int
+    bound_db: float | None
+
+
+def frame_gain_db(src_spec, ret_spec, *, first: int = TONE_FIRST_BIN,
+                  last: int = TONE_LAST_BIN,
+                  floor_db: float = TONE_FLOOR_DB) -> GainEstimate:
+    """Broadband return/input gain for ONE frame.
+
+    *** ONLY BINS WHERE BOTH CHANNELS CLEAR THE FLOOR DECIDE IT. ***
+
+    The first version summed every bin with input above the floor, whatever the
+    return held there. Replayed against the 2026-10-16 strum capture, every
+    return bin was -65..-78 dB -- the analyser's own floor -- and the "gain"
+    came out as a confident -28 dB that was a ratio of signal to NOISE. Below
+    the floor the return channel is not energised; a number built from it says
+    nothing about the rig.
+
+    🔺 Consequence, stated rather than hidden: a bin the rig cuts below the floor
+    stops contributing, so on a rig with a deep treble cut this is the gain of
+    the band that survives, not of the whole input.
+
+    When the return is below the floor everywhere the input is above it, the
+    honest output is a BOUND. Each such return bin is under F = 10^(floor/20),
+    so the power ratio over those k bins is under k·F² / Σsrc² -- strictly.
+    """
+    F2 = (10.0 ** (floor_db / 20.0)) ** 2
+    num = den = 0.0
+    used = 0
+    src_only_k = 0
+    src_only_den = 0.0
+    for i in range(first, min(last, len(src_spec) - 1) + 1):
+        s, r = src_spec[i], ret_spec[i]
+        s_db = _db(s)
+        if s_db is None or s_db < floor_db:
+            continue
+        if r.cls is not ps.BinClass.MEASURED:
+            continue
+        r_db = _db(r)
+        if r_db is not None and r_db >= floor_db:
+            num += r.value * r.value
+            den += s.value * s.value
+            used += 1
+        else:
+            src_only_k += 1
+            src_only_den += s.value * s.value
+    if used >= GAIN_MIN_BINS:
+        return GainEstimate(10.0 * math.log10(num / den), used, None)
+    if used == 0 and src_only_k >= GAIN_MIN_BINS:
+        bound = 10.0 * math.log10(src_only_k * F2 / src_only_den)
+        return GainEstimate(None, src_only_k, bound)
+    return GainEstimate(None, used, None)
+
+
+class GainMatcher:
+    """Holds and smooths the displayed gain. The ONLY state in the TONE path.
+
+    *** WHY STATE AT ALL ***
+    Between strums the input falls below the floor and a frame has no gain.
+    Snapping the return back to unmatched there would make every strum's decay
+    jump by the rig's gain. So the last established gain is HELD, and the
+    payload says it is held.
+
+    *** WHY IT ADVANCES ON THE BLOCK NUMBER, NOT ON THE POLL ***
+    Every browser poll calls this. Smoothing per call would make the time
+    constant depend on how many clients are open. It advances once per new
+    instrument frame (`output_block_number`), so it is a property of the
+    signal, not of the audience.
+
+    ALPHA 0.2 per frame at ~21.6 frames/s is a ~0.2 s time constant. Measured
+    2026-10-16 while strumming, the per-frame gain moved within ±1.5 dB, so
+    this steadies the number without hiding a real change for long.
+
+    A BOUND is never held and never smoothed: it is reported for the frame
+    that produced it, and it does not overwrite a gain established earlier.
+    """
+
+    ALPHA = 0.2
+
+    def __init__(self) -> None:
+        self.gain_db: float | None = None
+        self._last_block: int | None = None
+
+    def update(self, est: GainEstimate, block: int | None) -> tuple[float | None, str]:
+        """(gain to display and shift by, state). State is one of
+        live / held / below_floor / none."""
+        fresh = block is None or block != self._last_block
+        self._last_block = block
+        if est.gain_db is not None:
+            if fresh:
+                self.gain_db = (est.gain_db if self.gain_db is None
+                                else self.gain_db + self.ALPHA * (est.gain_db - self.gain_db))
+            return self.gain_db, "live"
+        if est.bound_db is not None:
+            return None, "below_floor"
+        if self.gain_db is None:
+            return None, "none"
+        return self.gain_db, "held"
+
+
+def tone_block(src_spec, ret_spec, geometry, *, gain_db: float | None,
+               gain_state: str, gain_bins: int,
+               gain_bound_db: float | None = None) -> dict:
+    """The TONE ring: one entry per displayed bin, both channels, one scale.
+
+    ``gain_db`` is the matched gain to apply (live or held), or None -- then
+    the return is drawn unshifted and ``gain_state`` says why ("none", or
+    "below_floor" with ``gain_bound_db`` saying how far down it is at least).
+
+    Classification happens HERE, not in the browser (ADR-005): which channel is
+    above the floor, and whether a section is RIG-ONLY -- the return carries
+    energy (above the floor both as received and level-matched) where the
+    input has none. That is the operator's
+    "constant noise introduced by the rig", drawn white on the ring.
+    """
+    geo = spectrum_geometry(geometry, len(src_spec))
+    shift = gain_db if gain_db is not None else 0.0
+    rnd = lambda v: None if v is None else round(v, 2)
+
+    bins = []
+    n_in = n_ret = n_rig = 0
+    for i in range(TONE_FIRST_BIN, min(TONE_LAST_BIN, len(src_spec) - 1) + 1):
+        s, r = src_spec[i], ret_spec[i]
+        s_db, r_db = _db(s), _db(r)
+        r_match = None if r_db is None else r_db - shift
+        src_on = s_db is not None and s_db >= TONE_FLOOR_DB
+        # The return must clear the floor TWICE: as received, and after the
+        # shift. Matching alone would lift the analyser's own -77 dB floor into
+        # view whenever the rig loses level -- observed 2026-10-16 at -29.6 dB,
+        # when all 46 sections lit white with nothing playing. Below the floor
+        # as received, the return channel is not energised and there is
+        # nothing of the rig's there to compare.
+        ret_on = (r_db is not None and r_db >= TONE_FLOOR_DB
+                  and r_match >= TONE_FLOOR_DB)
+        rig_only = (s.cls is ps.BinClass.MEASURED and not src_on and ret_on)
+        n_in += src_on
+        n_ret += ret_on
+        n_rig += rig_only
+        g = geo[i]
+        bins.append({
+            "i": i, "hz": g["hz"], "lo_hz": g["lo_hz"], "hi_hz": g["hi_hz"],
+            "src_cls": s.cls.name, "ret_cls": r.cls.name,
+            "src_db": rnd(s_db), "ret_db": rnd(r_db), "ret_matched_db": rnd(r_match),
+            "src_on": src_on, "ret_on": ret_on, "rig_only": rig_only,
+        })
+
+    return {
+        "unit_note": TONE_UNIT_NOTE,
+        "floor_db": TONE_FLOOR_DB,
+        "first_bin": TONE_FIRST_BIN,
+        "last_bin": TONE_LAST_BIN,
+        "gain_db": rnd(gain_db),
+        "gain_state": gain_state,
+        "gain_bins": gain_bins,
+        "gain_bound_db": rnd(gain_bound_db),
+        "census": {"sections": len(bins), "input_on": n_in,
+                   "return_on": n_ret, "rig_only": n_rig},
+        "bins": bins,
+    }
+
+
+def live_payload(live, geometry, *, bands: int = RING_BANDS,
+                 gain: GainMatcher | None = None) -> dict:
     """A LIVE_FRAME, classified and reduced to the ring.
 
     Full per-bin coverage exists here, so bands resolve to MEASURED / CLAMPED /
     UNMEASURED and no INDETERMINATE can arise.
+
+    ``gain`` carries the held TONE gain between frames. Without one (tests, a
+    single-shot call) the gain is this frame's alone and is never held.
     """
     source = ps.classify_live(live.tf_db, live.coverage)
     decim = max(1, int(geometry.decim_ratio))
@@ -389,7 +647,17 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS) -> dict:
     src_spec = ps.classify_spectrum(live.fft_source)
     ret_spec = ps.classify_spectrum(live.fft_return)
 
+    est = frame_gain_db(src_spec, ret_spec)
+    matcher = gain if gain is not None else GainMatcher()
+    g_db, g_state = matcher.update(est, live.output_block_number)
+    tone = tone_block(src_spec, ret_spec, geometry, gain_db=g_db,
+                      gain_state=g_state, gain_bins=est.bins,
+                      gain_bound_db=est.bound_db)
+
     return {
+        # ADDITIVE: TONE's input-over-return ring. `segments` below is kept,
+        # unchanged, for anything that still reads the tf_db ring.
+        "tone": tone,
         "kind": "live",
         "spectra": {
             "unit": SPECTRUM_UNIT,

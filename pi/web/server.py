@@ -45,6 +45,9 @@ class FrameService:
         self.engine = engine
         self.prefer = prefer
         self._lock = threading.Lock()
+        # TONE's held, smoothed gain. One per instrument stream, not per client;
+        # it advances on the block number, so extra pollers do not speed it up.
+        self._gain = payload.GainMatcher()
 
     def frame(self) -> dict:
         with self._lock:
@@ -63,7 +66,8 @@ class FrameService:
         if want_result and snap.result is not None:
             out = payload.result_payload(snap.result, geo)
         elif snap.live is not None:
-            out = payload.live_payload(snap.live, geo)
+            with self._lock:                # the matcher is shared state
+                out = payload.live_payload(snap.live, geo, gain=self._gain)
         else:
             return {"kind": "unknown", "reason": "no LIVE_FRAME or RESULT yet",
                     "segments": [], "bands": payload.RING_BANDS}

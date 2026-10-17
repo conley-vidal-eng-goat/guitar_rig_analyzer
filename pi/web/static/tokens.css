@@ -28,9 +28,13 @@
   --faint:      #6b7f94;
 
   /* ---- SEMANTIC: what a colour MEANS. Do not restyle. ------------------ */
-  --cold:       #4cc9f0;   /* measured, attenuated */
+  /* 🔺 RELABELLED ON TONE 2026-10-16, at the operator's request: TONE no
+   * longer draws loss/gain, it draws the INPUT (warm) over the level-matched
+   * RETURN (cool). Same hex values. TONE evidence captured before 2026-10-16
+   * uses the old meaning below; later captures use the new one. */
+  --cold:       #4cc9f0;   /* TONE: return. Before 2026-10-16: attenuated */
   --cold-alert: #90e0ef;
-  --warm:       #ff7b00;   /* measured, boosted */
+  --warm:       #ff7b00;   /* TONE: input.  Before 2026-10-16: boosted */
   --warm-alert: #ffd166;
   --unknown:    #d29922;   /* value present, direction not established */
 

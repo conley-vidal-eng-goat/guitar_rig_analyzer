@@ -264,6 +264,7 @@ html, body {
 .tone-stage { position: absolute; inset: 0; }
 
 .tone-census,
+.tone-gain,
 .tone-scale,
 .tone-legend {
   position: absolute;
@@ -294,6 +295,32 @@ html, body {
   color: var(--unknown);
 }
 
+/* The rig gain — the one number on this screen. Large, because it is the
+   answer to "am I losing level", and because the return is drawn shifted by
+   it: without it visible the picture would hide its own adjustment. Dimmed
+   when HELD (no input above the floor), so a stale figure looks stale. */
+.tone-gain {
+  top: 34px;
+  color: var(--text);
+}
+.tone-gain .k {
+  font-size: 11px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tone-gain .v {
+  font-family: "DejaVu Sans Mono", monospace;
+  font-size: 30px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.tone-gain .v.none { color: var(--faint); }
+.tone-gain .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.tone-gain .sub b { color: var(--text); font-weight: 600; }
+.tone-gain.held .v { color: var(--faint); }
+.tone-gain.bound .v { color: var(--amber); }
+
 .tone-legend {
   bottom: 10px;
   font-size: 11px;
@@ -311,7 +338,7 @@ html, body {
 }
 .sw-cold    { background: var(--cold); }
 .sw-warm    { background: var(--warm); }
-.sw-unknown { background: transparent; border: 2px solid var(--unknown); }
+.sw-rig     { background: #f4f8fc; }
 .sw-none    { background: #0d1117; border: 1px solid #21262d; }
 
 

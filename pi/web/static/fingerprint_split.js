@@ -1,207 +1,181 @@
 // ToneFingerprintSplit — ported from the committed concept (visual_design_document
-// §1c) to a plain ES module. Geometry, arcs, colours, InstancedMesh batching and
-// camera behaviour follow the original; what changed is the DATA CONTRACT.
+// §1c) to a plain ES module. The ring, its pulse and glow, the lights, the
+// InstancedMesh batching and the camera behaviour follow the original. What it
+// DRAWS was redesigned on 2026-10-16.
+//
+// *** WHAT THIS RING SHOWS NOW: THE INPUT ON TOP, THE RIG'S RETURN UNDERNEATH ***
+//
+// Operator's brief, 2026-10-16: "it should be clear what the input signal looks
+// like and what the rig return signal looks like and we can compare them
+// because they are on top of each other."
+//
+//   ANGLE       frequency. One section per TRANSMITTED BIN, 151 Hz – 2.9 kHz,
+//               lowest at the top, ascending clockwise. Labels are in Hz/kHz
+//               and come from the bin geometry the instrument sent.
+//   ABOVE       the INPUT — what went into the rig. Warm.
+//   BELOW       the RETURN — what came back, LEVEL-MATCHED by the rig gain the
+//               view prints as a number. Cool.
+//   LENGTH      level above the floor (TF_SOURCE_GATE, -60 dB), linear in dB.
+//               It is the volume, so a loud bin is long and a quiet one short.
+//   WHITE SEAT  rig-only: the matched return has energy where the input has
+//               none — noise or content the rig introduced.
+//
+// If the rig were a wire, the bottom would be a mirror of the top. The gain
+// number says how much level the rig lost or added; the difference between the
+// two shapes is what it did to the tone.
 //
 // *** WHAT THIS RENDERER IS NOT ALLOWED TO DO (ADR-005) ***
 //
-//   - It receives bands that are ALREADY CLASSIFIED. It has no coverage nibbles,
-//     no NaNs and no raw arrays, so it cannot classify even by accident.
-//   - It draws NOTHING for an UNMEASURED band. Not a stub, not a zero, not a
-//     faint hint. The original drew a 0.02 stub for the inactive side; that was
-//     fine for synthetic data where every band had a value, and is wrong here.
-//   - Bars are discrete per band. There is no surface, no spline and no
-//     neighbour blending, so nothing can bridge an absent band.
-//   - Frame-to-frame easing applies only while a band stays MEASURED. A class
-//     change snaps, so a band can never ease THROUGH a state it was never in.
+//   - It receives sections that are ALREADY CLASSIFIED by payload.py
+//     (`tone_block`): which channel is above the floor, and which sections are
+//     rig-only. It computes geometry from those numbers and nothing else.
+//   - A bin quieter than the floor is MEASURED AND QUIET, not absent
+//     (`classify_spectrum`). It gets no bar because its length would be zero,
+//     and the legend says a dark section is quiet, not unmeasured.
+//   - An UNMEASURED channel draws nothing and does not ease — it snaps.
+//   - Bars are discrete per bin. No surface, spline or neighbour blending.
 //
-// VISUAL MAPPING
-//   MEASURED      solid bar. db<0 -> left arc, drops below ring, cold cyan.
-//                 db>0 -> right arc, rises above ring, warm orange.
-//                 Bar thickness tracks coverage: a band resting on 1 of 4
-//                 sources is visibly thinner than one resting on 4 of 4.
-//   CLAMPED       flat amber disc ON the ring. No height -- the rail is not a
-//                 magnitude anyone may read.
-//   INDETERMINATE hollow amber wireframe marker ON the ring, at BOTH arc
-//                 positions. The band has no established direction, so it is
-//                 not placed on the loss side or the gain side.
-//   UNMEASURED    nothing.
+// *** WHAT WAS REMOVED, AND WHY, SO IT IS NOT RESTORED AS AN IMPROVEMENT ***
+//
+//   - The chromatic note ring (53 semitones, C2–E6). A transmitted bin is
+//     172 Hz wide, so note names asserted a precision the wire does not carry:
+//     every guitar fundamental below 151 Hz arrived in ONE bin, and that bin
+//     contains DC. Notes return when the firmware sends them (TODO-92, phase 2).
+//   - The tf_db mapping. On 2026-10-16 every band read -15..-24 dB against a
+//     12 dB scale, so every bar was full length and length meant nothing; the
+//     TF also held its last value while the source was gated.
+//   - The amber INDETERMINATE/CLAMPED markers and coverage-driven thickness.
+//     Both are tf_db properties. A magnitude spectrum has no clamp and no
+//     coverage nibble, so there is nothing for them to show.
+//   - The divider through the ring. It separated the old loss/gain half-rings,
+//     which have not existed since the circle stopped being mirrored.
 
 import * as THREE from "./vendor/three.module.js";
 
-const NUM_BANDS = 48;
+// *** THE RANGE IS FIXED, DELIBERATELY. ***
+//
+// An auto-zoom that followed the data would change the meaning of a position
+// between two frames, so two moments could not be compared -- and comparing two
+// moments is the entire point of this instrument. Must equal TONE_FIRST_BIN /
+// TONE_LAST_BIN in payload.py (pinned by test).
+//
+// Bin 0 is excluded: it spans 0-150.73 Hz and contains DC. On 2026-10-16 it
+// read -53 dB with the strings muted, which is what kept C2/C#2 permanently lit.
+const FIRST_BIN = 1;
+// Ends at 2.91 kHz: the range a guitar plays in (see TONE_LAST_BIN in
+// payload.py for the operator's call and the data behind it).
+const LAST_BIN = 16;
+const SECTIONS = LAST_BIN - FIRST_BIN + 1;
+const SECTION_ARC = (Math.PI * 2) / SECTIONS;
 
-// The 48 payload bands span 21.5 Hz - 18.6 kHz at 2.47 semitones each. A
-// guitar's six open strings occupy 9 of them, so drawing all 48 put the
-// player's entire fundamental range in 19% of the circle. The ring is now a
-// MUSICAL axis instead of the full spectrum.
+// *** THE LEVEL SCALE. LINEAR IN dB, FIXED, NEVER FITTED TO THE DATA. ***
 //
-// 🛑 THE RANGE IS FIXED, DELIBERATELY. An auto-zoom that followed the data
-// would change the meaning of a position between two frames, so two moments
-// could not be compared -- and comparing two moments is the entire point of
-// this instrument. If the range changes it changes because a human changed it.
-
-// *** THE CIRCLE IS A CHROMATIC SCALE, ONE SEMITONE PER SECTION (2026-10-15) ***
+// FLOOR_DB is the firmware's own "energised" level, 20*log10(TF_SOURCE_GATE)
+// (config.h). Must equal TONE_FLOOR_DB in payload.py (pinned by test).
 //
-// 360 / 53 = 6.79 degrees per note, C2 (65.41 Hz) to E6 (1318.51 Hz).
+// FULL_DB is where a bar reaches full length. Strummed bins measured
+// 2026-10-16 peaked near -38 dB and harmonics sat at -44..-55, so -24 puts a
+// strong strum at about 60% of the bar with headroom for a hotter pickup.
+// Anything louder is drawn full length and CAPPED, never silently truncated.
 //
-// 🔺 THE OPERATOR ASKED FOR "C1 65.4 Hz .. E6 1278.75 Hz, 76 sections". Two of
-// those three numbers are corrected here, and the correction is recorded rather
-// than applied silently:
-//   - 65.4 Hz is C2 in scientific pitch notation, not C1 (C1 is 32.70 Hz).
-//     Guitar writing often drops an octave; this file uses scientific naming
-//     because that is what the frequencies say.
-//   - 1278.75 Hz is nearest D#6; E6 is 1318.51 Hz. E6 is used.
-//   - C2..E6 is 52 semitones = 53 inclusive sections, NOT 76. A 76/77-section
-//     circle would be C1..E7 or C0..E6 -- 6.3 octaves, far wider than the range
-//     described.
-const NOTE_LO_MIDI = 36;               // C2
-const NOTE_SECTIONS = 53;              // C2..E6 inclusive
-const SECTION_ARC = (Math.PI * 2) / NOTE_SECTIONS;
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-// The ring-band grid the payload actually sends: 48 log bands over 20 Hz-20 kHz.
-// Used to find which band covers a note's centre frequency.
-const BAND_F_LO = 20.0;
-const BAND_LOG_SPAN = Math.log10(20000.0 / 20.0);
-
-const noteHz = (i) => 440 * Math.pow(2, (NOTE_LO_MIDI + i - 69) / 12);
-const noteName = (i) => {
-  const m = NOTE_LO_MIDI + i;
-  return NOTE_NAMES[m % 12] + String(Math.floor(m / 12) - 1);
-};
-// Which of the 48 payload bands covers this frequency. Several adjacent note
-// sections resolve to the SAME band -- that is not a bug, it is the
-// instrument's resolution becoming visible, and §RESOLUTION below says so.
-const bandOfHz = (hz) =>
-  Math.floor((Math.log10(hz / BAND_F_LO) / BAND_LOG_SPAN) * NUM_BANDS);
-
-// *** §RESOLUTION -- READ THIS BEFORE BELIEVING A LIT SECTION IS A NOTE. ***
-//
-// A lit section is NOT "the instrument identified this note". Measured from the
-// live wire 2026-10-15, one transmitted bin is 172.1 Hz, so:
-//
-//     C2    65.41 Hz : one semitone is  3.89 Hz -> the bin spans 44.2 semitones
-//     C4   261.63 Hz : one semitone is 15.56 Hz -> the bin spans 11.1 semitones
-//     E6  1318.51 Hz : one semitone is 78.40 Hz -> the bin spans  2.2 semitones
-//
-// A bin is narrower than a semitone only above ~2894 Hz, which is above this
-// entire range. Within C2..E6 the payload carries 22 of its 48 bands, so 22
-// values are shown across 53 sections and each band covers ~2.4 of them.
-//
-// That is why sections light in GROUPS. The group width is the band that fed
-// it, so the picture shows the instrument's resolution instead of hiding it.
-// Lighting one section per band would assert a precision the wire never
-// carried -- the same fabrication that keeps note names off these labels.
+// 🛑 dB relative to FFT magnitude 1.0 — NOT dBFS. The reference has never been
+// calibrated against a full-scale input (payload.SPECTRUM_REFERENCE_NOTE).
+const FLOOR_DB = -60;
+const FULL_DB = -24;
 
 const DISC_RADIUS = 3.15;
 
-// *** TODO-88 CLOSED HERE: THE TALLEST DRAWABLE BAR NOW FITS THE FRAME. ***
+// *** TODO-88: THE TALLEST DRAWABLE BAR FITS THE FRAME, IN BOTH DIRECTIONS. ***
 //
-// This was 4.2, and `target` had no upper clamp, so the firmware's ±24 dB rail
-// could ask for (24/18)·4.2 = 5.6 — a third beyond the constant that named
-// itself the maximum. Bars ran off the bottom of the panel (observed
-// 2026-10-13) and the camera fit contained only the ring.
-//
-// Two changes make it bounded: magnitude is clamped to MAX_DB before scaling,
-// and this constant is sized so the bar TIP sits inside the orbit-invariant
-// bounding sphere the camera actually contains. With DISC_RADIUS 3.15, FOV 52,
-// 720x1280 and FIT_RADIUS = DISC_RADIUS·1.28, that sphere is 3.888 and the bar
-// ring sits at 3.018, leaving 2.452 of height. 2.25 + the 0.16 cap = 2.41.
-// (The bar ring grew when bars were thickened for the chromatic layout, so the
-// headroom shrank and this constant came down with it.)
-//
-// 🔺 The ring was NOT shrunk to achieve this, which was the alternative and
-// would have worked against the complaint that prompted the work.
+// With DISC_RADIUS 3.15, FOV 52, 720x1280 and FIT_RADIUS = DISC_RADIUS·1.28,
+// the orbit-invariant bounding sphere the camera contains is 3.888 and the bar
+// ring sits at 3.018, leaving 2.452 of height. 2.25 + the 0.16 cap = 2.41. The
+// sphere is symmetric about the ring plane, so the same bound holds for the
+// input above and the return below.
 const MAX_BAR_HEIGHT = 2.25;
 
-// Full bar length. Was 18 dB, which made a 1 dB change 5.5% of the bar and
-// therefore invisible on the panel -- the "blips" the operator reported. 12 dB
-// keeps the mapping LINEAR (bar length is proportional to |dB|, which is what
-// the legend promises) while making ordinary rig changes legible.
-const MAX_DB = 12;
-
-// Any MEASURED band is drawn at least this tall. "The instrument measured this
-// band" is itself information, and a bar too short to see loses it. Above this
-// floor, length is linear in dB.
-//
-// 🛑 THE FLOOR IS A VISIBILITY MINIMUM, NOT A MAGNITUDE. Nothing may read a
-// bar at the floor as "about 0.9 dB" -- it means "measured, and small". The
-// legend says so.
-const MIN_BAR_HEIGHT = 0.32;
-
-// A bar longer than the scale is drawn at full length and CAPPED with a marker,
-// never silently truncated -- a clipped bar that looks like a maximum would be
-// a magnitude the instrument never reported.
+// A bar louder than FULL_DB is drawn at full length and CAPPED with a marker —
+// a clipped bar that looks like a maximum would be a level never reported.
 const OVER_RANGE_MARK = 0.16;
 
 // *** NO DECAY TRAIL. LIVE ONLY. ***
 //
 // A 7 s fade was built on 2026-10-15 and REMOVED the same evening at the
 // operator's request: "live notes only, as long as they sustain in the signal".
-// A bar is present exactly while the instrument reports that band as MEASURED.
-//
-// Recorded so it is not re-proposed as an improvement: persistence was tried,
-// and the objection was not that it was dishonest but that it was CLUTTER --
-// sustain is already visible in the live signal, so the history added noise
-// without adding information.
+// Recorded so it is not re-proposed: the objection was CLUTTER, not honesty.
 
-// Bars are thicker now that each one owns a 6.79-degree section of the circle
-// rather than sharing a crowded arc with a mirrored copy of itself.
-const BAR_RADIUS_BASE = 0.055;
-const BAR_RADIUS_GAIN = 0.065;
+// *** BARS ARE BLOCKS: WIDE ALONG THE RING, SHALLOW ACROSS IT (2026-10-16) ***
+//
+// Each of the 16 sections owns 1.14 world units of arc at the bar ring. Round
+// bars were capped near 0.15 radius, because a full-scale bar must stay inside
+// the camera's bounding sphere (3.888, see MAX_BAR_HEIGHT) -- and the operator
+// read them as "very skinny, too much empty space". A block spends that budget
+// where it can be seen: 0.86 along the ring (75% of the section) and 0.20
+// across it. Its outer corner sits at hypot(2.898 + 0.10, 0.43) = 3.029 from
+// the axis, and hypot(3.029, 2.41) = 3.871 < 3.888, so it still fits.
+const BAR_WIDTH = 0.86;
+const BAR_DEPTH = 0.20;
 const CAMERA_FOV = 52;
 // The ring plus a margin must fit the NARROW axis. On 720x1280 portrait that is
 // the horizontal one, so a distance tuned on a landscape mock crops the ring.
 const FIT_RADIUS = DISC_RADIUS * 1.28;
 
-// *** ONE FULL CIRCLE, NO MIRRORED HALVES. ***
-//
-// The ring used to run the same 48 bands twice -- a left arc for attenuation and
-// a right arc for boost -- so every band appeared at two positions and each got
-// less than half the circle. Angle now means ONE thing, frequency, and
-// direction moved to the axis it was always available on: a bar rises above the
-// ring when the rig boosted that band and drops below it when the rig took it
-// away. Same information, twice the angular space, and no duplicate to read.
-const ANGLE_START = Math.PI / 2;       // C2 at the top, ascending clockwise
+const ANGLE_START = Math.PI / 2;       // lowest bin at the top, ascending clockwise
 const sectionAngle = (i) => ANGLE_START - i * SECTION_ARC;
 
 const RING_GLOW_COLOR = 0x38506b;      // §1c reference implementation
-const COLD_EMISSIVE = 0x0f2230;        // §1c reference implementation
-const WARM_EMISSIVE = 0x331400;        // §1c reference implementation
-// Two easing channels, per §1c: height at 0.16 and bar thickness at 0.14. The
-// second was not ported, so coverage changes snapped while height eased.
+// Raised from the §1c values (0x0f2230 / 0x331400) on 2026-10-16. Once the
+// material colour stopped being squared, the reference emissives left the bar
+// sides that face away from the key light a muddy brown and slate; warm vs cool
+// is now the whole legend, so it has to read at a glance.
+const COLD_EMISSIVE = 0x16405a;
+const WARM_EMISSIVE = 0x5a2800;
+// Bar height easing, per §1c. Presentation only: it smooths the 20 Hz poll into
+// the 60 Hz draw. An UNMEASURED channel never eases -- it snaps to nothing.
 const EASE_HEIGHT = 0.16;
-const EASE_COVERAGE = 0.14;
 
-const COLD_COLOR = new THREE.Color("#4cc9f0");
-const COLD_ALERT_COLOR = new THREE.Color("#90e0ef");
-const WARM_COLOR = new THREE.Color("#ff7b00");
-const WARM_ALERT_COLOR = new THREE.Color("#ffd166");
+// *** WARM IS THE INPUT, COOL IS THE RETURN (operator, 2026-10-16). ***
+// Each brightens toward its alert tint as the bin gets louder, so a loud bin is
+// both long AND bright.
+const INPUT_COLOR = new THREE.Color("#ff7b00");
+const INPUT_LOUD_COLOR = new THREE.Color("#ffd166");
+const RETURN_COLOR = new THREE.Color("#4cc9f0");
+const RETURN_LOUD_COLOR = new THREE.Color("#90e0ef");
+// Rig-only: return energy with no input under it. White, on the ring itself,
+// because it is a property of the section rather than a level to compare.
+const RIG_ONLY_COLOR = new THREE.Color("#f4f8fc");
 const RING_COLOR = new THREE.Color("#9fb3c8");
-const UNKNOWN_COLOR = new THREE.Color("#d29922");   // amber: "not established"
 const BACKGROUND_COLOR = new THREE.Color(0x04070b);
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
-// Short, unambiguous frequency text, used in the scale line rather than on the
-// ring -- the ring carries note names now.
-function hzLabel(hz) {
+// Hz under 1 kHz, kHz above, as the operator asked. One decimal is enough to
+// tell neighbouring labels apart: labels sit two bins (344 Hz) apart.
+export function fmtHz(hz) {
   if (!(hz > 0)) return "";
-  if (hz < 1000) return String(Math.round(hz));
-  return (hz / 1000).toFixed(hz < 10000 ? 1 : 0) + "k";
+  return hz < 1000 ? `${Math.round(hz)} Hz` : `${(hz / 1000).toFixed(1)} kHz`;
+}
+
+// Bar length for a level: 0 at the floor, MAX_BAR_HEIGHT at FULL_DB, linear in
+// dB between. `over` says the level is beyond the scale and must be capped.
+function barFor(db) {
+  if (db === null || db === undefined || !(db > FLOOR_DB)) return { h: 0, t: 0, over: false };
+  const t = Math.min(1, (db - FLOOR_DB) / (FULL_DB - FLOOR_DB));
+  return { h: t * MAX_BAR_HEIGHT, t, over: db > FULL_DB };
 }
 
 // A sprite carrying canvas text. Sprites always face the camera, which is what
 // keeps a label readable while the ring orbits -- DOM overlays cannot track a
 // rotating 3D position without reprojecting every frame.
 // The canvas is rendered at FONT px for sharpness and then scaled DOWN into
-// world units. The two numbers are independent: FONT controls crispness,
-// LABEL_SCALE controls size on screen. 0.0085 was the first attempt and put 32
-// labels at ~0.65 world units each around a 3.15 ring — they collided into an
-// unreadable wall (headless render, 2026-10-15).
-const LABEL_SCALE = 0.0030;
+// world units. FONT controls crispness, LABEL_SCALE controls size on screen.
+// 0.0030 with labels at 1.17·DISC_RADIUS fitted note names; "6.1 kHz" is
+// twice as long and clipped at both screen edges (render, 2026-10-16), so the
+// labels came in to 1.13 and down to 0.0027.
+const LABEL_SCALE = 0.0027;
+const LABEL_RADIUS = DISC_RADIUS * 1.13;
 
-function makeLabelSprite(text, { dim = false, dc = false } = {}) {
+function makeLabelSprite(text) {
   const PAD = 6, FONT = 42;
   const c = document.createElement("canvas");
   const g = c.getContext("2d");
@@ -211,7 +185,7 @@ function makeLabelSprite(text, { dim = false, dc = false } = {}) {
   const g2 = c.getContext("2d");
   g2.font = `600 ${FONT}px ui-monospace, Menlo, monospace`;
   g2.textBaseline = "middle";
-  g2.fillStyle = dc ? "#7d6a3a" : (dim ? "#5c6b7a" : "#aebecf");
+  g2.fillStyle = "#aebecf";
   g2.fillText(text, PAD, c.height / 2);
   const tex = new THREE.CanvasTexture(c);
   tex.minFilter = THREE.LinearFilter;
@@ -220,13 +194,6 @@ function makeLabelSprite(text, { dim = false, dc = false } = {}) {
   }));
   sp.scale.set(c.width * LABEL_SCALE, c.height * LABEL_SCALE, 1);
   return sp;
-}
-
-function colorForMagnitude(magnitude, side) {
-  const t = Math.min(1, magnitude / MAX_DB);
-  return side === "missing"
-    ? COLD_COLOR.clone().lerp(COLD_ALERT_COLOR, t)
-    : WARM_COLOR.clone().lerp(WARM_ALERT_COLOR, t);
 }
 
 export function createFingerprint(container) {
@@ -241,18 +208,11 @@ export function createFingerprint(container) {
 
   // *** TODO-80: THE VIEWPORT IS NOT KNOWN AT CONSTRUCTION TIME. ***
   //
-  // This used to read container.clientWidth/clientHeight once, here, and derive
-  // both the camera aspect and the orbit distance from them. On the Pi that is
-  // wrong, and it was wrong invisibly: Chromium's Wayland surface is created at
-  // a provisional size and resized when the compositor assigns the output.
-  // Measured on the panel 2026-10-12 — at load 668x392, on resize 720x1280. So
-  // the ring was fitted to a viewport that never existed and then displayed at
-  // one it had never seen.
-  //
-  // A macOS window is sized before first paint, which is why months of desktop
-  // work could not surface this. Size is therefore now a FUNCTION, called on
-  // construction, on every container resize, and again whenever the view is
-  // shown after being hidden (a display:none container measures 0 x 0).
+  // Chromium's Wayland surface is created at a provisional size and resized
+  // when the compositor assigns the output -- measured on the panel 2026-10-12
+  // at load 668x392, on resize 720x1280. Size is therefore a FUNCTION, called
+  // on construction, on every container resize, and whenever the view is shown
+  // after being hidden (a display:none container measures 0 x 0).
   let cameraDistance = 1;
   let lastW = 0;
   let lastH = 0;
@@ -261,8 +221,7 @@ export function createFingerprint(container) {
     const w = container.clientWidth;
     const h = container.clientHeight;
     // A hidden or not-yet-laid-out container measures zero. Fitting to that
-    // would divide by zero and bake a NaN into the camera matrix, so the only
-    // safe action is to do nothing and wait to be called again.
+    // would divide by zero and bake a NaN into the camera matrix.
     if (w <= 0 || h <= 0) return false;
     if (w === lastW && h === lastH) return false;
     lastW = w;
@@ -287,12 +246,10 @@ export function createFingerprint(container) {
 
   // Baseline ring — the zero reference. It is NOT data and never varies with it.
   //
-  // The design document calls for a "thin white PULSING torus (same heartbeat as
-  // other versions)" (visual_design_document.md §1c) with a wider, dimmer glow
-  // behind it. Both were specified and neither was ported; restored 2026-10-13
-  // against concepts/ToneFingerprintSplit.jsx. The pulse is a property of the
-  // REFERENCE, not of the data — it must never be driven by a measurement, or a
-  // reader could mistake the instrument's heartbeat for the instrument's signal.
+  // §1c: a "thin white PULSING torus (same heartbeat as other versions)" with a
+  // wider, dimmer glow behind it. The pulse is a property of the REFERENCE, not
+  // of the data — it must never be driven by a measurement, or a reader could
+  // mistake the instrument's heartbeat for the instrument's signal.
   const ring = new THREE.Mesh(
     new THREE.TorusGeometry(DISC_RADIUS, 0.025, 10, 160),
     new THREE.MeshBasicMaterial({ color: RING_COLOR, transparent: true, opacity: 0.75 })
@@ -308,233 +265,184 @@ export function createFingerprint(container) {
   ringGlow.rotation.x = Math.PI / 2;
   scene.add(ringGlow);
 
-  const divider = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.012, 0.012, DISC_RADIUS * 2.25, 8),
-    new THREE.MeshBasicMaterial({ color: RING_COLOR, transparent: true, opacity: 0.3 })
-  );
-  divider.rotation.z = Math.PI / 2;
-  scene.add(divider);
-
   const sectionAngles = [];
-  for (let i = 0; i < NOTE_SECTIONS; i++) sectionAngles.push(sectionAngle(i));
+  for (let i = 0; i < SECTIONS; i++) sectionAngles.push(sectionAngle(i));
 
-  const barGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
-  // `emissive` is specified by the reference implementation and was not ported.
-  // Without it the bars are lit only by the two scene lights and read flat when a
-  // band faces away from the key light. It is a constant self-illumination, so it
-  // cannot encode a value and cannot vary with one.
-  const coldMat = new THREE.MeshLambertMaterial({ color: COLD_COLOR, emissive: COLD_EMISSIVE });
-  const warmMat = new THREE.MeshLambertMaterial({ color: WARM_COLOR, emissive: WARM_EMISSIVE });
-  const missingBars = new THREE.InstancedMesh(barGeo, coldMat, NOTE_SECTIONS);
-  const boostBars = new THREE.InstancedMesh(barGeo, warmMat, NOTE_SECTIONS);
-  for (const m of [missingBars, boostBars]) {
+  const barGeo = new THREE.BoxGeometry(1, 1, 1);
+  // `emissive` is a constant self-illumination (§1c), so it cannot encode a
+  // value. Without it a bar facing away from the key light reads flat.
+  //
+  // The material colour is WHITE on purpose. three.js MULTIPLIES material
+  // colour by instance colour, so a cyan material under a cyan instance drew
+  // cyan-squared -- the dark teal of every TONE capture before 2026-10-16, and
+  // a brown "orange" in the first input-over-return render. White leaves the
+  // instance colour as specified.
+  const returnMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: COLD_EMISSIVE });
+  const inputMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: WARM_EMISSIVE });
+  const inputBars = new THREE.InstancedMesh(barGeo, inputMat, SECTIONS);
+  const returnBars = new THREE.InstancedMesh(barGeo, returnMat, SECTIONS);
+  for (const m of [inputBars, returnBars]) {
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NOTE_SECTIONS * 3), 3);
+    m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SECTIONS * 3), 3);
     scene.add(m);
   }
 
-  // *** THE SECTION ARCS -- "the whole section lights up". ***
+  // *** THE SECTION SEATS. ***
   //
-  // One torus arc per note, each spanning exactly SECTION_ARC with a small gap
-  // so adjacent notes stay distinguishable. All 53 share one geometry and
-  // differ only by rotation, which is what makes them instanceable.
-  //
-  // An arc is lit by the BAND covering that note's centre frequency, so several
-  // adjacent notes light together -- see §RESOLUTION. The group IS the
-  // measurement's width.
+  // One torus arc per bin, each spanning SECTION_ARC with a small gap so
+  // neighbours stay distinguishable. All share one geometry and differ only by
+  // rotation, which is what makes them instanceable. A seat is dark unless the
+  // section is RIG-ONLY, when it turns white.
   const arcGeo = new THREE.TorusGeometry(
     DISC_RADIUS, 0.085, 8, 14, SECTION_ARC * 0.86);
   const arcs = new THREE.InstancedMesh(
-    arcGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95 }), NOTE_SECTIONS);
+    arcGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.95 }), SECTIONS);
   arcs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  arcs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(NOTE_SECTIONS * 3), 3);
+  arcs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(SECTIONS * 3), 3);
   scene.add(arcs);
 
-  // Over-range caps: shown only when |dB| exceeds the scale, so a bar pinned at
-  // full length can never be mistaken for a value of exactly MAX_DB.
+  // Over-range caps at the free end of a bar, shown only when the level is
+  // beyond FULL_DB. Up to one per channel per section.
   const capGeo = new THREE.ConeGeometry(0.085, OVER_RANGE_MARK, 8);
   const caps = new THREE.InstancedMesh(
-    capGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), NOTE_SECTIONS);
+    capGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }), SECTIONS * 2);
   caps.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(caps);
-
-  // Unknown markers: ONE per section now, not one per side -- there is only one
-  // position per note since the mirrored arc is gone.
-  const markerGeo = new THREE.TorusGeometry(0.17, 0.035, 8, 24);
-  const markerMat = new THREE.MeshBasicMaterial({ color: UNKNOWN_COLOR });
-  const markers = new THREE.InstancedMesh(markerGeo, markerMat, NOTE_SECTIONS);
-  markers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  scene.add(markers);
 
   const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
   const mat4 = new THREE.Matrix4();
   const pos = new THREE.Vector3();
   const scl = new THREE.Vector3();
   const quat = new THREE.Quaternion();
-  const flat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
   const tmpColor = new THREE.Color();
   const ORIGIN = new THREE.Vector3(0, 0, 0);
   const UNIT = new THREE.Vector3(1, 1, 1);
   const AXIS_X = new THREE.Vector3(1, 0, 0);
+  const AXIS_Y = new THREE.Vector3(0, 1, 0);
   const AXIS_Z = new THREE.Vector3(0, 0, 1);
   // A TorusGeometry is authored in its own XY plane, sweeping about LOCAL Z.
   // So a section is positioned by rotating about Z *first* — while the torus is
   // still in its own plane — and only then tilted flat into the ring plane.
+  // The other order scatters the sections onto a plane of their own (first
+  // headless render, 2026-10-15: a ring of little hooks).
   //
-  // Doing it the other way round (rotate about world Y, then flatten) scatters
-  // the sections onto a plane of their own: observed in the first headless
-  // render, 2026-10-15, as a ring of little hooks that did not touch the torus.
-  const FLAT_Q = new THREE.Quaternion().setFromAxisAngle(AXIS_X, Math.PI / 2);
-  // An UNMEASURED section is drawn as a dark seat, not left absent: the circle
-  // is a fixed musical ruler, so every note keeps its place whether or not the
-  // instrument measured it. Absence is the DARKNESS, never a gap in the ring.
+  // 🔺 THE TILT IS −90°, NOT +90°. Bars and labels sit at (cos a, ·, −sin a).
+  // A +90° tilt sends the torus's local +Y to world +Z, i.e. (cos a, ·, +sin a):
+  // the seats ran ANTI-clockwise while the bars ran clockwise, so a lit seat
+  // sat at the mirror of its own bar. Present since the chromatic ring; found
+  // 2026-10-16 when a white rig-only seat rendered at 2.5 kHz beside a return
+  // bar at 2.1 kHz.
+  const FLAT_Q = new THREE.Quaternion().setFromAxisAngle(AXIS_X, -Math.PI / 2);
+  // Every bin keeps its seat whether or not anything is in it: the circle is a
+  // fixed ruler. A quiet section is the DARKNESS, never a gap in the ring.
   const ARC_DARK = new THREE.Color("#161e28");
+  // An UNMEASURED channel (no number at all) is darker still. Not reachable on
+  // the current firmware (`classify_spectrum`), but it must not look quiet.
+  const ARC_ABSENT = new THREE.Color("#07090d");
 
-  // Eased bar heights, and the class each was eased under. A class change snaps.
-  const eased = new Array(NOTE_SECTIONS).fill(0);
-  const easedCov = new Array(NOTE_SECTIONS).fill(1);
-  const easedCls = new Array(NOTE_SECTIONS).fill("UNMEASURED");
+  // Eased bar heights per channel.
+  const easedIn = new Array(SECTIONS).fill(0);
+  const easedRet = new Array(SECTIONS).fill(0);
 
-  // Which payload band feeds each note section. Fixed for the life of the view,
-  // so it is computed once rather than 20 times a second.
-  const bandForSection = new Int16Array(NOTE_SECTIONS);
-  for (let i = 0; i < NOTE_SECTIONS; i++) bandForSection[i] = bandOfHz(noteHz(i));
-
-  let segments = [];
-  let dcEdgeHz = 0;          // bands centred below this are DC-contaminated
-  let labelsBuilt = false;
+  let byBin = new Map();     // bin index -> section entry from tone.bins
+  let labelKey = "";
   const labelSprites = [];
+  let geometry = null;       // {loHz, hiHz, binHz} once a frame has arrived
 
-  // *** NOTE NAMES ARE A RULER, NOT A MEASUREMENT. ***
+  // *** LABELS ARE A RULER, READ FROM THE BIN GEOMETRY THE INSTRUMENT SENT. ***
   //
-  // These are computed from the note's own frequency -- they label a POSITION on
-  // a fixed chromatic axis, exactly as "100 Hz" labelled a position before. They
-  // are not derived from the data and they assert nothing about what is playing.
-  //
-  // 🛑 Nothing here, and nothing downstream, may read a lit section as "the
-  // instrument identified this note". §RESOLUTION gives the arithmetic: a
-  // transmitted bin spans 44 semitones at C2 and 2.2 at E6, so note identity is
-  // not on the wire anywhere in this range.
-  //
-  // Naturals are drawn bright and sharps dim, the way a keyboard reads, so 53
-  // labels around one circle stay scannable.
-  function buildLabels() {
-    if (labelsBuilt) return;
-    labelsBuilt = true;
+  // Each label is a bin's CENTRE frequency, so it names the section it sits on.
+  // With 16 sections every one is labelled. They depend only on the geometry
+  // (fixed per session by HELLO), so they are rebuilt only if that changes.
+  function buildLabels(bins) {
+    const key = bins.map((b) => b.hz).join(",");
+    if (key === labelKey) return;
+    labelKey = key;
     for (const sp of labelSprites) scene.remove(sp);
     labelSprites.length = 0;
-    for (let i = 0; i < NOTE_SECTIONS; i++) {
-      const name = noteName(i);
-      const sharp = name.includes("#");
-      const hz = noteHz(i);
-      // A section whose frequency sits below the first clean transmitted bin is
-      // DC-contaminated. TODO-92: bin 0 spans 0-150.73 Hz and contains DC, and
-      // LIVE refuses to plot it. The ring still shows it -- marked, not silently.
-      const dc = dcEdgeHz > 0 && hz < dcEdgeHz;
+    for (const b of bins) {
+      const i = b.i - FIRST_BIN;
+      if (i < 0 || i >= SECTIONS) continue;
       const a = sectionAngles[i];
-      const sp = makeLabelSprite((dc ? "•" : "") + name,
-                                 { dim: sharp || dc, dc });
-      sp.position.set(Math.cos(a) * (DISC_RADIUS * 1.17), 0.06,
-                      -Math.sin(a) * (DISC_RADIUS * 1.17));
+      const sp = makeLabelSprite(fmtHz(b.hz));
+      sp.position.set(Math.cos(a) * LABEL_RADIUS, 0.06, -Math.sin(a) * LABEL_RADIUS);
       scene.add(sp);
       labelSprites.push(sp);
     }
+    const first = bins.find((b) => b.i === FIRST_BIN);
+    const last = bins.find((b) => b.i === LAST_BIN);
+    geometry = first && last
+      ? { loHz: first.lo_hz, hiHz: last.hi_hz, binHz: first.hi_hz - first.lo_hz }
+      : null;
   }
 
-  function placeBar(mesh, i, angle, height, radius, below, color) {
-    const y = height === 0 ? 0 : (below ? -(height / 2 + 0.01) : height / 2 + 0.01);
+  function placeBar(mesh, i, angle, height, below, color) {
+    if (height < 0.005) { mesh.setMatrixAt(i, HIDDEN); return; }
+    const y = below ? -(height / 2 + 0.01) : height / 2 + 0.01;
     pos.set(Math.cos(angle) * (DISC_RADIUS * 0.92), y, -Math.sin(angle) * (DISC_RADIUS * 0.92));
-    quat.identity();
-    scl.set(radius, height, radius);
+    // Turning by `angle` about Y sends the box's local X to the radial
+    // direction (cos a, 0, −sin a) and local Z to the tangent, so DEPTH runs
+    // across the ring and WIDTH along it.
+    quat.setFromAxisAngle(AXIS_Y, angle);
+    scl.set(BAR_DEPTH, height, BAR_WIDTH);
     mesh.setMatrixAt(i, mat4.compose(pos, quat, scl));
     mesh.setColorAt(i, color);
   }
 
+  function placeCap(n, angle, height, below) {
+    const y = below ? -(height + OVER_RANGE_MARK) : height + OVER_RANGE_MARK;
+    pos.set(Math.cos(angle) * (DISC_RADIUS * 0.92), y,
+            -Math.sin(angle) * (DISC_RADIUS * 0.92));
+    quat.identity();
+    if (below) quat.setFromAxisAngle(AXIS_X, Math.PI);
+    scl.set(1, 1, 1);
+    caps.setMatrixAt(n, mat4.compose(pos, quat, scl));
+  }
+
   function update() {
-    let marker = 0;
     let cap = 0;
-    for (let i = 0; i < NOTE_SECTIONS; i++) {
-      const seg = segments[bandForSection[i]];
-      const cls = seg ? seg.cls : "UNMEASURED";
+    for (let i = 0; i < SECTIONS; i++) {
+      const b = byBin.get(FIRST_BIN + i);
       const angle = sectionAngles[i];
 
-      // --- the section arc: "the whole section lights up" -------------------
-      //
-      // Lit by the band covering this note. Adjacent notes fed by the same band
-      // light as a group, and that group's width is the instrument's resolution
-      // rather than a claim about one note (§RESOLUTION).
       // Rotate in the torus's own plane, then lay it flat. The half-arc offset
-      // centres the segment on the note's angle instead of starting there.
+      // centres the segment on the bin's angle instead of starting there.
       arcs.setMatrixAt(i, mat4.compose(
         ORIGIN,
         quat.setFromAxisAngle(AXIS_Z, angle - SECTION_ARC * 0.43).premultiply(FLAT_Q),
         UNIT));
 
-      // --- UNMEASURED and CLAMPED produce no bar ----------------------------
-      if (cls !== "MEASURED") {
-        eased[i] = 0;
-        easedCls[i] = cls;
-        missingBars.setMatrixAt(i, HIDDEN);
-        boostBars.setMatrixAt(i, HIDDEN);
-        arcs.setColorAt(i, cls === "UNMEASURED" ? ARC_DARK : UNKNOWN_COLOR);
-      } else {
-        const db = seg.value;
-        const magnitude = Math.abs(db);
-        // Linear in dB above a visibility floor, so the legend's promise --
-        // "bar length is proportional to |dB|" -- stays true everywhere the
-        // bar is longer than the floor.
-        const over = magnitude > MAX_DB;
-        const target = Math.max(
-          MIN_BAR_HEIGHT,
-          (Math.min(magnitude, MAX_DB) / MAX_DB) * MAX_BAR_HEIGHT);
-        // Ease only while the class is unchanged; otherwise snap. A band must
-        // never animate through a magnitude it never had.
-        eased[i] = easedCls[i] === "MEASURED" ? lerp(eased[i], target, EASE_HEIGHT) : target;
+      const inMeasured = !!b && b.src_cls === "MEASURED";
+      const retMeasured = !!b && b.ret_cls === "MEASURED";
+      arcs.setColorAt(i, !b || !inMeasured || !retMeasured ? ARC_ABSENT
+                         : b.rig_only ? RIG_ONLY_COLOR : ARC_DARK);
 
-        const cov = seg.coverage ?? 1;
-        easedCov[i] = easedCls[i] === "MEASURED"
-          ? lerp(easedCov[i], cov, EASE_COVERAGE) : cov;
-        easedCls[i] = "MEASURED";
+      // --- input, above the ring -------------------------------------------
+      // Lengths come from the levels; WHETHER a bar exists comes from the Pi's
+      // classification (src_on / ret_on), never re-derived here. The first
+      // render drew a return bar on every section while the census said
+      // "return 0" -- the renderer was second-guessing the boundary.
+      const inp = barFor(inMeasured && b.src_on ? b.src_db : null);
+      easedIn[i] = inMeasured ? lerp(easedIn[i], inp.h, EASE_HEIGHT) : 0;
+      placeBar(inputBars, i, angle, easedIn[i], false,
+               tmpColor.copy(INPUT_COLOR).lerp(INPUT_LOUD_COLOR, inp.t));
+      if (inp.over && easedIn[i] > 0.005) placeCap(cap++, angle, easedIn[i], false);
 
-        const radius = BAR_RADIUS_BASE + easedCov[i] * BAR_RADIUS_GAIN;
-        // Direction is the AXIS now, not the side of the circle: above the ring
-        // the rig added energy, below it the rig took energy away.
-        const below = db < 0;
-        const color = colorForMagnitude(magnitude, below ? "missing" : "boost");
-        placeBar(below ? missingBars : boostBars, i, angle, eased[i], radius, below, color);
-        (below ? boostBars : missingBars).setMatrixAt(i, HIDDEN);
-        arcs.setColorAt(i, color);
-
-        // Over-range cap at the free end of the bar.
-        if (over) {
-          const y = below ? -(eased[i] + OVER_RANGE_MARK) : eased[i] + OVER_RANGE_MARK;
-          pos.set(Math.cos(angle) * (DISC_RADIUS * 0.92), y,
-                  -Math.sin(angle) * (DISC_RADIUS * 0.92));
-          quat.identity();
-          if (below) quat.setFromAxisAngle(AXIS_X, Math.PI);
-          scl.set(1, 1, 1);
-          caps.setMatrixAt(cap++, mat4.compose(pos, quat, scl));
-        }
-      }
-
-      // --- markers for values that exist but are not established ------------
-      if (cls === "INDETERMINATE" || cls === "CLAMPED") {
-        pos.set(Math.cos(angle) * (DISC_RADIUS * 0.92), 0.02,
-                -Math.sin(angle) * (DISC_RADIUS * 0.92));
-        scl.set(1, 1, 1);
-        markers.setMatrixAt(marker++, mat4.compose(pos, flat, scl));
-      }
+      // --- return, level-matched, below the ring ---------------------------
+      const ret = barFor(retMeasured && b.ret_on ? b.ret_matched_db : null);
+      easedRet[i] = retMeasured ? lerp(easedRet[i], ret.h, EASE_HEIGHT) : 0;
+      placeBar(returnBars, i, angle, easedRet[i], true,
+               tmpColor.copy(RETURN_COLOR).lerp(RETURN_LOUD_COLOR, ret.t));
+      if (ret.over && easedRet[i] > 0.005) placeCap(cap++, angle, easedRet[i], true);
     }
-    for (let m = marker; m < NOTE_SECTIONS; m++) markers.setMatrixAt(m, HIDDEN);
-    for (let c = cap; c < NOTE_SECTIONS; c++) caps.setMatrixAt(c, HIDDEN);
+    for (let c = cap; c < SECTIONS * 2; c++) caps.setMatrixAt(c, HIDDEN);
 
-    missingBars.instanceMatrix.needsUpdate = true;
-    boostBars.instanceMatrix.needsUpdate = true;
+    inputBars.instanceMatrix.needsUpdate = true;
+    returnBars.instanceMatrix.needsUpdate = true;
     arcs.instanceMatrix.needsUpdate = true;
-    markers.instanceMatrix.needsUpdate = true;
     caps.instanceMatrix.needsUpdate = true;
-    if (missingBars.instanceColor) missingBars.instanceColor.needsUpdate = true;
-    if (boostBars.instanceColor) boostBars.instanceColor.needsUpdate = true;
+    if (inputBars.instanceColor) inputBars.instanceColor.needsUpdate = true;
+    if (returnBars.instanceColor) returnBars.instanceColor.needsUpdate = true;
     if (arcs.instanceColor) arcs.instanceColor.needsUpdate = true;
   }
 
@@ -607,39 +515,24 @@ export function createFingerprint(container) {
   rafId = requestAnimationFrame(frame);
 
   return {
-    setSegments(next) {
-      segments = next || [];
-      // Note labels are a fixed chromatic ruler and do not depend on the data
-      // at all, so they are built once and never rebuilt per frame.
-      if (!labelsBuilt) buildLabels();
-    },
-
-    // The DC edge comes from the frame's own spectrum geometry (the low edge of
-    // the first non-DC transmitted bin). Passing it in rather than hardcoding it
-    // means the mark follows the instrument if the geometry ever changes.
-    setDcEdge(hz) {
-      const v = (typeof hz === "number" && isFinite(hz) && hz > 0) ? hz : 0;
-      if (v === dcEdgeHz) return;
-      dcEdgeHz = v;
-      labelsBuilt = false;                  // re-label with the new marking
-      buildLabels();
+    // `tone` is payload.tone_block() output, or null when the frame has none
+    // (a RESULT, or no frame yet) -- then every section goes dark.
+    setTone(tone) {
+      const bins = (tone && Array.isArray(tone.bins)) ? tone.bins : [];
+      byBin = new Map(bins.map((b) => [b.i, b]));
+      if (bins.length) buildLabels(bins);
     },
 
     // What the legend must describe. Read, never assumed, so the two cannot
-    // drift. `bandsInRange` is how many DISTINCT payload bands feed the 53
-    // sections -- the number the resolution caveat is built on.
+    // drift from the geometry they describe.
     scale() {
-      const distinct = new Set();
-      for (let i = 0; i < NOTE_SECTIONS; i++) distinct.add(bandForSection[i]);
       return {
-        maxDb: MAX_DB,
-        sections: NOTE_SECTIONS,
-        loNote: noteName(0),
-        hiNote: noteName(NOTE_SECTIONS - 1),
-        loHz: noteHz(0),
-        hiHz: noteHz(NOTE_SECTIONS - 1),
-        degPerSection: 360 / NOTE_SECTIONS,
-        bandsInRange: distinct.size,
+        floorDb: FLOOR_DB,
+        fullDb: FULL_DB,
+        sections: SECTIONS,
+        loHz: geometry ? geometry.loHz : null,
+        hiHz: geometry ? geometry.hiHz : null,
+        binHz: geometry ? geometry.binHz : null,
       };
     },
 

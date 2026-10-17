@@ -72,32 +72,60 @@ class TestToneVisualFinish(unittest.TestCase):
 
     def test_the_bars_are_emissive(self):
         """Without emissive the bars are lit only by the two scene lights and go
-        flat when a band faces away from the key light."""
-        self.assertRegex(self.src, r"coldMat\s*=.*emissive:", "cold bars not emissive")
-        self.assertRegex(self.src, r"warmMat\s*=.*emissive:", "warm bars not emissive")
+        flat when a bin faces away from the key light."""
+        self.assertRegex(self.src, r"returnMat\s*=.*emissive:", "return bars not emissive")
+        self.assertRegex(self.src, r"inputMat\s*=.*emissive:", "input bars not emissive")
 
-    def test_both_easing_channels_exist(self):
-        """§1c specifies height at 0.16 AND thickness at 0.14."""
+    def test_the_bar_material_does_not_square_the_instance_colour(self):
+        """three.js multiplies material colour by instance colour. A coloured
+        material under a coloured instance drew cyan-squared (dark teal) and
+        orange-squared (brown) -- every TONE capture before 2026-10-16."""
+        for mat in ("returnMat", "inputMat"):
+            m = re.search(rf"{mat}\s*=\s*new THREE\.MeshLambertMaterial\(\{{([^}}]*)\}}", self.src)
+            self.assertIsNotNone(m, f"{mat} not found")
+            self.assertIn("color: 0xffffff", m.group(1),
+                          f"{mat} has a non-white colour; the instance colour will be squared")
+
+    def test_height_eases_and_an_unmeasured_channel_snaps(self):
+        """§1c height easing at 0.16. An UNMEASURED channel must not ease: it
+        would animate through levels the instrument never reported."""
         self.assertAlmostEqual(_const(self.src, "EASE_HEIGHT"), 0.16, places=4)
-        self.assertAlmostEqual(_const(self.src, "EASE_COVERAGE"), 0.14, places=4)
-        self.assertRegex(self.src, r"lerp\(easedCov\[i\], cov, EASE_COVERAGE\)",
-                         "bar thickness is not eased")
+        self.assertRegex(self.src, r"easedIn\[i\] = inMeasured \? lerp\(easedIn\[i\], inp\.h, EASE_HEIGHT\) : 0;")
+        self.assertRegex(self.src, r"easedRet\[i\] = retMeasured \? lerp\(easedRet\[i\], ret\.h, EASE_HEIGHT\) : 0;")
 
-    def test_the_amber_markers_survive_the_fidelity_pass(self):
-        """*** THE ONE THING THE REFERENCE IMPLEMENTATION DOES NOT HAVE. ***
+    def test_the_tf_only_elements_are_gone(self):
+        """Markers (INDETERMINATE/CLAMPED), coverage-driven thickness and the
+        loss/gain divider were tf_db properties. A magnitude spectrum has no
+        clamp and no coverage nibble (`classify_spectrum`), so drawing them on
+        the input/return ring would show classes that cannot occur.
 
-        The concept predates `presentation_semantics`. Markers exist because the
-        instrument can report a band whose direction is not established, and
-        "restoring" the concept by deleting them would turn absence into asserted
-        measurement — the exact transformation ADR-005's governing invariant
-        forbids. This test exists to make that deletion fail loudly.
+        The markers' old guard said deleting them "would turn absence into
+        asserted measurement". That held for tf_db, which TONE no longer draws.
+        `segments` still carries those classes for any renderer that reads it.
         """
-        self.assertIn("markers", self.src)
-        self.assertRegex(self.src, r'cls === "INDETERMINATE" \|\| cls === "CLAMPED"')
+        code = "\n".join(l for l in self.src.splitlines()
+                         if not l.strip().startswith("//"))
+        for gone in ("INDETERMINATE", "CLAMPED", "EASE_COVERAGE", "divider",
+                     "coverage"):
+            self.assertNotIn(gone, code, f"{gone} is back in the renderer")
 
     def test_unmeasured_still_draws_nothing(self):
-        """The invariant the whole view rests on."""
-        self.assertRegex(self.src, r'if \(cls !== "MEASURED"\)')
+        """The invariant the whole view rests on: no number, no bar."""
+        self.assertIn('b.src_cls === "MEASURED"', self.src)
+        self.assertIn('b.ret_cls === "MEASURED"', self.src)
+        self.assertIn("HIDDEN", self.src)
+
+    def test_whether_a_bar_exists_is_the_pis_decision(self):
+        """`src_on` / `ret_on` are classified in payload.py. The first render
+        drew a return bar on every section while the census said "return 0",
+        because the renderer re-derived presence from the level."""
+        self.assertRegex(self.src, r"inMeasured && b\.src_on \? b\.src_db : null")
+        self.assertRegex(self.src, r"retMeasured && b\.ret_on \? b\.ret_matched_db : null")
+
+    def test_the_seats_are_tilted_the_same_way_as_the_bars(self):
+        """Bars and labels sit at (cos a, ·, −sin a). A +90° tilt put the seats
+        at (cos a, ·, +sin a), so a lit seat sat at the mirror of its own bar."""
+        self.assertRegex(self.src, r"FLAT_Q = new THREE\.Quaternion\(\)\.setFromAxisAngle\(AXIS_X, -Math\.PI / 2\)")
 
 
 class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
@@ -128,17 +156,14 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
         """
         src = self.src
         self.assertRegex(
-            src, r"Math\.min\(magnitude,\s*MAX_DB\)",
-            "magnitude is no longer clamped to the scale — TODO-88 has reopened")
+            src, r"Math\.min\(1, \(db - FLOOR_DB\) / \(FULL_DB - FLOOR_DB\)\)",
+            "level is no longer clamped to the scale — TODO-88 has reopened")
         self.assertIn("OVER_RANGE_MARK", src,
                       "a clamped bar must be marked, or it asserts a wrong value")
+        self.assertLess(_const(src, "FLOOR_DB"), _const(src, "FULL_DB"))
 
-        max_db = _const(src, "MAX_DB")
         max_bar = _const(src, "MAX_BAR_HEIGHT")
         over = _const(src, "OVER_RANGE_MARK")
-        wire_db_max = 24.0                      # config.h TF_DB_MIN/MAX plus the 6 dB rail
-        self.assertGreater(wire_db_max, max_db,
-                           "the wire no longer exceeds the scale; the clamp is moot")
         # However tall the wire asks for, the drawn tip is bounded by this:
         self.assertAlmostEqual(max_bar + over, 2.41, places=2)
 
@@ -159,14 +184,16 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
         max_bar = _const(src, "MAX_BAR_HEIGHT")
         over = _const(src, "OVER_RANGE_MARK")
         fov = _const(src, "CAMERA_FOV")
-        base = _const(src, "BAR_RADIUS_BASE")
-        gain = _const(src, "BAR_RADIUS_GAIN")
+        width = _const(src, "BAR_WIDTH")
+        depth = _const(src, "BAR_DEPTH")
 
         # Height is clamped to the scale now, so the tallest tip is the bar at
         # full scale plus its over-range cap -- NOT a function of the wire rail.
         tallest = max_bar + over
         bar_ring = disc * 0.92                  # placeBar() radius
-        bound = math.hypot(bar_ring + base + gain, tallest)
+        # A block's farthest point is its outer corner: half the depth out
+        # from the bar ring, half the width along the tangent.
+        bound = math.hypot(math.hypot(bar_ring + depth / 2, width / 2), tallest)
 
         half_fov = math.radians(fov) / 2.0
         aspect = 720.0 / 1280.0                 # the only supported panel
@@ -181,68 +208,51 @@ class TestBarsAreNotTallerThanTheCameraIsToldToExpect(unittest.TestCase):
             f"a full-scale bar (bound {bound:.3f}) leaves the frame "
             f"(contains {contained:.3f}) at some orbit position")
 
-    def test_the_chromatic_range_is_fixed_and_not_driven_by_the_data(self):
-        """The circle is 53 semitone sections, C2 (65.41 Hz) to E6 (1318.51 Hz).
+    def test_the_range_is_fixed_and_agrees_with_the_payload(self):
+        """One section per transmitted bin, bins 1..16 (151 Hz – 2.9 kHz): the
+        range a guitar plays in (operator, 2026-10-16).
 
         🛑 An auto-zoom that followed the data would change what a position on
-        the ring MEANS between two frames, so two moments could not be compared
-        — and comparing two moments is what this instrument is for. The range
-        must be constants, never computed from `segments`.
+        the ring MEANS between two frames, so two moments could not be compared.
+        The range is constants, never computed from the frame -- and the two
+        sides of the boundary must agree on them.
         """
+        from web import payload
         src = FINGERPRINT.read_text()
-        self.assertEqual(_const(src, "NOTE_LO_MIDI"), 36, "C2 is MIDI 36")
-        self.assertEqual(_const(src, "NOTE_SECTIONS"), 53,
-                         "C2..E6 inclusive is 53 semitones, not 76")
-        self.assertNotRegex(
-            src, r"NOTE_SECTIONS\s*=\s*[^;]*segments",
-            "the range is being derived from the data — it must be fixed")
+        self.assertEqual(_const(src, "FIRST_BIN"), payload.TONE_FIRST_BIN)
+        self.assertEqual(_const(src, "LAST_BIN"), payload.TONE_LAST_BIN)
+        self.assertEqual(_const(src, "FLOOR_DB"), payload.TONE_FLOOR_DB)
+        self.assertEqual(payload.TONE_FIRST_BIN, 1, "bin 0 spans DC and must stay off")
+        self.assertNotRegex(src, r"(FIRST_BIN|LAST_BIN)\s*=\s*[^;]*(tone|bins)",
+                            "the range is being derived from the data")
 
     def test_the_circle_is_not_mirrored_and_direction_is_the_axis(self):
-        """Angle means ONE thing now: frequency.
-
-        The ring used to draw every band twice — a left arc for attenuation and
-        a right arc for boost — which halved the space each band got and made a
-        reader check two places for one value. Direction moved to the axis it
-        was always available on: above the ring the rig added energy, below it
-        the rig took energy away.
-        """
+        """Angle means ONE thing: frequency. Above the ring is the input, below
+        it the return. No mirrored half-rings."""
         src = FINGERPRINT.read_text()
         for gone in ("LEFT_START", "RIGHT_START", "leftAngles", "rightAngles"):
             self.assertNotIn(gone, src,
                              f"{gone} is back — the mirrored arcs have returned")
         self.assertIn("sectionAngle", src)
 
-    def test_note_labels_are_a_ruler_and_never_come_from_the_data(self):
-        """Note names label a POSITION on a fixed chromatic axis.
-
-        🛑 They must be computed from the section index alone. A note name
-        derived from a measurement would assert that the instrument identified
-        a pitch, and it cannot: one transmitted bin spans 44 semitones at C2 and
-        2.2 at E6, so note identity is not on the wire anywhere in this range.
-        """
+    def test_labels_are_hz_and_come_from_the_bin_geometry(self):
+        """Hz below 1 kHz, kHz above (operator, 2026-10-16), at each bin's
+        centre as the instrument sent it. Note names are gone: a 172 Hz bin
+        cannot name a note anywhere in this range (TODO-92)."""
         src = FINGERPRINT.read_text()
-        self.assertRegex(src, r"const noteName = \(i\) =>",
-                         "note names are no longer a pure function of the index")
-        self.assertNotRegex(src, r"noteName\([^)]*seg",
-                            "a note name is being derived from a segment")
-        self.assertIn("NOTE_NAMES", src)
+        code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("//"))
+        self.assertIn("export function fmtHz(hz)", src)
+        self.assertIn("kHz", code)
+        self.assertIn("makeLabelSprite(fmtHz(b.hz))", code)
+        for gone in ("NOTE_NAMES", "noteName", "NOTE_SECTIONS"):
+            self.assertNotIn(gone, code, f"{gone}: note labels are back")
 
-    def test_a_lit_group_is_not_claimed_to_be_one_note(self):
-        """Several adjacent sections share one payload band, by design.
-
-        The renderer maps each section to the band covering its centre
-        frequency, so a measurement lights the group of sections that band
-        covers. That group width IS the instrument's resolution. Lighting one
-        section per band would assert a precision the wire never carried.
-        """
+    def test_each_section_is_one_transmitted_bin(self):
+        """No resampling onto a finer axis: a section is a bin, so a lit
+        section cannot claim more resolution than the wire carried."""
         src = FINGERPRINT.read_text()
-        self.assertIn("bandForSection", src)
-        self.assertRegex(src, r"segments\[bandForSection\[i\]\]",
-                         "sections are no longer fed by the covering band")
-        # The view must be able to state the caveat, so the scene must expose
-        # how many distinct bands actually feed the ring.
-        self.assertIn("bandsInRange", src,
-                      "the resolution caveat cannot be stated without this")
+        self.assertIn("byBin.get(FIRST_BIN + i)", src)
+        self.assertNotIn("bandForSection", src)
 
     def test_there_is_no_decay_trail(self):
         """Removed 2026-10-15 at the operator's request: live notes only.
