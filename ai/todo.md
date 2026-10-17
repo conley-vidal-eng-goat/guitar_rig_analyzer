@@ -17,7 +17,24 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
-### TODO-92 — The TONE ring draws bars from the DC bin, and that bin is where half the guitar lives 🔴 **found 2026-10-15 while investigating "I cannot tell what frequency the spikes are". Latent presentation defect; no runtime fault**
+### TODO-93 — On 2026-10-16 the return channel did not carry the guitar 🔴 [bench] **observed on the panel, cause NOT established. Blocks TODO-91**
+
+**Observed.** With a Stratocaster strummed once a second, the source peak followed the strums (−11.7..−32.6 dBFS) while the return peak sat flat (−36.9..−40.5 dBFS) across two bursts. No displayed return bin (151 Hz – 2.9 kHz) reached the −60 dB floor (TF_SOURCE_GATE). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md). Earlier the same evening, one silent capture showed return ≈ source (−39.5 / −39.7 peak), so the setup was changing between captures.
+
+**Why it matters.** Every A/B comparison (TODO-91) is a ratio over the return. Below the floor that ratio is signal against the analyser's own noise. The old tf_db ring drew it anyway as "−22 dB, attenuated", full length and confident. TONE now refuses: it shows a bound and says "check the return path".
+
+**What.** Bench work (not Claude's): establish what is connected to the return node, the rig's output level, and `line_in_level`. Then look at TONE with a known path such as a loopback cable, where the gain should read near 0 dB with the bottom mirroring the top.
+
+**Proof:** a TONE capture with the return above the floor in most input bins, a stated gain, and the setup recorded beside it. The level-matched return path has never been seen on the panel until this exists.
+
+### TODO-92 — The TONE ring draws bars from the DC bin, and that bin is where half the guitar lives 🟡 **TONE HALF CLOSED 2026-10-16 (`bc3d4b9`): option 1 chosen — TONE no longer draws bin 0, consistent with LIVE. The low strings are NOT recovered; that is option 3, phase 2.** Originally **found 2026-10-15 while investigating "I cannot tell what frequency the spikes are". Latent presentation defect; no runtime fault**
+
+**Update 2026-10-16.** TONE was redesigned to draw the input and return spectra (one section per transmitted bin, bins 1–16). Bin 0 is excluded there exactly as LIVE excludes it, so the two views now agree, which was this item's proof condition for the presentation half. What remains is option 3. The operator calls it a **must-fix, phase 2**. The firmware analysis (journal 2026-10-16 (1)):
+- **The FFT is the real limit, not just the 4:1 decimation.** Native bins are 43 Hz wide, still too coarse for low E vs A. One bin per semitone needs Δf ≤ 0.0595·f: an 8192-point equivalent (5.4 Hz, 186 ms window) resolves semitones from ~90 Hz (all six open strings separate); 16384 resolves them from ~45 Hz.
+- **Recommended shape:** a dedicated low-band analyser, meaning low-pass, decimate by 8 (5512.5 Hz, Nyquist 2756 Hz), then a 1024-point FFT with 5.4 Hz bins, as its own `AudioStream` object. Group into semitone bands on the Teensy and send them in a NEW, additive packet type (about 750 B, less than half a LIVE_FRAME). LIVE_FRAME stays for LIVE. DC never enters a band, so this half closes by construction.
+- **Bandwidth:** LIVE_FRAME already takes 79% of 460800 baud. Send it every second block (~57% total), or bench-prove 921600 as a separate step.
+- Needs an ADR first: resolution target, the ring's low edge, the per-band TF estimator, and bandwidth sharing.
+
 
 **Why this matters more than it looks.** The transmitted spectrum is 128 bins at **172.1 Hz each**, and bin 0 spans **0 – 150.73 Hz and contains DC**. Measured from the live wire 2026-10-15:
 

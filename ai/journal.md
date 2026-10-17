@@ -12,6 +12,31 @@ How to use this file:
 
 ---
 
+## 2026-10-16 (1) — **TONE draws the input over the level-matched return. The chromatic ring is retired, the DC-bin fix is scoped as phase 2, and the first panel capture says the return path is not carrying the guitar**
+
+**Session shape.** Claude screenshotted the kiosk while the operator strummed a Strat once a second, explained what the old ring was drawing, scoped the firmware fix for resolution below 3 kHz (analysis only), redesigned TONE to the operator's brief, deployed it to `~/gra-ui`, and captured it on the panel. Commits: `bc3d4b9` (redesign), `afd1944` (hold fix). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md).
+
+**What the old ring was really showing.** Every lit band read −15..−24 dB against a 12 dB scale, so every bar was full length and length carried nothing. The TF held its last value while the source was gated. Bin 0 (0–151 Hz, contains DC) read −53 dB with the strings muted, which is what kept C2/C#2 permanently lit. Bin 1 hovered at the −60 dB gate and flickered. The three low strings all arrived in bin 0, so the note labels promised a precision the wire never carried. Two renderer bugs had been there since before today: the section seats were tilted +90° instead of −90°, so a lit seat sat at the mirror of its own bar (this explains "lit groups never line up with bars"); and the bar material colour multiplied the instance colour, which is why every earlier capture shows dark teal.
+
+**Decision: TONE draws two signals, not their ratio.** The operator's brief was "it should be clear what the input signal looks like and what the rig return signal looks like and we can compare them because they are on top of each other". One section per transmitted bin. Input above the ring (warm), return below it (cool), bar length = level above the firmware's own floor (−60 dB = 20·log10 TF_SOURCE_GATE), full bar at −24 dB. The return is shifted by the broadband gain, and the gain is printed as the screen's headline number. A white seat means rig-only (return energy with no input under it). The orbit, drag, pulse and glow are untouched; the divider, the amber markers and coverage thickness went, because they are tf_db properties a spectrum does not have.
+
+**The decisions the operator made during the session:**
+- Range **151 Hz – 2.9 kHz** (bins 1–16), after "my guitar doesn't go that high" against a first cut to 8.1 kHz. The data agreed: every strum frame ended near 1.6 kHz.
+- **Wide block bars** after "very skinny, too much empty space". Cylinders were capped near 0.15 radius by the TODO-88 containment sphere. Blocks 0.86 along the ring × 0.20 across still fit (corner bound 3.871 < 3.888).
+- Warm = input, cool = return. Same hex values, new meaning on TONE (tokens.css records it). TONE captures before today use the old meaning.
+
+**The bug a replay caught that tests had not.** The first gain summed every bin with input above the floor. Replayed against the session's own strum capture, the return sat at −65..−78 dB in every bin (the analyser's floor). The "gain" came out as a confident −28 dB, and matching then lifted that noise into a return bar on every section. Fix: a return bin must clear the floor as received AND after the shift. When the return clears it nowhere, the payload reports a strict upper BOUND (k·F²/Σsrc² over those bins) instead of a gain. **Lesson worth keeping: replay real frames through a new classification before trusting it, because synthetic tests encode the designer's assumption about what the signal looks like.** A second replay showed the renderer drawing return bars where the Pi had said "off"; it now obeys `src_on` / `ret_on` and never re-derives presence.
+
+**Found on the panel, fixed the same hour (`afd1944`).** The bound was never held, so at one strum a second the readout flipped between "< −29.6 dB" and "not established yet: play", telling a player who was playing to play. The matcher now holds the latest verdict, gain or bound, and labels it held.
+
+**Phase 2 analysis (TODO-92, no code).** The 1024-point FFT is the ceiling (43 Hz native), not only the 4:1 decimation (172 Hz on the wire), and the link is at 79% duty. Recommended: a low-band analyser (decimate by 8 → 5.4 Hz bins over 0–2.76 kHz, as its own `AudioStream`), semitone bands formed on the Teensy, sent in a new additive packet. DC can never enter a band. It needs an ADR first. Details in TODO-92.
+
+**What the next session should know.**
+- **TODO-93 is now the gate for TODO-91.** On the panel the source followed the strums and the return did not (flat −37..−40 dBFS, below the floor in every displayed bin). Cause not established; it's bench work.
+- **The level-matched return has never been seen on the panel.** It is verified only by tests and a headless render of a synthetic frame. Do not cite it as panel evidence until an energised return produces it.
+- Deploying from a Mac: use `COPYFILE_DISABLE=1 tar --no-xattrs`. The first copy left eight `._*` files on the Pi that broke four tests.
+- Rollback: `~/gra-ui-backup-39a7d55/`.
+
 ## 2026-10-15 (4) — **TONE becomes a chromatic circle: 53 semitones, one full turn, and three of the operator's numbers corrected rather than implemented**
 
 **2026-10-15, ~23:05 PDT.** `fingerprint_split.js`, `view_tone.js`,
