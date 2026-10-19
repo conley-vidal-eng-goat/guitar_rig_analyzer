@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from analyzer_ui.engine import Engine
 from analyzer_ui.sources import FixtureSource, SerialSource
 
-from . import payload
+from . import lab, payload
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 
@@ -48,6 +48,10 @@ class FrameService:
         # TONE's held, smoothed gain. One per instrument stream, not per client;
         # it advances on the block number, so extra pollers do not speed it up.
         self._gain = payload.GainMatcher()
+        # LAB's running statistics, under the same rule. A new session is a
+        # new instrument stream, so nothing from the last one may carry over.
+        self._lab = lab.LabTracker()
+        self._lab_session = None
 
     def frame(self) -> dict:
         with self._lock:
@@ -67,7 +71,11 @@ class FrameService:
             out = payload.result_payload(snap.result, geo)
         elif snap.live is not None:
             with self._lock:                # the matcher is shared state
-                out = payload.live_payload(snap.live, geo, gain=self._gain)
+                if snap.session_id != self._lab_session:
+                    self._lab.reset()
+                    self._lab_session = snap.session_id
+                out = payload.live_payload(snap.live, geo, gain=self._gain,
+                                           lab=self._lab)
         else:
             return {"kind": "unknown", "reason": "no LIVE_FRAME or RESULT yet",
                     "segments": [], "bands": payload.RING_BANDS}

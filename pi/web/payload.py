@@ -633,7 +633,7 @@ def tone_block(src_spec, ret_spec, geometry, *, gain_db: float | None,
 
 
 def live_payload(live, geometry, *, bands: int = RING_BANDS,
-                 gain: GainMatcher | None = None) -> dict:
+                 gain: GainMatcher | None = None, lab=None) -> dict:
     """A LIVE_FRAME, classified and reduced to the ring.
 
     Full per-bin coverage exists here, so bands resolve to MEASURED / CLAMPED /
@@ -641,6 +641,9 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS,
 
     ``gain`` carries the held TONE gain between frames. Without one (tests, a
     single-shot call) the gain is this frame's alone and is never held.
+
+    ``lab`` is a `lab.LabTracker` carrying LAB's running statistics the same
+    way; without one they cover this frame only.
     """
     source = ps.classify_live(live.tf_db, live.coverage)
     decim = max(1, int(geometry.decim_ratio))
@@ -667,7 +670,35 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS,
                       gain_state=g_state, gain_bins=est.bins,
                       gain_bound_db=g_bound)
 
+    authority = {
+        "peak_source_dbfs": live.peak_source_dbfs,
+        "peak_return_dbfs": live.peak_return_dbfs,
+        "tf_confidence": live.tf_confidence,
+        "tf_clamped_count": live.tf_clamped_count,
+        "measurement_state": live.measurement_state.name,
+        # Flag bits the receiver has always decoded and the transport has
+        # always dropped. A clip is the one live condition that invalidates
+        # a reading while the reading still looks plausible, so it belongs
+        # beside the peaks it qualifies.
+        "source_clip": bool(live.source_clip),
+        "return_clip": bool(live.return_clip),
+        "tf_persistence_active": bool(live.tf_persistence_active),
+        # The audio block counter's low 16 bits -- the ONLY freshness signal
+        # on the wire, and not a wall clock. `packets.py`: gaps are dropped
+        # frames, which is expected, and must not be rendered as an error.
+        "output_block_number": live.output_block_number,
+    }
+
+    # LAB's diagnostics. Imported here because lab.py builds on this module.
+    from . import lab as _lab
+    lab_out = _lab.lab_block(live, src_spec, ret_spec, geometry,
+                             shift=g_db if g_db is not None else 0.0,
+                             energised=est.gain_db is not None,
+                             tracker=lab, authority=authority)
+
     return {
+        # ADDITIVE: LAB's what-the-rig-changed diagnostics (lab.py).
+        "lab": lab_out,
         # ADDITIVE: TONE's input-over-return ring. `segments` below is kept,
         # unchanged, for anything that still reads the tf_db ring.
         "tone": tone,
@@ -689,22 +720,5 @@ def live_payload(live, geometry, *, bands: int = RING_BANDS,
         "census_bands": _census(ps.census(ring)),
         "segments": [_segment(b, bands) for b in ring],
         # ADDITIVE ONLY -- see the note on the RESULT authority block.
-        "authority": {
-            "peak_source_dbfs": live.peak_source_dbfs,
-            "peak_return_dbfs": live.peak_return_dbfs,
-            "tf_confidence": live.tf_confidence,
-            "tf_clamped_count": live.tf_clamped_count,
-            "measurement_state": live.measurement_state.name,
-            # Flag bits the receiver has always decoded and the transport has
-            # always dropped. A clip is the one live condition that invalidates
-            # a reading while the reading still looks plausible, so it belongs
-            # beside the peaks it qualifies.
-            "source_clip": bool(live.source_clip),
-            "return_clip": bool(live.return_clip),
-            "tf_persistence_active": bool(live.tf_persistence_active),
-            # The audio block counter's low 16 bits -- the ONLY freshness signal
-            # on the wire, and not a wall clock. `packets.py`: gaps are dropped
-            # frames, which is expected, and must not be rendered as an error.
-            "output_block_number": live.output_block_number,
-        },
+        "authority": authority,
     }

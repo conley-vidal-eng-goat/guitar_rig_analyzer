@@ -54,6 +54,25 @@
   --source:     #3498db;
   --return:     #2ecc71;
 
+
+  /* ---- LAB dashboard (2026-10-18) --------------------------------------
+   * New meanings, so new names. --warm / --cold keep their TONE meaning on
+   * LAB: warm is the input, cool is the return. These only add to them.
+   */
+  --boost:        #2ee6a0;   /* return louder than input, level-matched */
+  --cut:          #b46cff;   /* return quieter than input */
+  --cut-deep:     #6a2fd1;   /* the rig took the band below the gate */
+  --diverge-mid:  #18202c;   /* no difference: the surface, nearly */
+  --added:        #ffffff;   /* rig-only energy, as on TONE */
+  --tf:           #ff4fd8;   /* the Teensy's own transfer function */
+  --ink-1:        #f4f8fc;   /* LAB text: brighter than --text, for the panel */
+  --ink-2:        #c3d2e2;
+  --ink-3:        #8497ad;
+  --ink-4:        #3a4658;
+  --panel-3:      #121a26;
+  --grid:         rgba(160, 185, 215, 0.13);
+  --grid-strong:  rgba(200, 220, 240, 0.38);
+
   /* ---- metrics, sized for the 7" panel at arm's length ----------------- */
   --gutter:     16px;
   --tap:        88px;      /* well above the 44px floor the brief asks for */

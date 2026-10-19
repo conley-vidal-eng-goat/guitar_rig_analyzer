@@ -26,6 +26,9 @@
 // absence of measurement.
 
 import { card, rows, num, text, flag, gap, esc } from "./ui.js";
+// LIVE frames go to the dashboard (lab_dash.js), which draws the Pi's `lab`
+// block. This file stays the RESULT printer it always was.
+import { createLabDashboard } from "./lab_dash.js";
 
 // Still absent, with the reason each one is absent. The two categories are
 // different and are labelled differently: a transport gap is Pi work, a
@@ -209,72 +212,89 @@ function calibrationSection(cal, applied) {
 }
 
 export function createLabView(root) {
+  const liveHost = document.createElement("div");
+  const resultHost = document.createElement("div");
+  root.append(liveHost, resultHost);
+  let dash = null;
+
   return {
     update(f) {
-      if (f.kind !== "result") {
-        root.innerHTML = card("No captured result", `
-          <p class="note"><b>Nothing to show.</b> ${text(f.kind === "unknown"
-            ? f.reason : "The transport is carrying live frames, not a captured RESULT.")}</p>
-          <p class="note">A result appears here when the instrument completes a
-          capture.</p>`);
+      const live = f.kind === "live" && Boolean(f.lab);
+      liveHost.hidden = !live;
+      resultHost.hidden = live;
+      if (live) {
+        dash = dash || createLabDashboard(liveHost);
+        dash.update(f);
         return;
       }
-
-      const a = f.authority || {};
-      const quality = text(a.result_quality);
-      const qCls = a.result_quality === "GOOD" ? "good"
-        : a.result_quality === "POOR" ? "warn" : "";
-
-      root.innerHTML =
-        card("Result", rows([
-          ["valid", flag(a.result_valid, "yes", "no")],
-          ["quality", `<span class="${qCls}">${quality}</span>`],
-          ["averages completed", num(a.n_averages_completed, { digits: 0 })],
-          ["mean coherence", num(a.mean_coherence, { digits: 3 })],
-          // The instrument's own count of how much of the analysis band it
-          // could establish. Printed as the fraction it is, never recomputed
-          // here from the ring census — they answer different questions.
-          ["valid bins", typeof a.valid_bin_fraction === "number"
-            ? num(a.valid_bin_fraction * 100, { digits: 1, unit: "%" })
-            : gap("not reported")],
-          ["calibration", flag(a.calibration_applied, "applied", "NOT calibrated")],
-          ["firmware", text(a.firmware_version)],
-        ]) + `<p class="note"><b>Every value on this screen is the
-          instrument's.</b> Quality, validity and coverage are graded on the
-          Teensy; this interface lays them out and does not assess them.</p>`) +
-
-        insightsSection(f.insights) +
-
-        captureSection(f.capture
-          ? { ...f.capture, n_averages_completed: a.n_averages_completed }
-          : null) +
-
-        clippingSection(f.capture) +
-
-        calibrationSection(f.calibration, a.calibration_applied) +
-
-        card("Coverage", rows([
-          ["instrument", text(f.census_source?.text)],
-          ["ring (presentation)", text(f.census_bands?.text)],
-        ]) + `<p class="note">A finite value in a RESULT is <b>not</b> evidence
-          that the bin was measured: the packet carries no per-bin clamp mask, so
-          nothing distinguishes a measured value from the firmware's saturation
-          rail. Those bins are reported as <i>indeterminate</i> — a statement
-          about missing metadata, never about how the number looks.</p>`) +
-
-        card("Still not carried", rows(
-          NOT_CARRIED.map(([label, field, kind]) => [
-            label,
-            `${gap(field)}<span class="gap-kind gap-${kind}">${esc(kind)}</span>`,
-          ])
-        ) + `<p class="note"><b>Two different gaps.</b> A <i>transport</i> gap is
-          decoded on the Pi and not yet forwarded — Pi work. A <i>firmware</i>
-          gap is never written by the sender at all: the insight entry on the
-          wire is 138 bytes and all 138 are spent on the fields above it, so
-          <b>action and data_quality have no room in the current protocol</b> and
-          need a firmware change and a version bump, not a renderer change.</p>
-          <p class="note">In every case the instrument measured more than this
-          screen shows. The absence is in the link, not in the measurement.</p>`);
+      printResult(resultHost, f);
     },
   };
+}
+
+function printResult(root, f) {
+  if (f.kind !== "result") {
+    root.innerHTML = card("No captured result", `
+      <p class="note"><b>Nothing to show.</b> ${text(f.kind === "unknown"
+        ? f.reason : "The transport is carrying live frames, not a captured RESULT.")}</p>
+      <p class="note">A result appears here when the instrument completes a
+      capture.</p>`);
+    return;
+  }
+
+  const a = f.authority || {};
+  const quality = text(a.result_quality);
+  const qCls = a.result_quality === "GOOD" ? "good"
+    : a.result_quality === "POOR" ? "warn" : "";
+
+  root.innerHTML =
+    card("Result", rows([
+      ["valid", flag(a.result_valid, "yes", "no")],
+      ["quality", `<span class="${qCls}">${quality}</span>`],
+      ["averages completed", num(a.n_averages_completed, { digits: 0 })],
+      ["mean coherence", num(a.mean_coherence, { digits: 3 })],
+      // The instrument's own count of how much of the analysis band it
+      // could establish. Printed as the fraction it is, never recomputed
+      // here from the ring census — they answer different questions.
+      ["valid bins", typeof a.valid_bin_fraction === "number"
+        ? num(a.valid_bin_fraction * 100, { digits: 1, unit: "%" })
+        : gap("not reported")],
+      ["calibration", flag(a.calibration_applied, "applied", "NOT calibrated")],
+      ["firmware", text(a.firmware_version)],
+    ]) + `<p class="note"><b>Every value on this screen is the
+      instrument's.</b> Quality, validity and coverage are graded on the
+      Teensy; this interface lays them out and does not assess them.</p>`) +
+
+    insightsSection(f.insights) +
+
+    captureSection(f.capture
+      ? { ...f.capture, n_averages_completed: a.n_averages_completed }
+      : null) +
+
+    clippingSection(f.capture) +
+
+    calibrationSection(f.calibration, a.calibration_applied) +
+
+    card("Coverage", rows([
+      ["instrument", text(f.census_source?.text)],
+      ["ring (presentation)", text(f.census_bands?.text)],
+    ]) + `<p class="note">A finite value in a RESULT is <b>not</b> evidence
+      that the bin was measured: the packet carries no per-bin clamp mask, so
+      nothing distinguishes a measured value from the firmware's saturation
+      rail. Those bins are reported as <i>indeterminate</i> — a statement
+      about missing metadata, never about how the number looks.</p>`) +
+
+    card("Still not carried", rows(
+      NOT_CARRIED.map(([label, field, kind]) => [
+        label,
+        `${gap(field)}<span class="gap-kind gap-${kind}">${esc(kind)}</span>`,
+      ])
+    ) + `<p class="note"><b>Two different gaps.</b> A <i>transport</i> gap is
+      decoded on the Pi and not yet forwarded — Pi work. A <i>firmware</i>
+      gap is never written by the sender at all: the insight entry on the
+      wire is 138 bytes and all 138 are spent on the fields above it, so
+      <b>action and data_quality have no room in the current protocol</b> and
+      need a firmware change and a version bump, not a renderer change.</p>
+      <p class="note">In every case the instrument measured more than this
+      screen shows. The absence is in the link, not in the measurement.</p>`);
 }
