@@ -277,9 +277,13 @@ html, body {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  border-radius: 14px;
+  /* Edge to edge horizontally: inset by the gutter, the outermost frequency
+     labels were cut off on the panel (2026-10-18). Full width is what the
+     ring had before the restyle. */
+  margin: 0 calc(-1 * var(--gutter));
   overflow: hidden;
-  border: 1px solid var(--hairline);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .tone-head { display: grid; grid-template-columns: 1fr auto; gap: 10px; color: var(--ink-1); }
