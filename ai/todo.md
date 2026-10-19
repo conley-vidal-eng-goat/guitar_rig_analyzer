@@ -17,33 +17,23 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
-### TODO-93 — On 2026-10-16 the return channel did not carry the guitar 🔴 [bench] **observed on the panel, cause NARROWED to the `16a` → LINE IN R conductor (not yet physically confirmed). Blocks TODO-91**
+### TODO-95 — TONE does not show the clip flags 🔴 **found 2026-10-18**
 
-**Update 2026-10-16, ~21:10 — firmware and settings ruled out; the break is between `16a` and LINE IN R.** The operator reported the wiring as J4 guitar → J5 send → rig → J6 return → J8 amp, and *hears the rig through the amp*. Read over the Teensy's USB serial (`u` and the 5 s diagnostics, read-only; nothing was sent that changes state):
-- Build `Sep 26 2026 16:36:53 v0.6.0`, uptime 21 298 s, so **no reflash or reboot today**.
-- SGTL5000 `SELECT_ADC = 1` (line-in), `ADC_VOL` L/R = 5/5, route `SOURCE_NODE=ch0, RETURN_NODE=ch1`, **`Route: TS return, no injection`**. All correct for J6.
-- Link 458 442 live frames, 0 dropped.
-- `RETURN_NODE peak −44 dBFS`. **RAWDUMP RETURN samples 4–35 counts**, against SOURCE hundreds to thousands, i.e. LINE IN R sees its own offset and noise.
+**Why.** `source_clip` / `return_clip` reach the browser (`payload.live_payload` authority) and LIVE prints them, but TONE ignores them. On 2026-10-18 the return hit 0.0 dBFS with `return_clip` set in 2 of 52 frames, and TONE drew those frames as ordinary measurements, gain and rig-only seats included. A clipped frame is the one case where a reading looks plausible and is wrong.
 
-**The inference, stated at its strength (`DERIV`, from the netlist).** The amp path is `J6 → K2 NC 15a → COM 16a → C10 → U4 → J8`, and LINE IN R is fed from that **same node `16a`** (netlist §12.2). An audible rig at J8 puts signal on `16a`. With TS selected and LINE IN R at its floor, the open is in the **`16a` → U3 LINE IN R conductor or one of its two contacts**. Consistent with an intermittent contact: in one silent capture at ~19:58 the return read −39.7 dBFS ≈ source, at ~20:45 −37..−40 flat, and by ~21:05 −50 dBFS.
+**What.** Show a clip state on TONE that cannot be missed (e.g. the gain readout replaced by "INPUT/RETURN CLIPPING — reading invalid"), and exclude clipped frames from the GainMatcher so they cannot move the held gain. Classification belongs in `payload.py` (ADR-005).
 
-**Confirm on the bench:** with power on and a strum, probe `16a` then the LINE IN R pad. Signal at the first and not the second confirms it. Reseat or replace that jumper, then check TONE shows cool bars and a gain near the rig's real level.
+**Proof:** tests that a clipped frame does not update the gain and that the payload says so; a panel capture with the rig deliberately driven to clip.
 
-**Update 2026-10-18 — two operator tests (`OBS`), both consistent with the open above.**
-- **Loopback** (J5 Rig Send → J6 Rig Return TS cable, no rig): **no return on the display.** Rules out the rig and its output level.
-- **Headphone monitor** (SOURCE → left, RETURN → right, `audio_capture.cpp`): **guitar in the left ear only.** The right ear is the digitised LINE IN R, so the right ADC channel is receiving nothing. This is independent of the Pi, the link and the renderer.
+### TODO-94 — The right headphone channel is silent while the return is present 🔴 [bench] **found 2026-10-18**
 
-With J8 still audible from the same node `16a`, the open lies between `16a` and the codec's right ADC: the jumper, its breadboard contacts, the shield's LINE IN R header pin or joint, or (less likely) the codec's right input. **Next discriminator:** touch LINE IN R with a fingertip while monitoring. Hum in the right ear means the codec input is alive and the conductor is the fault; silence points at the shield.
+**Observed.** With the return demonstrably in the data (TODO-93 closed), the operator hears the guitar in the **left ear only**. Firmware sends the return to I2S out R from the same `s_mixer_ret` that feeds `fft_ret`/`peak_ret` (`audio_capture.cpp:172`), so the digital path carries it. `DAC_MONO = 1` (stereo) at boot.
 
-**Update 2026-10-18 — touch test: the open is on the shield side of the LINE IN R pad.** The operator touched the LINE IN R pad twice, with the strings quiet, and heard **silence in the right ear** (`OBS`). The instrument confirms it independently of the headphones: a Pi-side log of `/api/frame` at ~4 Hz (`/tmp/gra-touchtest.log` on the Pi, not preserved) shows the **return peak flat at −62..−68 dBFS through the whole touch window** (t = 16–94 s), with no excursion. Strumming at t = 0–15 s reached −15 dBFS on the source. **Inference (`DERIV`):** a touch on the pad bypasses the jumper and the `16a` contact, so the fault lies between the pad and the codec's right ADC: the pad/header joint, the shield's input path, or the codec's right input. Caveat: assumes the touch landed on R and not G or L. History suggests intermittent rather than never-working (return MEAS-verified 2026-09-19; one 2026-10-16 capture had return ≈ source). **Next (bench):** inspect/reflow the LINE IN R joint; power off, compare L-pad and R-pad resistance to ground (they should match); then repeat the touch test while the Pi logs.
+**So the fault is downstream of the DAC.** Candidates, cheapest first: a mono (TS) plug or adapter in the stereo jack (left only, exactly as observed); a partly seated plug; the headphones themselves; the shield's headphone-jack right contact or joint.
 
-**Observed.** With a Stratocaster strummed once a second, the source peak followed the strums (−11.7..−32.6 dBFS) while the return peak sat flat (−36.9..−40.5 dBFS) across two bursts. No displayed return bin (151 Hz – 2.9 kHz) reached the −60 dB floor (TF_SOURCE_GATE). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md). Earlier the same evening, one silent capture showed return ≈ source (−39.5 / −39.7 peak), so the setup was changing between captures.
+**Consequence already paid:** the 2026-10-16/18 "left ear only" observations were not valid return checks. The instrument's own data decided TODO-93.
 
-**Why it matters.** Every A/B comparison (TODO-91) is a ratio over the return. Below the floor that ratio is signal against the analyser's own noise. The old tf_db ring drew it anyway as "−22 dB, attenuated", full length and confident. TONE now refuses: it shows a bound and says "check the return path".
-
-**What.** Bench work (not Claude's): establish what is connected to the return node, the rig's output level, and `line_in_level`. Then look at TONE with a known path such as a loopback cable, where the gain should read near 0 dB with the bottom mirroring the top.
-
-**Proof:** a TONE capture with the return above the floor in most input bins, a stated gain, and the setup recorded beside it. The level-matched return path has never been seen on the panel until this exists.
+**Proof:** guitar audible in the right ear with the return present, with the plug, adapter and headphones stated.
 
 ### TODO-92 — The TONE ring draws bars from the DC bin, and that bin is where half the guitar lives 🟡 **TONE HALF CLOSED 2026-10-16 (`bc3d4b9`): option 1 chosen — TONE no longer draws bin 0, consistent with LIVE. The low strings are NOT recovered; that is option 3, phase 2.** Originally **found 2026-10-15 while investigating "I cannot tell what frequency the spikes are". Latent presentation defect; no runtime fault**
 
@@ -2347,6 +2337,37 @@ locally.
 ---
 
 ## Completed (verified — do not re-report as bugs; see journal.md for the reasoning trail)
+
+### TODO-93 — On 2026-10-16 the return channel did not carry the guitar 🟢 [bench] **CLOSED 2026-10-18: return restored after the LINE IN R joint was resoldered and a new jumper fitted to `16a`. Proof: [`2026-10-18-pi-tone-return-restored.md`](evidence/2026-10-18-pi-tone-return-restored.md)**
+
+**Update 2026-10-16, ~21:10 — firmware and settings ruled out; the break is between `16a` and LINE IN R.** The operator reported the wiring as J4 guitar → J5 send → rig → J6 return → J8 amp, and *hears the rig through the amp*. Read over the Teensy's USB serial (`u` and the 5 s diagnostics, read-only; nothing was sent that changes state):
+- Build `Sep 26 2026 16:36:53 v0.6.0`, uptime 21 298 s, so **no reflash or reboot today**.
+- SGTL5000 `SELECT_ADC = 1` (line-in), `ADC_VOL` L/R = 5/5, route `SOURCE_NODE=ch0, RETURN_NODE=ch1`, **`Route: TS return, no injection`**. All correct for J6.
+- Link 458 442 live frames, 0 dropped.
+- `RETURN_NODE peak −44 dBFS`. **RAWDUMP RETURN samples 4–35 counts**, against SOURCE hundreds to thousands, i.e. LINE IN R sees its own offset and noise.
+
+**The inference, stated at its strength (`DERIV`, from the netlist).** The amp path is `J6 → K2 NC 15a → COM 16a → C10 → U4 → J8`, and LINE IN R is fed from that **same node `16a`** (netlist §12.2). An audible rig at J8 puts signal on `16a`. With TS selected and LINE IN R at its floor, the open is in the **`16a` → U3 LINE IN R conductor or one of its two contacts**. Consistent with an intermittent contact: in one silent capture at ~19:58 the return read −39.7 dBFS ≈ source, at ~20:45 −37..−40 flat, and by ~21:05 −50 dBFS.
+
+**Confirm on the bench:** with power on and a strum, probe `16a` then the LINE IN R pad. Signal at the first and not the second confirms it. Reseat or replace that jumper, then check TONE shows cool bars and a gain near the rig's real level.
+
+**Update 2026-10-18 — two operator tests (`OBS`), both consistent with the open above.**
+- **Loopback** (J5 Rig Send → J6 Rig Return TS cable, no rig): **no return on the display.** Rules out the rig and its output level.
+- **Headphone monitor** (SOURCE → left, RETURN → right, `audio_capture.cpp`): **guitar in the left ear only.** The right ear is the digitised LINE IN R, so the right ADC channel is receiving nothing. This is independent of the Pi, the link and the renderer.
+
+With J8 still audible from the same node `16a`, the open lies between `16a` and the codec's right ADC: the jumper, its breadboard contacts, the shield's LINE IN R header pin or joint, or (less likely) the codec's right input. **Next discriminator:** touch LINE IN R with a fingertip while monitoring. Hum in the right ear means the codec input is alive and the conductor is the fault; silence points at the shield.
+
+**Update 2026-10-18 — touch test: the open is on the shield side of the LINE IN R pad.** The operator touched the LINE IN R pad twice, with the strings quiet, and heard **silence in the right ear** (`OBS`). The instrument confirms it independently of the headphones: a Pi-side log of `/api/frame` at ~4 Hz (`/tmp/gra-touchtest.log` on the Pi, not preserved) shows the **return peak flat at −62..−68 dBFS through the whole touch window** (t = 16–94 s), with no excursion. Strumming at t = 0–15 s reached −15 dBFS on the source. **Inference (`DERIV`):** a touch on the pad bypasses the jumper and the `16a` contact, so the fault lies between the pad and the codec's right ADC: the pad/header joint, the shield's input path, or the codec's right input. Caveat: assumes the touch landed on R and not G or L. History suggests intermittent rather than never-working (return MEAS-verified 2026-09-19; one 2026-10-16 capture had return ≈ source). **Next (bench):** inspect/reflow the LINE IN R joint; power off, compare L-pad and R-pad resistance to ground (they should match); then repeat the touch test while the Pi logs.
+
+**Observed.** With a Stratocaster strummed once a second, the source peak followed the strums (−11.7..−32.6 dBFS) while the return peak sat flat (−36.9..−40.5 dBFS) across two bursts. No displayed return bin (151 Hz – 2.9 kHz) reached the −60 dB floor (TF_SOURCE_GATE). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md). Earlier the same evening, one silent capture showed return ≈ source (−39.5 / −39.7 peak), so the setup was changing between captures.
+
+**Why it matters.** Every A/B comparison (TODO-91) is a ratio over the return. Below the floor that ratio is signal against the analyser's own noise. The old tf_db ring drew it anyway as "−22 dB, attenuated", full length and confident. TONE now refuses: it shows a bound and says "check the return path".
+
+**What.** Bench work (not Claude's): establish what is connected to the return node, the rig's output level, and `line_in_level`. Then look at TONE with a known path such as a loopback cable, where the gain should read near 0 dB with the bottom mirroring the top.
+
+**Proof:** a TONE capture with the return above the floor in most input bins, a stated gain, and the setup recorded beside it. The level-matched return path has never been seen on the panel until this exists.
+
+**✅ Closed 2026-10-18.** The operator resoldered the LINE IN R joint and fitted a new jumper. Its breadboard end first went into GND, which grounded the input (−53..−67 dBFS). Moved to `16a` (column 16), the return came back. Observed: return ≤ 10 of 16 sections above the floor, gain +2.6..+7.1 dB, matched shape tracks the source, link live (session 56). The first level-matched return seen on the panel. Which fault came first (joint or original jumper) is not separable. Side findings in their own items: **TODO-94** (right headphone channel silent while the return is present) and **TODO-95** (TONE does not show clip flags; 2 return frames clipped at 0.0 dBFS). Journal 2026-10-18 (1).
+
 
 The following were already fixed as of the 2026-08-25 baseline and confirmed via the project's iterative bug-fix passes. Listed here so future sessions don't waste time re-discovering or re-litigating them:
 

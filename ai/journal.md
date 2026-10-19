@@ -12,6 +12,22 @@ How to use this file:
 
 ---
 
+## 2026-10-18 (1) — **The return is back: a wiring fault found by the instrument, and the first level-matched return on the panel**
+
+**What happened.** The 2026-10-16 TONE redesign refused to draw a return because the return was below the floor. The operator's reply was the right challenge: "you must be doing something wrong, or a setting was changed". It was neither, and that took evidence to show:
+- **Settings ruled out from the Teensy's own USB serial** (read-only `u` plus the 5 s diagnostics): same Sep 26 build, no reboot, line-in at gain 5, `Route: TS return, no injection`, 0 dropped frames. RAWDUMP RETURN was 4–35 counts.
+- **The netlist localised it.** J8 is fed from `16a`, the same node as LINE IN R, so an audible J8 with a dead return puts the open on the `16a` → LINE IN R run.
+- The loopback and headphone tests agreed. The **touch test** on the LINE IN R pad (silent in the ear, and flat −62..−68 dBFS in a Pi-side 4 Hz log of `/api/frame`) moved the suspicion past the jumper to the shield joint.
+- **Fix (operator):** resoldered the joint, fitted a new jumper. Its breadboard end went into GND first, grounding the input; the stale link and a −53..−67 dBFS floor showed it. Moved to column 16, the return came back: return ≤ 10/16 sections, gain +2.6..+7.1 dB, matched shapes tracking. Evidence: [`2026-10-18-pi-tone-return-restored.md`](evidence/2026-10-18-pi-tone-return-restored.md).
+
+**Two corrections to my own earlier reasoning.**
+1. I treated the right ear as an independent witness. It was not: **the right headphone channel is silent even now, with the return present in the data** (TODO-94). The ear tests happened to agree with the data, but they were never valid on their own. The touch test only counted because the Pi log confirmed it.
+2. When the jumper went to GND, my first frame check showed source and return identical across 24 frames. **That was a stale link, not a measurement.** Every TONE reading should check `link.stale` first. The panel itself shows LINK STALE, but a script reading `/api/frame` does not get that for free.
+
+**Side findings, each in its own item.** TODO-95: TONE ignores `return_clip`; 2 of 52 frames clipped at 0.0 dBFS and were drawn as valid. TODO-94: right headphone channel. The firmware sends the return to I2S R from the same mixer, so the fault is downstream (a mono plug or adapter is the cheapest explanation).
+
+**Next.** TODO-91 (Headrush A/B) is unblocked: the return works. Before it, turn the rig output down so the return never clips (or do TODO-95 first, so a clipped frame cannot pass as a measurement).
+
 ## 2026-10-16 (1) — **TONE draws the input over the level-matched return. The chromatic ring is retired, the DC-bin fix is scoped as phase 2, and the first panel capture says the return path is not carrying the guitar**
 
 **Session shape.** Claude screenshotted the kiosk while the operator strummed a Strat once a second, explained what the old ring was drawing, scoped the firmware fix for resolution below 3 kHz (analysis only), redesigned TONE to the operator's brief, deployed it to `~/gra-ui`, and captured it on the panel. Commits: `bc3d4b9` (redesign), `afd1944` (hold fix). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md).
