@@ -25,10 +25,23 @@ const EQ_RANGE_DB = 15;         // EQ / spectrogram colour range, ± this
 const TF_RANGE_DB = 24;         // the firmware's TF rail
 const DYN_LO_DBFS = -60;        // dynamics plot extent
 const HISTORY_ROWS = 216;       // spectrogram rows kept (~10 s of frames)
+const MIN_DRAW_MS = 90;
+const GAP_BLOCKS = 400;         // ~1.2 s of audio blocks         // redraw at most ~11 Hz; history still takes every frame
 const TRAIL = 240;              // descriptor trail length
 const PAD = { l: 52, r: 14, t: 12, b: 30 };
 
-const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+// Tokens are read once, not per draw call: getComputedStyle inside the draw
+// loops was a measurable share of the 100% renderer load seen on the Pi
+// 2026-10-18.
+const TOK = new Map();
+const css = (n) => {
+  let v = TOK.get(n);
+  if (v === undefined) {
+    v = getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    TOK.set(n, v);
+  }
+  return v;
+};
 
 // Diverging scale for "return minus input": violet cut, neutral, green boost.
 function hexRgb(h) {
@@ -184,7 +197,7 @@ function drawOverlay(s, L, sel) {
       ctx.globalAlpha = 1;
     } else if (c === "R" && fin(ro)) {
       ctx.fillStyle = css("--added");
-      ctx.globalAlpha = 0.28;
+      ctx.globalAlpha = 0.42;
       ctx.fillRect(x0, toY(ro), Math.max(1, x1 - x0), box.y + box.h - toY(ro));
       ctx.globalAlpha = 1;
     }
@@ -205,12 +218,14 @@ function drawOverlay(s, L, sel) {
     }
     ctx.stroke();
   }
-  ctx.shadowBlur = 10;
-  ctx.shadowColor = css("--warm");
+  // Glow as a wide translucent underlay: shadowBlur is a software blur per
+  // stroke and cost the Pi more than the rest of this chart together.
+  ctx.globalAlpha = 0.25;
+  trace(fr.src_db, css("--warm"), 7);
+  trace(fr.ret_matched_db, css("--cold"), 7);
+  ctx.globalAlpha = 1;
   trace(fr.src_db, css("--warm"), 2.5);
-  ctx.shadowColor = css("--cold");
   trace(fr.ret_matched_db, css("--cold"), 2.5);
-  ctx.shadowBlur = 0;
   cursorLine(ctx, box, ax, sel);
 }
 
@@ -241,6 +256,11 @@ function drawEq(s, L, sel) {
     }
     ctx.fillStyle = divColor(v);
     ctx.fillRect(x0, Math.min(y, y0), w, Math.max(2, Math.abs(y - y0)));
+    if (Math.abs(v) > EQ_RANGE_DB) {
+      // Beyond the drawn range: a white cap says "more than this", not "this".
+      ctx.fillStyle = css("--ink-1");
+      ctx.fillRect(x0, v > 0 ? box.y : box.y + box.h - 3, w, 3);
+    }
   }
   cursorLine(ctx, box, ax, sel);
 }
@@ -281,39 +301,56 @@ function drawTf(s, L, sel) {
   cursorLine(ctx, box, ax, sel);
 }
 
-function drawDiffGram(s, hist, ax) {
+// The spectrogram keeps its pixels in an offscreen canvas, one pixel row per
+// frame, and each new frame shifts it down and paints ONE row. Repainting all
+// 216 x 127 cells every frame was the single largest cost on the Pi.
+function cellColor(c, d) {
+  if (c === "B") return divColor(d);
+  if (c === "R") return css("--added");
+  if (c === "I") return css("--cut-deep");
+  if (c === "u") return css("--ink-4");
+  return css("--panel-3");
+}
+
+function gramRow(g, row, ax, y) {
+  const { ctx, w } = g;
+  if (row.gap) {
+    ctx.fillStyle = css("--ink-3");
+    ctx.fillRect(0, y, w, 1);
+    return;
+  }
+  for (let k = 0; k < ax.bins.length; k += 1) {
+    const b = ax.bins[k];
+    ctx.fillStyle = cellColor(row.cells[k], row.delta[k]);
+    ctx.fillRect(Math.floor(b.x0 * w), y, Math.max(1, Math.ceil((b.x1 - b.x0) * w) + 1), 1);
+  }
+}
+
+function createGram() {
+  const c = document.createElement("canvas");
+  const g = { c, ctx: c.getContext("2d"), w: 0 };
+  g.rebuild = (hist, ax, w) => {
+    g.w = Math.max(1, Math.round(w));
+    c.width = g.w; c.height = HISTORY_ROWS;
+    g.ctx.fillStyle = css("--diverge-mid");
+    g.ctx.fillRect(0, 0, g.w, HISTORY_ROWS);
+    for (let r = 0; r < hist.length; r += 1) gramRow(g, hist[hist.length - 1 - r], ax, r);
+  };
+  g.push = (row, ax) => {
+    if (!g.w) return;
+    g.ctx.drawImage(c, 0, 0, g.w, HISTORY_ROWS - 1, 0, 1, g.w, HISTORY_ROWS - 1);
+    gramRow(g, row, ax, 0);
+  };
+  return g;
+}
+
+function drawDiffGram(s, gram, hist, ax) {
   const { ctx } = s;
   const box = { x: PAD.l, y: 8, w: s.w - PAD.l - PAD.r, h: s.h - 8 - PAD.b };
+  if (gram.w !== Math.round(box.w)) gram.rebuild(hist, ax, box.w);
   ctx.clearRect(0, 0, s.w, s.h);
-  ctx.fillStyle = css("--diverge-mid");
-  ctx.fillRect(box.x, box.y, box.w, box.h);
-  const rh = box.h / HISTORY_ROWS;
-  const quiet = css("--panel-3");
-  const hatch = css("--ink-4");
-  const added = css("--added");
-  const cut = css("--cut-deep");
-  for (let r = 0; r < hist.length; r += 1) {
-    const row = hist[hist.length - 1 - r];          // newest at the top
-    const y = box.y + r * rh;
-    if (row.gap) {
-      ctx.fillStyle = css("--ink-3");
-      ctx.fillRect(box.x, y, box.w, Math.max(1, rh));
-      continue;
-    }
-    for (let k = 0; k < ax.bins.length; k += 1) {
-      const c = row.cells[k];
-      const b = ax.bins[k];
-      const x0 = box.x + b.x0 * box.w, x1 = box.x + b.x1 * box.w;
-      let col;
-      if (c === "B") col = divColor(row.delta[k]);
-      else if (c === "R") col = added;
-      else if (c === "I") col = cut;
-      else if (c === "u") col = hatch;
-      else col = quiet;
-      ctx.fillStyle = col;
-      ctx.fillRect(x0, y, Math.max(1, x1 - x0) + 0.5, rh + 0.5);
-    }
-  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(gram.c, box.x, box.y, box.w, box.h);
   freqGrid(ctx, box, ax);
   ctx.fillStyle = css("--ink-2");
   ctx.textAlign = "right"; ctx.textBaseline = "top";
@@ -360,18 +397,19 @@ function drawDynamics(s, L, auth) {
     const lo = Math.min(...xs), hi = Math.max(...xs);
     ctx.strokeStyle = css("--boost");
     ctx.lineWidth = 3;
-    ctx.shadowBlur = 8; ctx.shadowColor = css("--boost");
     ctx.beginPath();
     ctx.moveTo(toX(lo), toY(d.intercept + d.slope * lo));
     ctx.lineTo(toX(hi), toY(d.intercept + d.slope * hi));
     ctx.stroke();
-    ctx.shadowBlur = 0; ctx.lineWidth = 1;
+    ctx.lineWidth = 1;
   }
   const n = d.points.length;
   for (let k = 0; k < n; k += 1) {
     const [a, b] = d.points[k];
     ctx.globalAlpha = 0.2 + 0.8 * ((k + 1) / n);
-    ctx.fillStyle = css("--cold");
+    // At full scale the converter set this point, not the rig: drawn, flagged,
+    // and (on the Pi) left out of the fit.
+    ctx.fillStyle = b >= d.near_fs_dbfs ? css("--coral") : css("--cold");
     ctx.beginPath(); ctx.arc(toX(a), toY(b), 3, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -580,7 +618,7 @@ function kpis(f, L) {
   // LEVEL — TONE's matched gain, same number, same states.
   if (fin(tone.gain_db)) {
     out.push(tile("k-level", "Level change", big(signed(tone.gain_db), "dB"),
-      `return vs input · ${tone.gain_bins} bands${tone.gain_state === "held" ? " · <span class=\"ld-held\">held</span>" : ""}`));
+      tone.gain_state === "held" ? `return vs input · <span class="ld-held">held</span>` : `return vs input · ${tone.gain_bins} bands`));
   } else if (fin(tone.gain_bound_db)) {
     out.push(tile("k-level", "Level change", big(`< ${signed(tone.gain_bound_db)}`, "dB"),
       "return below the gate everywhere the input is above it"));
@@ -614,14 +652,14 @@ function kpis(f, L) {
   const d = L.dynamics;
   out.push(fin(d.slope)
     ? tile("k-dyn", "Dynamics slope", big(d.slope.toFixed(2), ""),
-      `1.00 = linear · ${d.slope > 0 ? `≈ ${(1 / d.slope).toFixed(1)} : 1` : ""} · r² ${fin(d.r2) ? d.r2.toFixed(2) : "?"} · n ${d.n}`)
+      `1.00 = linear${d.slope >= 0.2 ? ` · ≈ ${(1 / d.slope).toFixed(1)} : 1` : ""} · r² ${fin(d.r2) ? d.r2.toFixed(2) : "?"} · n ${d.n}`)
     : tile("k-dyn", "Dynamics slope", gap(d.why || "not established yet"), "output peak vs input peak"));
 
   // SELF-NOISE
   const idle = L.idle;
   out.push(fin(idle.excess_db)
     ? tile("k-noise", "Rig self-noise", big(signed(idle.excess_db), "dB"),
-      `return over input, strings silent · ${idle.frames} frames`)
+      `return over input, after 1 s of silence · ${idle.frames} frames`)
     : tile("k-noise", "Rig self-noise", gap(idle.why || "not established yet"), "return over input with nothing played"));
 
   return out.join("");
@@ -636,7 +674,9 @@ function chips(f, L) {
   if (a.source_clip) c.push(`<span class="ld-chip bad">▲ INPUT CLIP</span>`);
   if (a.return_clip) c.push(`<span class="ld-chip bad">▲ RETURN CLIP</span>`);
   c.push(`<span class="ld-chip">${esc(String(L.eq.frames))} played frames</span>`);
-  if (L.frames_clipped) c.push(`<span class="ld-chip warn">${esc(String(L.frames_clipped))} clipped, excluded</span>`);
+  if (L.frames_clipped) {
+    c.push(`<span class="ld-chip warn">▲ ${fin(L.clipped_pct) ? `${esc(L.clipped_pct.toFixed(0))}% of frames` : esc(String(L.frames_clipped))} clipped, excluded</span>`);
+  }
   return c.join("");
 }
 
@@ -684,9 +724,33 @@ export function createLabDashboard(root) {
 
   const hist = [];
   const trail = [];
+  const gram = createGram();
   let lastBlock = null;
   let last = null;
   let sel = null;
+  let lastDraw = 0;
+
+  // Only charts on screen are drawn. LAB scrolls, and on the Pi drawing all
+  // eight every frame held the renderer at 90-100% of a core (2026-10-18).
+  const visible = new Set();
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const name = e.target.dataset.plot;
+      if (e.isIntersecting) visible.add(name); else visible.delete(name);
+    }
+    if (last) draw(last);
+  });
+  for (const el of root.querySelectorAll("[data-plot]")) io.observe(el);
+  const on = (name) => visible.has(name);
+
+  // innerHTML is rewritten only when the text changed: an identical rewrite
+  // still costs a style and layout pass.
+  const html = new Map();
+  function put(name, h) {
+    if (html.get(name) === h) return;
+    html.set(name, h);
+    slot(name).innerHTML = h;
+  }
 
   // A linked cursor: touching any frequency chart selects that band in all of
   // them. Presentation only — it picks an index into arrays already received.
@@ -710,18 +774,18 @@ export function createLabDashboard(root) {
 
   function draw(f, cursorOnly = false) {
     const L = f.lab;
-    for (const p of Object.values(plots)) p.fit();
-    drawOverlay(plots.overlay, L, sel);
-    drawEq(plots.eq, L, sel);
-    drawTf(plots.tf, L, sel);
-    slot("readout").innerHTML = readout(L, sel);
+    for (const [name, p] of Object.entries(plots)) if (on(name)) p.fit();
+    if (on("overlay")) drawOverlay(plots.overlay, L, sel);
+    if (on("eq")) drawEq(plots.eq, L, sel);
+    if (on("tf")) drawTf(plots.tf, L, sel);
+    put("readout", readout(L, sel));
     if (cursorOnly) return;
-    drawDiffGram(plots.gram, hist, L.axis);
-    drawDynamics(plots.dyn, L, f.authority || {});
-    drawBalance(plots.bal, L);
-    drawTrail(plots["trail-c"], trail, [["cin", "--warm"], ["cout", "--cold"]], {
+    if (on("gram")) drawDiffGram(plots.gram, gram, hist, L.axis);
+    if (on("dyn")) drawDynamics(plots.dyn, L, f.authority || {});
+    if (on("bal")) drawBalance(plots.bal, L);
+    if (on("trail-c")) drawTrail(plots["trail-c"], trail, [["cin", "--warm"], ["cout", "--cold"]], {
       lo: 0, hi: 4000, fmt: (v) => (v >= 1000 ? `${v / 1000}k` : `${v}`) });
-    drawTrail(plots["trail-t"], trail, [["tilt", "--tf"]], {
+    if (on("trail-t")) drawTrail(plots["trail-t"], trail, [["tilt", "--tf"]], {
       lo: -6, hi: 6, fmt: (v) => (v > 0 ? `+${v}` : `${v}`) });
   }
 
@@ -732,29 +796,38 @@ export function createLabDashboard(root) {
       last = f;
       // One history row per instrument frame, keyed on the block counter so a
       // repeated poll of the same frame is not drawn twice.
-      if (L.block !== lastBlock) {
-        if (lastBlock !== null && fin(L.block) && Math.abs(L.block - lastBlock) > 30) {
-          hist.push({ gap: true });       // LAB was not watching: say so
-        }
-        lastBlock = L.block;
-        hist.push({ cells: L.frame.cells, delta: L.frame.delta_db });
-        if (hist.length > HISTORY_ROWS) hist.shift();
-        const sm = L.smooth || {};
-        trail.push({ cin: sm.centroid_in, cout: sm.centroid_out, tilt: L.smooth_held ? null : sm.tilt_db_oct });
-        if (trail.length > TRAIL) trail.shift();
-
-        slot("chips").innerHTML = chips(f, L);
-        slot("kpis").innerHTML = kpis(f, L);
-        slot("integrity").innerHTML = integrity(f, L);
-        slot("eq-sub").innerHTML = fin(L.eq.gain_db)
-          ? `${esc(String(L.eq.frames))} of ${esc(String(L.windows.eq))} frames · overall ${esc(signed(L.eq.gain_db))} dB removed`
-          : gap("no played frames yet");
-        const d = L.dynamics;
-        slot("dyn-sub").innerHTML = fin(d.slope)
-          ? `fit <b>${esc(d.slope.toFixed(2))}</b> · dashed = unity (a wire) · ring = now`
-          : `${gap(d.why || "not established yet")} · dashed = unity`;
-        draw(f);
+      if (L.block === lastBlock) return;
+      // The counter is AUDIO blocks (~16 per frame, ~344/s) in 16 bits, so a
+      // lapse is measured modulo 2^16, and only a gap of over ~1 s is marked.
+      if (lastBlock !== null && fin(L.block) && ((L.block - lastBlock) & 0xFFFF) > GAP_BLOCKS) {
+        const g = { gap: true };          // LAB was not watching: say so
+        hist.push(g);
+        gram.push(g, L.axis);
       }
+      lastBlock = L.block;
+      const row = { cells: L.frame.cells, delta: L.frame.delta_db };
+      hist.push(row);
+      gram.push(row, L.axis);
+      if (hist.length > HISTORY_ROWS) hist.shift();
+      const sm = L.smooth || {};
+      trail.push({ cin: sm.centroid_in, cout: sm.centroid_out, tilt: L.smooth_held ? null : sm.tilt_db_oct });
+      if (trail.length > TRAIL) trail.shift();
+
+      const now = performance.now();
+      if (now - lastDraw < MIN_DRAW_MS) return;
+      lastDraw = now;
+
+      put("chips", chips(f, L));
+      put("kpis", kpis(f, L));
+      put("integrity", integrity(f, L));
+      put("eq-sub", fin(L.eq.gain_db)
+        ? `${esc(String(L.eq.frames))} of ${esc(String(L.windows.eq))} frames · overall ${esc(signed(L.eq.gain_db))} dB removed`
+        : gap("no played frames yet"));
+      const d = L.dynamics;
+      put("dyn-sub", fin(d.slope)
+        ? `fit <b>${esc(d.slope.toFixed(2))}</b> · <span class="t-fs">red = return at full scale, not fitted</span>`
+        : `${gap(d.why || "not established yet")}`);
+      draw(f);
     },
   };
 }

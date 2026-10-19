@@ -650,3 +650,4 @@ html, body {
 .ld-limits ul { margin: 0; padding-left: 20px; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
 .ld-limits b { color: var(--ink-1); }
 .ld-limits code { font-size: 13px; color: var(--ink-1); }
+.t-fs { color: var(--coral); }

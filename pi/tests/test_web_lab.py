@@ -164,10 +164,35 @@ class TestRunning(unittest.TestCase):
         t = lab.LabTracker()
         quiet_in = [1e-5] * N
         noisy_out = [1e-4] * N                           # +20 dB over the input
-        for b in range(10):
+        for b in range(lab.IDLE_SETTLE + 10):
             self._feed(t, b, quiet_in, noisy_out, energised=False)
         idle = t.idle()
         self.assertAlmostEqual(idle["excess_db"], 20.0, places=1)
+        self.assertEqual(idle["frames"], 10)        # the first IDLE_SETTLE are not counted
+
+    def test_a_decay_tail_is_not_counted_as_self_noise(self):
+        """Pi, 2026-10-18: a rig's gain lifts a fading note back over the gate,
+        and those frames read +30 dB of 'noise'. Only settled silence counts."""
+        t = lab.LabTracker()
+        quiet_in = [1e-5] * N
+        noisy_out = [1e-4] * N
+        b = 0
+        for _ in range(5):                               # play, then a short gap
+            self._feed(t, b, _guitarish(), _guitarish()); b += 1
+            for _ in range(lab.IDLE_SETTLE):
+                self._feed(t, b, quiet_in, noisy_out, energised=False); b += 1
+        self.assertIsNone(t.idle()["excess_db"])
+
+    def test_a_return_at_full_scale_is_not_fitted_as_compression(self):
+        """Pi, 2026-10-18: return peaks at -0.1 dBFS fitted as slope 0.00."""
+        t = lab.LabTracker()
+        src = _guitarish()
+        for b in range(60):
+            self._feed(t, b, src, src, pin=-40.0 + b * 0.5, pout=-0.1)
+        d = t.dynamics()
+        self.assertIsNone(d["slope"])
+        self.assertIn("full scale", d["why"])
+        self.assertEqual(d["near_fs_pct"], 100.0)
 
 
 class TestDashboardDrawsOnly(unittest.TestCase):

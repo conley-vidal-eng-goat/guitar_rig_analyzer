@@ -62,6 +62,17 @@ DYN_POINTS_SENT = 240       # of those, drawn
 DYN_MIN_POINTS = 20
 DYN_MIN_SPAN_DB = 6.0       # input peaks must span this before a slope means anything
 IDLE_WINDOW = 216           # ~10 s of silent-input frames
+# *** A SILENT FRAME IS NOT YET SILENCE. *** Measured on the Pi 2026-10-18: a
+# rig with +8..+18 dB of gain lifts a note's decay back above the gate long after
+# the input has fallen below it, and counting those frames read "+30 dB of
+# self-noise" that was the guitar's own sustain. Only frames after this many
+# consecutive below-gate input frames (~1 s) are counted.
+IDLE_SETTLE = 22
+# *** A RETURN PEAK AT FULL SCALE IS THE CONVERTER, NOT THE RIG. ***
+# Measured on the Pi 2026-10-18: return peaks sat at -0.1 dBFS (median) in 92%
+# of played frames, and the "dynamics slope" fitted that ceiling as 0.00. Peaks
+# at or above this level are kept on the plot, flagged, and left out of the fit.
+NEAR_FS_DBFS = -1.0
 SMOOTH_ALPHA = payload.GainMatcher.ALPHA    # same ~0.2 s time constant as TONE's gain
 ROLLOFF = 0.85
 
@@ -244,6 +255,7 @@ class LabTracker:
         self._D2: dict[int, float] = {}
         self._dyn = deque(maxlen=DYN_WINDOW)
         self._idle = deque(maxlen=IDLE_WINDOW)
+        self._silent_run = 0
         self.frames_seen = 0
         self.frames_clipped = 0
         self.smooth: dict[str, float] = {}  # held between strums, like the gain
@@ -315,7 +327,9 @@ class LabTracker:
         self.smooth_live = bool(pairs) and bool(frame["delta"])
 
         cells = frame["cells"]
-        if cells and all(c in (CELL_QUIET, CELL_RIG) for c in cells):
+        silent = bool(cells) and all(c in (CELL_QUIET, CELL_RIG) for c in cells)
+        self._silent_run = self._silent_run + 1 if silent else 0
+        if self._silent_run > IDLE_SETTLE:
             s_sum = sum(src[i].value ** 2 for i in range(FIRST_BIN, len(src)))
             r_sum = sum(ret[i].value ** 2 for i in range(FIRST_BIN, len(ret)))
             if s_sum > 0.0 and r_sum > 0.0:
@@ -348,9 +362,18 @@ class LabTracker:
 
     def dynamics(self) -> dict:
         pts = list(self._dyn)
+        near = sum(1 for _, b in pts if b >= NEAR_FS_DBFS)
         out = {"points": [[round(a, 1), round(b, 1)] for a, b in pts[-DYN_POINTS_SENT:]],
                "n": len(pts), "slope": None, "intercept": None, "r2": None,
-               "span_db": None, "why": None}
+               "span_db": None, "why": None, "near_fs_dbfs": NEAR_FS_DBFS,
+               "near_fs_pct": round(100.0 * near / len(pts), 1) if pts else None}
+        all_n = len(pts)
+        pts = [(a, b) for a, b in pts if b < NEAR_FS_DBFS]
+        out["n"] = len(pts)
+        if len(pts) < DYN_MIN_POINTS and near:
+            out["why"] = (f"return at full scale in {out['near_fs_pct']:.0f}% of "
+                          f"{all_n} frames — lower the rig's output level")
+            return out
         if len(pts) < DYN_MIN_POINTS:
             out["why"] = f"{len(pts)} of {DYN_MIN_POINTS} played frames"
             return out
@@ -373,7 +396,7 @@ class LabTracker:
     def idle(self) -> dict:
         if len(self._idle) < MIN_BINS:
             return {"frames": len(self._idle), "excess_db": None, "return_db": None,
-                    "why": "needs a few seconds with the strings muted"}
+                    "why": "mute the strings for 2 s"}
         s = sum(a for a, _ in self._idle)
         r = sum(b for _, b in self._idle)
         return {"frames": len(self._idle),
@@ -413,6 +436,8 @@ def lab_block(live, src, ret, geometry, *, shift: float, energised: bool,
         "octave_edges": list(OCTAVE_EDGES),
         "frames_seen": t.frames_seen,
         "frames_clipped": t.frames_clipped,
+        "clipped_pct": (round(100.0 * t.frames_clipped / t.frames_seen, 1)
+                        if t.frames_seen else None),
         "windows": {"eq": EQ_WINDOW, "dyn": DYN_WINDOW, "idle": IDLE_WINDOW},
     }
     t.cache_block, t.cache = block, out
