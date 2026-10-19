@@ -254,95 +254,71 @@ html, body {
 /* Touch feedback must be visible on a panel with no cursor. */
 .tab:active { background: rgba(56,214,245,.16); }
 
-/* ---- TONE overlays ------------------------------------------------------
- * Chrome on this screen is kept to two thin bands so the visualisation keeps
- * the area. Both are pointer-events:none — a finger landing on the census or
- * the legend must still orbit the ring, because on a full-bleed visualisation
- * every pixel reads as grabbable.
+/* ---- TONE ---------------------------------------------------------------
+ * 2026-10-18: LAB's cards, at the operator's request. The gain tile and census
+ * chips sit ABOVE the ring and the legend BELOW it, in their own rows, instead
+ * of 11px text laid over the scene. The camera fits the ring to the narrower
+ * side of its container (fingerprint_split.js resize), so a shorter stage only
+ * rescales the ring; nothing in the scene changes.
+ *
+ * `:not([hidden])` matters: `.view.tone-view` has the same specificity as
+ * `.view[hidden]` and comes later, so without it TONE would show on every tab.
  */
 
-.tone-stage { position: absolute; inset: 0; }
-
-.tone-census,
-.tone-gain,
-.tone-scale,
-.tone-legend {
-  position: absolute;
-  left: var(--gutter);
-  right: var(--gutter);
-  pointer-events: none;
+.view.tone-view:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px var(--gutter);
+  box-sizing: border-box;
 }
 
-/* How to read the picture. Sits directly above the legend because the two are
-   one statement: the legend names the colours, this names the SCALE. Without it
-   a 3D bar chart invites a confident wrong reading of its own lengths. */
-.tone-scale {
-  bottom: 92px;
-  font-size: 10.5px;
-  line-height: 1.6;
-  color: var(--muted);
-  border-bottom: 1px solid #1b2330;
-  padding-bottom: 6px;
+.tone-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
 }
-.tone-scale b { color: var(--text); font-weight: 600; }
-.tone-scale i { color: var(--muted); }
+
+.tone-head { display: grid; grid-template-columns: 1fr auto; gap: 10px; color: var(--ink-1); }
+.tone-head .tone-gain { margin: 0; }
+.tone-gain.held .ld-num { color: var(--ink-3); }
+.tone-gain.bound { --k: var(--amber); }
+.tone-gain.bound .ld-num { color: var(--amber); }
 
 .tone-census {
-  top: 10px;
-  font-family: "DejaVu Sans Mono", monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--unknown);
+  display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  font-size: 15px; color: var(--ink-2);
 }
+.tone-chip { justify-content: flex-start; min-width: 150px; font-size: 15px; }
+.tone-chip b { margin-left: auto; font-size: 18px; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.tone-chip small { font-size: 13px; color: var(--ink-3); }
+.tone-chip.c-in i  { background: var(--warm); box-shadow: 0 0 8px var(--warm); }
+.tone-chip.c-out i { background: var(--cold); box-shadow: 0 0 8px var(--cold); }
+.tone-chip.c-rig i { background: var(--added); box-shadow: 0 0 8px var(--added); }
+.tone-census-note { font-size: 13px; color: var(--ink-3); text-align: center; }
 
-/* The rig gain — the one number on this screen. Large, because it is the
-   answer to "am I losing level", and because the return is drawn shifted by
-   it: without it visible the picture would hide its own adjustment. Dimmed
-   when HELD (no input above the floor), so a stale figure looks stale. */
-.tone-gain {
-  top: 34px;
-  color: var(--text);
+.tone-foot {
+  padding: 12px 14px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--hairline);
 }
-.tone-gain .k {
-  font-size: 11px;
-  letter-spacing: .13em;
-  text-transform: uppercase;
-  color: var(--muted);
+.tone-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; font-size: 15px; line-height: 1.35; color: var(--ink-2); }
+.tone-legend > div { display: flex; align-items: flex-start; gap: 10px; }
+.tone-legend b { color: var(--ink-1); font-size: 16px; font-weight: 800; }
+.tone-legend .sw { flex: none; width: 16px; height: 16px; border-radius: 4px; margin-top: 2px; }
+.tone-scale {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hairline);
+  font-size: 14px; line-height: 1.5; color: var(--ink-2);
 }
-.tone-gain .v {
-  font-family: "DejaVu Sans Mono", monospace;
-  font-size: 30px;
-  font-weight: 600;
-  margin-left: 6px;
-}
-.tone-gain .v.none { color: var(--faint); }
-.tone-gain .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.tone-gain .sub b { color: var(--text); font-weight: 600; }
-.tone-gain.held .v { color: var(--faint); }
-.tone-gain.bound .v { color: var(--amber); }
+.tone-scale b { color: var(--ink-1); }
+.tone-scale i { color: var(--ink-3); }
 
-.tone-legend {
-  bottom: 10px;
-  font-size: 11px;
-  line-height: 1.75;
-  color: var(--muted);
-}
-
-.sw {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 7px;
-  vertical-align: -1px;
-  border-radius: 2px;
-}
-.sw-cold    { background: var(--cold); }
-.sw-warm    { background: var(--warm); }
-.sw-rig     { background: #f4f8fc; }
-.sw-none    { background: #0d1117; border: 1px solid #21262d; }
-
-
-.tone-legend b { color: var(--text); font-weight: 600; }
+.sw-cold    { background: var(--cold); box-shadow: 0 0 8px var(--cold); }
+.sw-warm    { background: var(--warm); box-shadow: 0 0 8px var(--warm); }
+.sw-rig     { background: #f4f8fc; box-shadow: 0 0 8px #f4f8fc; }
+.sw-none    { background: #0d1117; border: 1px solid #3a4658; box-sizing: border-box; }
 
 /* Shown only when a WebGL context cannot be created. The measurement readouts
  * on the other three screens are unaffected and must stay that way. */

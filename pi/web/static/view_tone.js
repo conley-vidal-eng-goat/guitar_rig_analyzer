@@ -34,22 +34,19 @@ import { esc } from "./ui.js";
 //
 // Rewritten 2026-10-16 with the input-over-return ring: warm is what went IN,
 // cool is what came BACK, white is what the rig added on its own.
+//
+// 2026-10-18: restyled to LAB's cards at the operator's request ("too hard to
+// read"). Same four statements, shorter, at 15-17px instead of 11px, and the
+// cards sit beside the ring rather than over it.
 const LEGEND = [
-  ["sw-warm", "<b>input</b> — the signal going into the rig (bar rises <b>above</b> the ring)"],
-  ["sw-cold", "<b>return</b> — what the rig sent back, level-matched (bar drops <b>below</b>); drawn only where the return itself clears the floor"],
-  ["sw-rig", "<b>rig-only</b> — the return has energy where the input has none (noise the rig adds)"],
-  ["sw-none", "<b>dark</b> — quieter than the floor on both. Measured and quiet, not missing"],
+  ["sw-warm", "input", "going into the rig · rises <b>above</b> the ring"],
+  ["sw-cold", "return", "what came back, level-matched · drops <b>below</b>"],
+  ["sw-rig", "rig-only", "energy only the rig produced"],
+  ["sw-none", "dark", "quiet on both · measured, not missing"],
 ];
 
 export function createToneView(root) {
-  const stage = document.createElement("div");
-  stage.className = "tone-stage";
-  root.appendChild(stage);
-
-  const census = document.createElement("div");
-  census.className = "tone-census";
-  census.textContent = "connecting…";
-  root.appendChild(census);
+  root.classList.add("tone-view");
 
   // *** THE GAIN IS THE HEADLINE NUMBER ON THIS SCREEN. ***
   //
@@ -57,22 +54,29 @@ export function createToneView(root) {
   // would hide exactly the thing a player most wants to know: is the rig
   // losing level or adding it. Sign always shown; "held" when the input is
   // below the floor and the last established value is being used.
-  const gainBox = document.createElement("div");
-  gainBox.className = "tone-gain";
-  root.appendChild(gainBox);
+  const head = document.createElement("header");
+  head.className = "tone-head";
+  head.innerHTML = `<article class="ld-kpi k-level tone-gain"></article>
+    <div class="tone-census"></div>`;
+  root.appendChild(head);
+  const gainBox = head.querySelector(".tone-gain");
+  const census = head.querySelector(".tone-census");
+  census.textContent = "connecting…";
 
-  const scaleLine = document.createElement("div");
-  scaleLine.className = "tone-scale";
-  root.appendChild(scaleLine);
+  const stage = document.createElement("div");
+  stage.className = "tone-stage";
+  root.appendChild(stage);
 
-  const legend = document.createElement("div");
-  legend.className = "tone-legend";
+  const foot = document.createElement("footer");
+  foot.className = "tone-foot";
   // The LEGEND strings carry deliberate <b> markup and are authored in this
   // file, so they are not escaped. Nothing from the wire reaches this string.
-  legend.innerHTML = LEGEND
-    .map(([c, t]) => `<div><span class="sw ${c}"></span>${t}</div>`)
-    .join("");
-  root.appendChild(legend);
+  foot.innerHTML = `<div class="tone-legend">${LEGEND
+    .map(([c, name, t]) => `<div><span class="sw ${c}"></span><span><b>${name}</b><br>${t}</span></div>`)
+    .join("")}</div><div class="tone-scale"></div>`;
+  root.appendChild(foot);
+  const legend = foot.querySelector(".tone-legend");
+  const scaleLine = foot.querySelector(".tone-scale");
 
   // Everything about the scale is READ FROM THE SCENE, never restated here, so
   // the legend cannot drift away from the geometry it describes.
@@ -80,19 +84,22 @@ export function createToneView(root) {
     if (!scene || !scene.scale) { scaleLine.textContent = ""; return; }
     const s = scene.scale();
     const span = s.loHz && s.hiHz
-      ? `${fmtHz(s.loHz)} → ${fmtHz(s.hiHz)}, each section one bin ${Math.round(s.binHz)} Hz wide`
+      ? `${fmtHz(s.loHz)} → ${fmtHz(s.hiHz)} · ${s.sections} bins, ${Math.round(s.binHz)} Hz each`
       : "waiting for bin geometry";
     scaleLine.innerHTML =
-      `<b>bar length = level above ${s.floorDb} dB</b>, full bar = ${s.fullDb} dB` +
-      ` · linear in dB · <b>▲ capped</b> = louder than ${s.fullDb} dB` +
-      ` · dB re FFT 1.0, <i>not dBFS</i>` +
-      `<br><b>${s.sections} sections</b>, ${span}` +
-      `<br>below ${s.loHz ? fmtHz(s.loHz) : "the first bin"} is not drawn: that bin` +
-      ` contains DC and all three low strings at once (TODO-92, phase 2)`;
+      `<b>Bar length</b> = level above ${s.floorDb} dB · full bar ${s.fullDb} dB · ▲ = louder` +
+      ` · dB re FFT 1.0, <i>not dBFS</i><br><b>${span}</b> · below` +
+      ` ${s.loHz ? fmtHz(s.loHz) : "the first bin"} not drawn (DC + low strings, TODO-92)`;
   }
 
   function fmtSigned(v) {
     return (v > 0 ? "+" : v < 0 ? "−" : "±") + Math.abs(v).toFixed(1);
+  }
+
+  function tile(cls, valueHtml, sub) {
+    gainBox.className = `ld-kpi k-level tone-gain${cls}`;
+    gainBox.innerHTML = `<div class="ld-kpi-label">Rig gain</div>
+      <div class="ld-kpi-value">${valueHtml}</div><div class="ld-kpi-sub">${sub}</div>`;
   }
 
   // Sign, size and direction in words, so "−27.1" cannot be misread as a
@@ -104,22 +111,17 @@ export function createToneView(root) {
       // where the input is above it, so all that can be said is how far down
       // it is AT LEAST. Held through the gaps between strums like a gain is,
       // and dimmed when held.
-      gainBox.className = "tone-gain bound" +
-        (t.gain_state === "below_floor_held" ? " held" : "");
-      gainBox.innerHTML = `<span class="k">rig gain</span>` +
-        ` <span class="v">&lt; ${fmtSigned(t.gain_bound_db)} dB</span>` +
-        `<div class="sub">return is below the ${t.floor_db} dB floor wherever the input` +
-        ` is above it: at least ${Math.abs(t.gain_bound_db).toFixed(1)} dB down.` +
-        ` Check the return path.` +
-        (t.gain_state === "below_floor_held" ? " · <b>held</b>: no input above the floor" : "") +
-        `</div>`;
+      const held = t.gain_state === "below_floor_held";
+      tile(" bound" + (held ? " held" : ""),
+        `<span class="ld-num">&lt; ${fmtSigned(t.gain_bound_db)}</span><span class="ld-unit">dB</span>`,
+        `return is below the ${t.floor_db} dB floor wherever the input is above it —` +
+        ` at least ${Math.abs(t.gain_bound_db).toFixed(1)} dB down. Check the return path.` +
+        (held ? ` · <span class="ld-held">held</span>` : ""));
       return;
     }
     if (t.gain_db === null || t.gain_db === undefined) {
-      gainBox.innerHTML = `<span class="k">rig gain</span> <span class="v none">—</span>` +
-        `<div class="sub">not established yet: play to give it input above ${t.floor_db} dB.` +
-        ` Return drawn unmatched.</div>`;
-      gainBox.className = "tone-gain";
+      tile("", `<span class="gap">not established yet: play</span>`,
+        `needs input above ${t.floor_db} dB · return drawn unmatched`);
       return;
     }
     const g = t.gain_db;
@@ -127,12 +129,16 @@ export function createToneView(root) {
     const sign = g > 0.05 ? "+" : g < -0.05 ? "−" : "±";
     const verb = g > 0.05 ? `gaining ${mag} dB` : g < -0.05 ? `losing ${mag} dB` : "level unchanged";
     const held = t.gain_state === "held";
-    gainBox.className = "tone-gain" + (held ? " held" : "");
-    gainBox.innerHTML =
-      `<span class="k">rig gain</span> <span class="v">${sign}${mag} dB</span>` +
-      `<div class="sub">${verb} · return drawn ${g > 0 ? "−" : "+"}${mag} dB to match` +
-      (held ? " · <b>held</b>: no input above the floor" : ` · from ${t.gain_bins} bins`) +
-      `</div>`;
+    tile(held ? " held" : "",
+      `<span class="ld-num">${sign}${mag}</span><span class="ld-unit">dB</span>`,
+      `${verb} · return drawn ${g > 0 ? "−" : "+"}${mag} dB to match` +
+      (held ? ` · <span class="ld-held">held</span>` : ` · from ${t.gain_bins} bins`));
+  }
+
+  // The census as chips: how many of the drawn bins carry input, return and
+  // rig-only energy, so an empty-looking ring can be told from a broken one.
+  function chip(cls, label, n, of) {
+    return `<span class="ld-chip tone-chip ${cls}"><i></i>${label}<b>${n}</b><small>/${of}</small></span>`;
   }
 
   let scene = null;
@@ -150,7 +156,7 @@ export function createToneView(root) {
       failed = true;
       legend.hidden = true;
       scaleLine.hidden = true;
-      gainBox.hidden = true;
+      head.hidden = true;
       stage.innerHTML = `<div class="tone-unavailable">
         <h2>3D view unavailable</h2>
         <p class="note">This device could not create a WebGL context, so the
@@ -181,9 +187,11 @@ export function createToneView(root) {
         census.textContent = "this frame is a RESULT: it carries no input/return spectra · see LAB";
       } else {
         const c = pending.census;
-        census.textContent =
-          `input ${c.input_on} · return ${c.return_on} · rig-only ${c.rig_only}` +
-          `   of ${c.sections} bins above ${pending.floor_db} dB`;
+        census.innerHTML =
+          chip("c-in", "input", c.input_on, c.sections) +
+          chip("c-out", "return", c.return_on, c.sections) +
+          chip("c-rig", "rig-only", c.rig_only, c.sections) +
+          `<span class="tone-census-note">bins above ${esc(String(pending.floor_db))} dB</span>`;
       }
     },
 
