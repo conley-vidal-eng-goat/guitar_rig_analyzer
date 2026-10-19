@@ -29,6 +29,12 @@ The physical device is mid-breadboard. This track leads TODO priority over softw
 
 **Confirm on the bench:** with power on and a strum, probe `16a` then the LINE IN R pad. Signal at the first and not the second confirms it. Reseat or replace that jumper, then check TONE shows cool bars and a gain near the rig's real level.
 
+**Update 2026-10-18 — two operator tests (`OBS`), both consistent with the open above.**
+- **Loopback** (J5 Rig Send → J6 Rig Return TS cable, no rig): **no return on the display.** Rules out the rig and its output level.
+- **Headphone monitor** (SOURCE → left, RETURN → right, `audio_capture.cpp`): **guitar in the left ear only.** The right ear is the digitised LINE IN R, so the right ADC channel is receiving nothing. This is independent of the Pi, the link and the renderer.
+
+With J8 still audible from the same node `16a`, the open lies between `16a` and the codec's right ADC: the jumper, its breadboard contacts, the shield's LINE IN R header pin or joint, or (less likely) the codec's right input. **Next discriminator:** touch LINE IN R with a fingertip while monitoring. Hum in the right ear means the codec input is alive and the conductor is the fault; silence points at the shield.
+
 **Observed.** With a Stratocaster strummed once a second, the source peak followed the strums (−11.7..−32.6 dBFS) while the return peak sat flat (−36.9..−40.5 dBFS) across two bursts. No displayed return bin (151 Hz – 2.9 kHz) reached the −60 dB floor (TF_SOURCE_GATE). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md). Earlier the same evening, one silent capture showed return ≈ source (−39.5 / −39.7 peak), so the setup was changing between captures.
 
 **Why it matters.** Every A/B comparison (TODO-91) is a ratio over the return. Below the floor that ratio is signal against the analyser's own noise. The old tf_db ring drew it anyway as "−22 dB, attenuated", full length and confident. TONE now refuses: it shows a bound and says "check the return path".
