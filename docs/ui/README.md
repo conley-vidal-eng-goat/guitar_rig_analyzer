@@ -54,18 +54,9 @@ and 2026-09-13), applied to interface work.
 
 ## 3. Reconciliations — where the documents disagree
 
-Each row is a real disagreement, resolved on **2026-10-12** by the account holder after
-the Stage A read-only audit. A resolution here does not edit the source documents;
+Each row is a real disagreement, resolved on **2026-10-12** by Claude and me together
+after the Stage A read-only audit. A resolution here does not edit the source documents;
 they are imported byte-for-byte and stay that way.
-
-> **📝 Attribution clarification, added 2026-10-14 by Conley Vidal. The line
-> above is left exactly as written.**
->
-> "the account holder" here is the AI account identity, not the person who did the
-> work. The accounts belong to my father and I use them with his permission; he
-> did not participate in this project. **The reconciliations below were
-> collaborative work between Claude and me**, not decisions I made
-> independently. See [`../ai-assistance.md`](../ai-assistance.md).
 
 ### 3.1 Display target
 
