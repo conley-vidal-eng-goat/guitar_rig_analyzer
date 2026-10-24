@@ -3,7 +3,7 @@
 **Status:** ✅ **ACCEPTED** · 2026-09-30 · **amended 2026-09-30** (§1, UI framework)
 **Decided by:** Conley Vidal, working with Claude
 **Supersedes:** the **implicit Tkinter-as-production-renderer assumption** carried by
-`pi/analyzer_ui/`, by TODO-36's renderer language, and by commit `c7e1581`
+`pi/analyzer_ui/`, by TODO-36's renderer language, and by commit `41af7dc`
 ("feat(pi): production UI first slice"). That choice was made in implementation and
 was never recorded in an ADR; this document records it, reverses it for production,
 and keeps the Tk renderer in a named role.
@@ -301,7 +301,7 @@ the alternative is that the implementation silently becomes the specification.
 
 - A web client is a new Pi-side deliverable: build tooling, a UI transport from
   `analyzer_link` to the browser, kiosk autostart replacing the Tk autostart
-  (`d4eca26`, reversible with one `rm`), and offline asset serving.
+  (`09bea8a`, reversible with one `rm`), and offline asset serving.
 - `presentation_semantics.py` becomes a **protocol-adjacent** module. It is covered by
   the drift guard discipline already applied to `protocol.py`
   (`test_firmware_header_sync.py`).

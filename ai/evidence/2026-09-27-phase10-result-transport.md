@@ -1,7 +1,7 @@
 # The first RESULT to cross the wire — real 1 kHz stimulus, Teensy → Pi 5
 
 **2026-09-27 (capture timestamped 2026-09-28T04:56:04Z UTC = 21:56 local).**
-First hardware exercise of the **reliable** transport path. Firmware `26f2bee`
+First hardware exercise of the **reliable** transport path. Firmware `dcfbffa`
 unmodified. No Phase 9 validation, no internal generator, no injection, no relay
 or route change, no wiring change.
 
@@ -14,18 +14,18 @@ or route change, no wiring change.
 | **SHA-256** | `e8b57d6f62af1367b654dd6d13270a94d73f06868ac785edf353f20179dd14a1` |
 | Capture log | [`phase10-result-1khz.capturelog`](phase10-result-1khz.capturelog) |
 | Device | `/dev/ttyAMA0`, receive-only link unchanged |
-| Firmware | `26f2bee`, v0.6.0, protocol v2, build `Sep 26 2026 16:36:53` |
+| Firmware | `dcfbffa`, v0.6.0, protocol v2, build `Sep 26 2026 16:36:53` |
 | Session | **7** |
 
 **Hash re-verified on the Mac 2026-09-27** against the value `capture.sh` printed
 on the Pi. They agree, so the artifact survived the transfer intact.
 
 **Firmware provenance re-checked, not assumed.** The archived HEX
-[`firmware/26f2bee-PI/guitar_rig_analyzer.ino.hex`](firmware/26f2bee-PI/guitar_rig_analyzer.ino.hex)
+[`firmware/dcfbffa-PI/guitar_rig_analyzer.ino.hex`](firmware/dcfbffa-PI/guitar_rig_analyzer.ino.hex)
 still hashes to md5 `55ee39a5d8fba94cdad9606e9fa20a2f` / sha256
 `24b71d73bf60a0d6ff9cbb5737a46bba6a04887a1fe55479d356b5a87dce3a6e`. The only
-firmware-source drift between `26f2bee` and the current tree is a **comment-only**
-edit to `data_sender.h` (the stale throughput table, corrected in `0f7f2dd`'s
+firmware-source drift between `dcfbffa` and the current tree is a **comment-only**
+edit to `data_sender.h` (the stale throughput table, corrected in `4436237`'s
 lineage), so the running binary and the current source agree behaviourally.
 
 ## ⚠️ `capture.sh` printed its low-rate warning. It is not a link fault here.

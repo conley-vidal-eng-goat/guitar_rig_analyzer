@@ -21,7 +21,7 @@ was established and immediately after the Teensy was powered on. Procedure:
 | | |
 |---|---|
 | Renderer | Tk (`analyzer_ui`), PID 1505, autostarted at boot |
-| Code running | the **Pi's own checkout**, last recorded at `ce682cd` and dirty — **not** the Mac's `cc994de` |
+| Code running | the **Pi's own checkout**, last recorded at `86fb78a` and dirty — **not** the Mac's `801fe28` |
 | UART | `/dev/ttyAMA0`, fd 3, opened `O_RDONLY` |
 | Pi health | `throttled=0x0`, live and sticky bits clear |
 | Operator action on the UI | **none** — not touched, not tapped |

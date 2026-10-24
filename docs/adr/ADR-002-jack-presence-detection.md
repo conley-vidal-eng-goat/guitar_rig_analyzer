@@ -237,7 +237,7 @@ experiment and carries no implication of acceptance.
 
 ## Provenance note
 
-Derived from a live null result on firmware `b32d04a`: empty → insert → remove →
+Derived from a live null result on firmware `e5b702b`: empty → insert → remove →
 insert produced zero `JACK_CHANGED` events across 45 diagnostic windows, uptime
 18–218 s, captured continuously —
 `ai/evidence/2026-09-13-phase5-detect-null-result.log`. Analysis in

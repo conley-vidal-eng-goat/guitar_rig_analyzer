@@ -174,7 +174,7 @@ is structurally unable to comply.
 RETURN_NODE, the true TF was ~−47 dB — 23 dB below the −24.0 dB rail — and the
 diagnostic printed `1kHz=-24.0dB` in 33 of 33 consecutive windows "as though it
 were data" ([audio_engine.h:145](../firmware/guitar_rig_analyzer/audio_engine.h#L145), evidence file
-`ai/evidence/2026-09-07-tf-clamp-preserved.md`). Commit `aa9a795` fixed that for
+`ai/evidence/2026-09-07-tf-clamp-preserved.md`). Commit `8701649` fixed that for
 the serial diagnostic. Shipping the current packet layout would reintroduce the
 identical defect on the Pi's TF plot — a flat, confident, entirely fictional
 −24 dB curve.

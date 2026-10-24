@@ -13,7 +13,7 @@ no relay or route change, no Phase 9 activity.
 | **SHA-256** | `3ac52680b28f4c2a7f2d3e4ea850a94b9493b726bde60afa3deccd190ba95380` |
 | USB console | [`2026-09-26-stepA-usb-console.jsonl`](2026-09-26-stepA-usb-console.jsonl) — 106 events |
 | Device | `/dev/ttyAMA0`, receive-only link unchanged |
-| Firmware | `26f2bee`, v0.6.0, protocol v2 — **unmodified** |
+| Firmware | `dcfbffa`, v0.6.0, protocol v2 — **unmodified** |
 
 ## ⚠️ Evidence classes, kept separate
 

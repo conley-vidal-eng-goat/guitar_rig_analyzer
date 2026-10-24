@@ -101,7 +101,7 @@ ssh conley@guitar-rig-analyzer.local 'sh ~/gra-rollback/restore-tk-startup.sh'
 ```
 
 The Tk UI, its launcher (`952cd5ed…`) and the Pi's own dirty checkout
-(`ce682cd`, 49 entries) are all preserved untouched.
+(`86fb78a`, 49 entries) are all preserved untouched.
 
 ## Rebooting needs a password, and that is recorded as a fact of the system
 

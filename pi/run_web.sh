@@ -14,7 +14,7 @@
 # frames; and survive disconnect and reconnect. Until all four hold, the Tk UI
 # is what ships. This script exists to TEST those conditions, not to assume
 # them. It does not read, write or create ~/.config/labwc/autostart, and the Tk
-# autostart installed by d4eca26 is left exactly as it is.
+# autostart installed by 09bea8a is left exactly as it is.
 #
 # *** DESIGNED TO BE RUN OVER SSH, BECAUSE THE PI HAS NO KEYBOARD. ***
 #

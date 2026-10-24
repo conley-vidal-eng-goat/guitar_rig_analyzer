@@ -4,7 +4,7 @@
 Teensy telemetry off `/dev/ttyAMA0` on the physical Touch Display 2.
 
 **No flash. No firmware change. No validation harness, generator, injection,
-relay or analog change. No measurement initiated.** Firmware `26f2bee`,
+relay or analog change. No measurement initiated.** Firmware `dcfbffa`,
 session **9**, unchanged since T1 Run 2. Receive-only wiring untouched.
 
 Media: [`2026-09-30-pi-ui-live-uart.png`](2026-09-30-pi-ui-live-uart.png)

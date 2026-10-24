@@ -1,6 +1,6 @@
 """Tests against the REAL hardware RESULT capture and the timeout capture.
 
-Two artifacts from 2026-09-27, both produced by flashed firmware `26f2bee` over
+Two artifacts from 2026-09-27, both produced by flashed firmware `dcfbffa` over
 the physical Teensy pin 1 → Pi GPIO15 link:
 
   phase10-result-1khz.bin         a completed measurement. The FIRST RESULT

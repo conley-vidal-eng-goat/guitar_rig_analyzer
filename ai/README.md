@@ -26,6 +26,7 @@ operator" or "the builder," it means me.
 | [`todo.md`](todo.md) | Open work in priority order. Each item says why it matters, what has to happen, and how it will be proven done. |
 | [`evidence/`](evidence/) | Bench records, serial captures, raw `.bin` byte streams, screenshots, photos, and the exact firmware image that was flashed. |
 | [`drafts/`](drafts/) | Two journal drafts that were never merged in, kept as written. |
+| [`commit-hash-map.md`](commit-hash-map.md) | Old → new commit hashes from the 2026-10-24 history rewrite, for the old hashes that remain in raw captures and on the Pi. |
 
 The journal is about 9,600 lines, so the reading list at the end is the short
 way in.

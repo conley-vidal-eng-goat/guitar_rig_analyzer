@@ -30,7 +30,7 @@ How to use this file:
 
 ## 2026-10-16 (1) — **TONE draws the input over the level-matched return. The chromatic ring is retired, the DC-bin fix is scoped as phase 2, and the first panel capture says the return path is not carrying the guitar**
 
-**Session shape.** Claude screenshotted the kiosk while the operator strummed a Strat once a second, explained what the old ring was drawing, scoped the firmware fix for resolution below 3 kHz (analysis only), redesigned TONE to the operator's brief, deployed it to `~/gra-ui`, and captured it on the panel. Commits: `bc3d4b9` (redesign), `afd1944` (hold fix). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md).
+**Session shape.** Claude screenshotted the kiosk while the operator strummed a Strat once a second, explained what the old ring was drawing, scoped the firmware fix for resolution below 3 kHz (analysis only), redesigned TONE to the operator's brief, deployed it to `~/gra-ui`, and captured it on the panel. Commits: `9dfe254` (redesign), `2302156` (hold fix). Evidence: [`2026-10-16-pi-tone-input-over-return.md`](evidence/2026-10-16-pi-tone-input-over-return.md).
 
 **What the old ring was really showing.** Every lit band read −15..−24 dB against a 12 dB scale, so every bar was full length and length carried nothing. The TF held its last value while the source was gated. Bin 0 (0–151 Hz, contains DC) read −53 dB with the strings muted, which is what kept C2/C#2 permanently lit. Bin 1 hovered at the −60 dB gate and flickered. The three low strings all arrived in bin 0, so the note labels promised a precision the wire never carried. Two renderer bugs had been there since before today: the section seats were tilted +90° instead of −90°, so a lit seat sat at the mirror of its own bar (this explains "lit groups never line up with bars"); and the bar material colour multiplied the instance colour, which is why every earlier capture shows dark teal.
 
@@ -43,7 +43,7 @@ How to use this file:
 
 **The bug a replay caught that tests had not.** The first gain summed every bin with input above the floor. Replayed against the session's own strum capture, the return sat at −65..−78 dB in every bin (the analyser's floor). The "gain" came out as a confident −28 dB, and matching then lifted that noise into a return bar on every section. Fix: a return bin must clear the floor as received AND after the shift. When the return clears it nowhere, the payload reports a strict upper BOUND (k·F²/Σsrc² over those bins) instead of a gain. **Lesson worth keeping: replay real frames through a new classification before trusting it, because synthetic tests encode the designer's assumption about what the signal looks like.** A second replay showed the renderer drawing return bars where the Pi had said "off"; it now obeys `src_on` / `ret_on` and never re-derives presence.
 
-**Found on the panel, fixed the same hour (`afd1944`).** The bound was never held, so at one strum a second the readout flipped between "< −29.6 dB" and "not established yet: play", telling a player who was playing to play. The matcher now holds the latest verdict, gain or bound, and labels it held.
+**Found on the panel, fixed the same hour (`2302156`).** The bound was never held, so at one strum a second the readout flipped between "< −29.6 dB" and "not established yet: play", telling a player who was playing to play. The matcher now holds the latest verdict, gain or bound, and labels it held.
 
 **Phase 2 analysis (TODO-92, no code).** The 1024-point FFT is the ceiling (43 Hz native), not only the 4:1 decimation (172 Hz on the wire), and the link is at 79% duty. Recommended: a low-band analyser (decimate by 8 → 5.4 Hz bins over 0–2.76 kHz, as its own `AudioStream`), semitone bands formed on the Teensy, sent in a new additive packet. DC can never enter a band. It needs an ADR first. Details in TODO-92.
 
@@ -259,7 +259,7 @@ and a headless render of an empty ring must not be written up as though it had.
 
 ## 2026-10-15 (2) — **LIVE at 20 Hz, and two measurements that corrected me — one before the change, one after**
 
-**2026-10-15, ~21:30 PDT. Repository `5bf79a0` → this commit.** One constant and
+**2026-10-15, ~21:30 PDT. Repository `c16edea` → this commit.** One constant and
 one guard in `main.js`, one test updated, one added. **No firmware, protocol,
 wiring or measurement-semantics change.** Deployed to the running kiosk by a
 supervised restart that freed the UART before the replacement started.
@@ -346,7 +346,7 @@ rate is not a rendered frame.
 
 ## 2026-10-15 (1) — **The Pi boots into the web kiosk. ADR-005 §2 is closed, and the gate was closed in the order the gate specified**
 
-**2026-10-15, 20:17–21:05 PDT. Repository `b68d648` → `651dbaa`.** One
+**2026-10-15, 20:17–21:05 PDT. Repository `1278253` → `b5019c7`.** One
 configuration file changed, one script added, one controlled reboot. **No
 firmware, protocol, wiring, DSP or measurement-semantics change.**
 
@@ -489,7 +489,7 @@ four. Raising it is TODO-89 and is the next authorised work.
 
 ## 2026-10-13 (15) — **Why TONE showed zero measured bands, and why a guitar cannot be the stimulus for an A/B**
 
-**2026-10-13, ~22:10 PDT. Repository `db46cb3`. Read-only: firmware and
+**2026-10-13, ~22:10 PDT. Repository `68c8894`. Read-only: firmware and
 presentation contracts, nothing executed, nothing connected, the kiosk left
 running and still the sole UART holder.** Procedure written to
 [`docs/ab_headrush_procedure.md`](../docs/ab_headrush_procedure.md).
@@ -636,7 +636,7 @@ portfolio's picture of the instrument in a working state, which exists right now
 
 ## 2026-10-13 (14) — **Verification: the pulse measured at 15.6 % peak-to-peak, the framing-error counter flat across 250 s — and three things still unseen because no bar was ever drawn**
 
-**2026-10-13, 21:54:59–21:59:09 PDT. Repository `72048e3`. Read-only: the kiosk
+**2026-10-13, 21:54:59–21:59:09 PDT. Repository `3ab5fd3`. Read-only: the kiosk
 was not restarted, the transport held the UART throughout, no code was edited.**
 
 ### ✅ Serial stability — the question from review, answered
@@ -686,7 +686,7 @@ fraction of the measured band.
 ### ✅ The ring glow — visible on the panel
 
 Confirmed in the captures: a soft halo around the baseline torus that none of the
-pre-`72048e3` images have.
+pre-`3ab5fd3` images have.
 
 ### 🔺 Three things remain unseen, because no bar was ever drawn
 
@@ -730,7 +730,7 @@ rather than of a worst case.
 
 ## 2026-10-13 (13) — **The UI correction pass: LIVE measured at 5.03 polls/s, TONE's glow restored — and the camera fix deliberately NOT made, because verifying it showed the premise was false**
 
-**2026-10-13, ~21:40–22:05 PDT. From `816cdc4`.** Items A, C and D of the
+**2026-10-13, ~21:40–22:05 PDT. From `69ddaef`.** Items A, C and D of the
 approved plan implemented; **item B held back on purpose.** No firmware, wiring,
 protocol, autostart or Pi-checkout change.
 
@@ -837,7 +837,7 @@ session before it is treated as either normal or a fault.
 
 ## 2026-10-13 (12) — **Read-only UI audit: LIVE is not slow, it is infrequent — and TONE has the committed design's geometry without its finish**
 
-**2026-10-13, ~21:25–21:35 PDT. Repository `816cdc4` (the rollback point).
+**2026-10-13, ~21:25–21:35 PDT. Repository `69ddaef` (the rollback point).
 Read-only: the kiosk was never restarted, the transport kept the UART
 throughout, and no UI file was edited.** Prompted by two operator reports
 (`RPT`): *LIVE is noticeably slower than the previous UI*, and *TONE is
@@ -940,7 +940,7 @@ capture with a range of MEASURED bands.
 
 ## 2026-10-13 (11) — **The web client rendered a live Teensy frame on the physical panel. First time in the project's history, and it held for six minutes without losing a byte**
 
-**2026-10-13, 21:12:14–21:19:49 PDT. Repository `93a4d58`, staged tree
+**2026-10-13, 21:12:14–21:19:49 PDT. Repository `dd8ebf9`, staged tree
 `/home/conley/gra-stage-todo82`.** `OBS` throughout. **No firmware, wiring,
 autostart or checkout change.** The Tk autostart is untouched and still what the
 Pi boots into.
@@ -967,7 +967,7 @@ setsid nohup sh run_web.sh --serial /dev/ttyAMA0 --prefer live &
 ```
 
 Supervisor `sh`, 13 processes in the session, and the **sole** `ttyAMA0` holder
-was 15406, the transport. The launcher fix from `3399a94` behaved exactly as its
+was 15406, the transport. The launcher fix from `b10cc67` behaved exactly as its
 tests said it would, on live hardware, with a real UART at stake for the first
 time.
 
@@ -1077,7 +1077,7 @@ returns the panel to Tk.
 
 ## 2026-10-13 (10) — **Gate 4 §5: my own buffer hypothesis is dead, and it was wrong by two orders of magnitude.** The kernel held 154 kB between reads without losing a byte
 
-**2026-10-13, ~21:10 PDT. Repository `80e5b09`. `OBS`.** Staged code only
+**2026-10-13, ~21:10 PDT. Repository `a8a8e86`. `OBS`.** Staged code only
 (`/home/conley/gra-stage-todo82`, `PYTHONPATH` pinned and the module source paths
 printed to prove it). **No firmware, wiring, autostart or display change. No
 Chromium, no kiosk, no web server.** The port was verified free before and
@@ -1203,7 +1203,7 @@ revived from the earlier journal entries without this measurement attached.
 
 ## 2026-10-13 (9) — **Gate 4 §4: 36 481 B/s, zero CRC failures, zero interior discards.** An independent reference for the link, taken while nothing was competing for the port
 
-**2026-10-13, 20:57:48–20:58:03 PDT. Repository `6161b5b`. `OBS`.** Evidence:
+**2026-10-13, 20:57:48–20:58:03 PDT. Repository `a5c2319`. `OBS`.** Evidence:
 [`evidence/2026-10-13-gate4-raw-uart-15s.md`](evidence/2026-10-13-gate4-raw-uart-15s.md)
 and the 547 219-byte capture beside it.
 
@@ -1313,7 +1313,7 @@ back to a working panel; §5 is the way forward.
 
 ## 2026-10-13 (8) — **Gate 4 §3: `/dev/ttyAMA0` is free for the first time since 19:11:26.** The handoff took half a second and the interesting part was everything done before it
 
-**2026-10-13, ~20:57 PDT. Repository `6161b5b`.** The Tk UI was stopped. **No
+**2026-10-13, ~20:57 PDT. Repository `a5c2319`.** The Tk UI was stopped. **No
 firmware, wiring, autostart or checkout change; nothing was started in its
 place.** The port is deliberately unattended at the end of this entry.
 
@@ -1386,7 +1386,7 @@ after 6 s: still none, still zero holders    <- no respawn, as designed
 The panel capture went from **88 428 B to 907 519 B** — the dark instrument UI
 replaced by the desktop. A size change that large is not a repaint artefact.
 
-Preservation after: `3a53212a…` / `b40fbc70…` unchanged, checkout `ce682cd`/49
+Preservation after: `3a53212a…` / `b40fbc70…` unchanged, checkout `86fb78a`/49
 untouched, `throttled=0x0`, 46.1 °C, port 8711 free, **no `web.server` and no
 `chromium` — nothing was started.**
 
@@ -1428,7 +1428,7 @@ waiting, but nothing is being displayed either.
 
 ## 2026-10-13 (7) — **Gate 4 §2 baseline, and the instrument's power turns out to hang off a laptop USB port.** The sleep risk is real but smaller than it looked, and the evidence for that is a sleep that already happened
 
-**2026-10-13, ~20:49 PDT. Repository `3ad57d9`. Read-only throughout: Tk was not
+**2026-10-13, ~20:49 PDT. Repository `2a4c40d`. Read-only throughout: Tk was not
 stopped, the UART was not opened by anything else, no firmware, wiring, autostart
 or process was modified.**
 
@@ -1518,7 +1518,7 @@ trap in 2026-10-13 (6).** Confirm a pid names what you think before believing it
 | Pi health | `throttled=0x0`, 48.3 °C, 106 G free, `boot_id 2e711482…` unchanged (same boot) |
 | Display | DSI-2, 720×1280 @ 60.038 Hz, transform normal, scale 1.0 |
 | Staged code | `/home/conley/gra-stage-todo82`, 69 files, `run_web.sh` sha256 `2c9ae618…` |
-| Pi checkout | `ce682cd`, 49 dirty — **untouched**, and it is what autostart launches |
+| Pi checkout | `86fb78a`, 49 dirty — **untouched**, and it is what autostart launches |
 | Autostart | `3a53212a…` / `b40fbc70…` — both unchanged |
 | Rollback | `DISPLAY=:0`, `XAUTHORITY=/home/conley/.Xauthority`, `XDG_RUNTIME_DIR=/run/user/1000`; Xwayland pid 1568 `-auth … :0`; socket `X0`; `run_ui.sh` and the fixture present |
 | Mac | AC power, battery 81 % charging, no `caffeinate`, Teensy USB present, **no USB disconnect since 20:30** |
@@ -1546,8 +1546,8 @@ onward has not been run.
 
 ## 2026-10-13 (6) — **Gate 4 §1: the keyboard-free recovery path is proven, before the UART is given up rather than after.** Reading the running process's environment found a gap the drafted command had
 
-**2026-10-13, ~20:45 PDT. Repository `08dc450`. Staged tree
-`/home/conley/gra-stage-todo82` (content of `3399a94` + firmware headers +
+**2026-10-13, ~20:45 PDT. Repository `e81b16d`. Staged tree
+`/home/conley/gra-stage-todo82` (content of `b10cc67` + firmware headers +
 three fixtures), 505 tests green on the Pi.**
 
 **No firmware change, no wiring change, no autostart change, no UART access, no
@@ -1566,7 +1566,7 @@ mechanism without touching the serial port.
 
 ### 🔺 The pre-flight found a gap in the procedure I had just committed
 
-`08dc450`'s §1 command set `DISPLAY` and `XDG_RUNTIME_DIR`. Reading the
+`e81b16d`'s §1 command set `DISPLAY` and `XDG_RUNTIME_DIR`. Reading the
 environment of the process that is **actually drawing on the panel right now**
 rather than assuming it (`/proc/1505/environ`, `OBS`):
 
@@ -1660,7 +1660,7 @@ was still working.
 
 ## 2026-10-13 (5) — **The Instrument In tip was shorted to GND, and the Teensy restarted during the evening. Three independent records bracket the same two minutes; the causal link is not established**
 
-Software session (web UI, launcher fix `3399a94`). **No firmware change, no
+Software session (web UI, launcher fix `b10cc67`). **No firmware change, no
 protocol change, no wiring change by me.** The wiring change recorded below was
 made by the operator at the bench and is reported here as such.
 
@@ -1954,7 +1954,7 @@ the commit that forwards these arrays, not before.
 
 ## 2026-10-13 (2) — **Four screens on the panel at 60 fps.** The viewport fix landed, and testing it surfaced a worse defect: a GPU failure was taking down the three screens that need no GPU
 
-Shell and TODO-80 fix in `cc7b704`; Pi validation in
+Shell and TODO-80 fix in `2cf3593`; Pi validation in
 [`evidence/2026-10-13-pi-shell-four-tabs.md`](evidence/2026-10-13-pi-shell-four-tabs.md).
 
 **No firmware change, no protocol change, no wiring change, no measurement
@@ -2138,7 +2138,7 @@ passed, and the two tracks stay independent.
 ### Method note worth keeping
 
 Code was staged in a **scratch directory** on the Pi, not its repository checkout —
-which sits at `ce682cd` with 16 modified and 30 untracked files, having been fed by
+which sits at `86fb78a` with 16 modified and 30 untracked files, having been fed by
 rsync rather than git for some time. Touching it would have made a mess that was
 not mine to make. The scratch tree is one `rm -rf` to remove, the Chromium profiles
 were ephemeral, and the FPS probe lived only in the scratch copy of `main.js`,
@@ -2472,7 +2472,7 @@ stops at Phase 10 with no phase for this hardware.
 J6 Rig Return → K2 NC → LINE IN R** passes signal, measured on both channels
 simultaneously. **What is not:** calibration accuracy, J8 Amp Out functionality,
 or which repair mattered. Firmware untouched throughout — `Build: Sep 26 2026
-16:36:53 v0.6.0` (`26f2bee`), read-only serial capture.
+16:36:53 v0.6.0` (`dcfbffa`), read-only serial capture.
 
 ### MEASURED — Action 125, 12 consecutive blocks, uptime 288–343 s, session 42
 
@@ -2654,7 +2654,7 @@ claimed to work. No part of it has been demonstrated end to end.**
 
 Serial telemetry in this entry was captured by Claude over USB, read-only except
 for Action 101's single `j`. Firmware unchanged throughout: `Build: Sep 26 2026
-16:36:53 v0.6.0` (`26f2bee`), verified byte-identical to HEAD for
+16:36:53 v0.6.0` (`dcfbffa`), verified byte-identical to HEAD for
 `signal_router.cpp/.h`, `guitar_rig_analyzer.ino` and `config.h`.
 
 ### J4 Instrument In — MEASURED, and the path is good
@@ -3250,7 +3250,7 @@ The stride falls out of constants that already exist — `FFT_AVERAGE_COUNT * FF
 
 ## 2026-09-30 (1) — **The Pi UI is reading the live UART on the physical display.** With no stimulus connected it draws nothing, and says why — which is a better demonstration than a tone would have been
 
-Checkpointed the night's work as three commits, then ran the live smoke test. No flash, no firmware change, no measurement initiated, no analog or routing change. Firmware `26f2bee`, session **9**, unchanged since Run 2. Record: [`2026-09-30-pi-ui-live-uart-smoke-test.md`](evidence/2026-09-30-pi-ui-live-uart-smoke-test.md).
+Checkpointed the night's work as three commits, then ran the live smoke test. No flash, no firmware change, no measurement initiated, no analog or routing change. Firmware `dcfbffa`, session **9**, unchanged since Run 2. Record: [`2026-09-30-pi-ui-live-uart-smoke-test.md`](evidence/2026-09-30-pi-ui-live-uart-smoke-test.md).
 
 **Ground truth first, deliberately.** Two readers on one tty split the byte stream, so a 5 s `capture.sh` reference was taken *before* the UI touched the port: 182 305 B at 36 461 B/s, session 9, IDLE, TS return, detectors UNKNOWN. Then the UI, then the comparison.
 
@@ -3290,7 +3290,7 @@ It also means **runbook step 7 is still unproven**: demonstrating the clamp *ren
 
 ## 2026-09-29 (1) — **T1 Run 2 ran, and the harness failed before the instrument did: 44 490 "skipped blocks" that never happened.** A 128-sample audio counter was being read as a 2 048-sample analysis counter. The Pi side had it right all along
 
-First hardware execution of `timing_probe`, and it broke on contact. Firmware `26f2bee` unmodified, session **9**, fresh physical power cycle, only `t` and `T` ever sent. **No flash, no firmware edit, no retry.** Records: [`t1-run2-pi-normal.txt`](evidence/t1-run2-pi-normal.txt), [`2026-09-29-t1-harness-block-stride-defect.md`](evidence/2026-09-29-t1-harness-block-stride-defect.md).
+First hardware execution of `timing_probe`, and it broke on contact. Firmware `dcfbffa` unmodified, session **9**, fresh physical power cycle, only `t` and `T` ever sent. **No flash, no firmware edit, no retry.** Records: [`t1-run2-pi-normal.txt`](evidence/t1-run2-pi-normal.txt), [`2026-09-29-t1-harness-block-stride-defect.md`](evidence/2026-09-29-t1-harness-block-stride-defect.md).
 
 ### Raw observations first, explanation second — deliberately in that order
 
@@ -3338,7 +3338,7 @@ The 5 s diagnostic block — which uses a **different** counter — read **107�
 
 I inspected every consumer before proposing anything, because the tempting fix — change what gets transmitted so the stride becomes 1 — is the wrong one. `output_block_number` goes on the wire as LIVE_FRAME bytes [2-3] ([data_sender.cpp:627](../firmware/guitar_rig_analyzer/data_sender.cpp#L627)), the Pi decodes it **correctly**, and `state.py` uses it for link staleness. Changing the transmitted value would break a correct consumer and silently redefine the wire under an unchanged `PI_PROTOCOL_VERSION`. **Fix `timingProbe_noteBlock()` to expect the real stride** — derived from existing constants, not a hard-coded 16 — and flag `gap != expected`, since a gap *smaller* than expected is also a finding that `gap > 1` cannot express.
 
-**Not fixed tonight, deliberately.** `26f2bee` is the artifact every 2026-09-27 RESULT-transport claim rests on. Reflashing to repair its own instrumentation mid-matrix would invalidate that chain. Batch it with TODO-61/63/64.
+**Not fixed tonight, deliberately.** `dcfbffa` is the artifact every 2026-09-27 RESULT-transport claim rests on. Reflashing to repair its own instrumentation mid-matrix would invalidate that chain. Batch it with TODO-61/63/64.
 
 ### Consequences recorded rather than worked around
 
@@ -3360,13 +3360,13 @@ No flash, no bench action, nothing run. Sheet: [`docs/T1_run_sheet.md`](../docs/
 
 ### ★ The flash sequence, and why the control run goes last
 
-Runs 2, 3 and 4 are all `_PI`, and the board already runs `26f2bee`. So they go **first at zero flash cost**, then one flash to `_NONE` for run 1, then the archived `_PI` hex back. **One flash to complete the matrix, two to end on the known-good image.**
+Runs 2, 3 and 4 are all `_PI`, and the board already runs `dcfbffa`. So they go **first at zero flash cost**, then one flash to `_NONE` for run 1, then the archived `_PI` hex back. **One flash to complete the matrix, two to end on the known-good image.**
 
-The instinct is to capture the control first because everything is judged against it. That is an **analysis** dependency, not an execution one — nothing in step 11 or `timing_probe.h` requires it — and reversing the order buys something real: **if run 2 fails, the known-good image was never disturbed.** Step 11 says a timing degradation means stop, and stopping with `26f2bee` still on the board means stopping in exactly the state today's RESULT evidence was gathered in.
+The instinct is to capture the control first because everything is judged against it. That is an **analysis** dependency, not an execution one — nothing in step 11 or `timing_probe.h` requires it — and reversing the order buys something real: **if run 2 fails, the known-good image was never disturbed.** Step 11 says a timing degradation means stop, and stopping with `dcfbffa` still on the board means stopping in exactly the state today's RESULT evidence was gathered in.
 
 The cost is drift: if the bench moves between run 4 and run 1, the control is void and the whole matrix with it. Two mitigations, both cheap. Log SOURCE peak dBFS at the start and end of every run. And make flash 2 — the restore to the archived hex, which we want anyway — carry a **run-2-repeat as a drift control**: if it matches the first run 2, the bench did not move and run 1 is valid for all three.
 
-**The `_PI` image is restored by flashing the archived hex, never by rebuilding.** `__DATE__`/`__TIME__` are stamped into the image, so recompiling `26f2bee` yields a different binary with a different hash and the board could no longer be matched to the flashed-artifact record. Its own MANIFEST says "do not rebuild", and `arduino-cli -i <hex>` honours that.
+**The `_PI` image is restored by flashing the archived hex, never by rebuilding.** `__DATE__`/`__TIME__` are stamped into the image, so recompiling `dcfbffa` yields a different binary with a different hash and the board could no longer be matched to the flashed-artifact record. Its own MANIFEST says "do not rebuild", and `arduino-cli -i <hex>` honours that.
 
 ### ✅ The `_NONE` safety review came out clean for a structural reason, not a lucky one
 
@@ -3409,7 +3409,7 @@ It **will not** judge `block_ms_mean/max/spread` or `loop_us_max` against the co
 
 ## 2026-09-27 (1) — **A complete Teensy-authored RESULT crossed the physical link: 8 908 bytes, CRC valid, four 512-bin arrays with their NaN conventions intact.** The 1 598 "discarded bytes" turned out to be 91 bytes into one packet — and chasing them found a real hole in the check that was excusing them
 
-Three artifacts, one bench arc, and the most useful finding came from refusing to accept a number that looked harmless. Firmware `26f2bee` unmodified. **No Phase 9 validation, no `v`, no Tests 1–4, no internal generator, no injection, no relay or route change, no wiring change.** Records: [`2026-09-27-phase10-result-transport.md`](evidence/2026-09-27-phase10-result-transport.md), [`2026-09-27-phase10-armed-timeout-negative-control.md`](evidence/2026-09-27-phase10-armed-timeout-negative-control.md), [`2026-09-27-discarded-bytes-accounted.md`](evidence/2026-09-27-discarded-bytes-accounted.md).
+Three artifacts, one bench arc, and the most useful finding came from refusing to accept a number that looked harmless. Firmware `dcfbffa` unmodified. **No Phase 9 validation, no `v`, no Tests 1–4, no internal generator, no injection, no relay or route change, no wiring change.** Records: [`2026-09-27-phase10-result-transport.md`](evidence/2026-09-27-phase10-result-transport.md), [`2026-09-27-phase10-armed-timeout-negative-control.md`](evidence/2026-09-27-phase10-armed-timeout-negative-control.md), [`2026-09-27-discarded-bytes-accounted.md`](evidence/2026-09-27-discarded-bytes-accounted.md).
 
 ### ★ The primary result
 
@@ -3439,7 +3439,7 @@ The STATUS packet carries `"Measuring \xe2\x80\x94 external stimulus"` — a **U
 
 **This is the shared-author blind spot again, and the specific mechanism is worth naming:** `tests/vectors.py` wrote the same message with an **ASCII hyphen**, so encoder and decoder agreed with each other and the test passed. The synthetic vectors could not have caught it in principle. That is the second defect the real byte stream has broken open that offline testing was structurally unable to reach, and it is the clearest argument yet for pinning regression tests to captured artifacts rather than to generated ones.
 
-Fixed on the Pi side; `errors="replace"` kept deliberately, because a capped field can truncate a multibyte sequence and a status string must degrade visibly rather than raise into the frame loop. **The firmware side is a contract gap, not a bug, and is left to a decision (TODO-61):** `data_sender.h` never states an encoding. Either state UTF-8 explicitly or restrict transmitted strings to ASCII so a 7-bit font is safe too — and note the RA8875 debug path feeds the same literals to Adafruit GFX, where an em dash has never been observed rendering. **No firmware edit made:** the board runs `26f2bee` and the only source drift from it is a comment, which is worth keeping until there is a reason to reflash.
+Fixed on the Pi side; `errors="replace"` kept deliberately, because a capped field can truncate a multibyte sequence and a status string must degrade visibly rather than raise into the frame loop. **The firmware side is a contract gap, not a bug, and is left to a decision (TODO-61):** `data_sender.h` never states an encoding. Either state UTF-8 explicitly or restrict transmitted strings to ASCII so a 7-bit font is safe too — and note the RA8875 debug path feeds the same literals to Adafruit GFX, where an em dash has never been observed rendering. **No firmware edit made:** the board runs `dcfbffa` and the only source drift from it is a comment, which is worth keeping until there is a reason to reflash.
 
 ### The negative control, and a correction to how it was described
 
@@ -3465,7 +3465,7 @@ Three boots now appear in preserved artifacts — **4** (three captures on 2026-
 
 ## 2026-09-26 (12) — **Step A: 71 consecutive authoritative ABORTED/TIMEOUT snapshots with ZERO live frames after the abort. TODO-57's justification, on hardware.** The experiment did not follow its plan, and the bytes — not the plan — set the conclusion
 
-First hardware exercise of a measurement-state transition over the link. No wiring change, no stimulus, no generator, no injection, no relay or route change. Firmware `26f2bee` unmodified. Record: [`2026-09-26-phase10-stepA-abort.md`](evidence/2026-09-26-phase10-stepA-abort.md).
+First hardware exercise of a measurement-state transition over the link. No wiring change, no stimulus, no generator, no injection, no relay or route change. Firmware `dcfbffa` unmodified. Record: [`2026-09-26-phase10-stepA-abort.md`](evidence/2026-09-26-phase10-stepA-abort.md).
 
 **Artifacts:** [`phase10-stepA-abort.bin`](evidence/phase10-stepA-abort.bin), **347 870 bytes**, sha256 `3ac52680b28f4c2a7f2d3e4ea850a94b9493b726bde60afa3deccd190ba95380`; USB console [`2026-09-26-stepA-usb-console.jsonl`](evidence/2026-09-26-stepA-usb-console.jsonl), 106 events.
 
@@ -3609,7 +3609,7 @@ Two independent captures, six times apart in duration, both within **0.5 %** of 
 
 **Analog, not transport evidence:** `peak_source −63.9 dBFS`, `peak_return −66.2 dBFS`, `tf_confidence 0.0`, `tf_clamped_count 0`, no clipping.
 
-**No firmware change — the board still runs `26f2bee`. No Phase 9 validation was invoked and Phase 9 status is unaffected. No hardware was modified.**
+**No firmware change — the board still runs `dcfbffa`. No Phase 9 validation was invoked and Phase 9 status is unaffected. No hardware was modified.**
 
 ---
 
@@ -3620,7 +3620,7 @@ Full record: [`ai/evidence/2026-09-26-first-teensy-pi-capture.md`](evidence/2026
 
 **This is the milestone the last five slices were built toward.** Until now the Pi parser and the Teensy firmware only agreed with **one author's reading of `data_sender.h`** — a closed loop that no amount of offline testing could open. A Raspberry Pi 5 has now decoded bytes the compiled firmware actually produced.
 
-**Link as built, receive-only by design:** Teensy pin 1 (TX1) → Pi GPIO15/RXD0 **physical pin 10**; Teensy GND → Pi **physical pin 9**; **Teensy pin 0 and Pi GPIO14 deliberately unconnected**; **no 3.3 V or 5 V rail shared** — ground is the only power-domain connection. The link is physically incapable of Pi→Teensy traffic, which is exactly what makes this capture independent of serial-console configuration. Teensy runs the `26f2bee` `_PI` artifact unchanged; **no firmware edit was made during this work.**
+**Link as built, receive-only by design:** Teensy pin 1 (TX1) → Pi GPIO15/RXD0 **physical pin 10**; Teensy GND → Pi **physical pin 9**; **Teensy pin 0 and Pi GPIO14 deliberately unconnected**; **no 3.3 V or 5 V rail shared** — ground is the only power-domain connection. The link is physically incapable of Pi→Teensy traffic, which is exactly what makes this capture independent of serial-console configuration. Teensy runs the `dcfbffa` `_PI` artifact unchanged; **no firmware edit was made during this work.**
 
 ---
 
@@ -3697,11 +3697,11 @@ discarded        +  1 034   (mid-stream partial frame)
 
 ---
 
-## 2026-09-26 (8) — ✅ **`26f2bee` FLASHED AND RUNNING. All four Phase 10 producers are live on hardware for the first time.** Two predictions falsified — one of them exposes a stale figure that has been wrong since before TODO-27
+## 2026-09-26 (8) — ✅ **`dcfbffa` FLASHED AND RUNNING. All four Phase 10 producers are live on hardware for the first time.** Two predictions falsified — one of them exposes a stale figure that has been wrong since before TODO-27
 
-**The board now runs `26f2bee`**, `Build: Sep 26 2026 16:36:53   v0.6.0`, sha256 `24b71d73bf60a0d6ff9cbb5737a46bba6a04887a1fe55479d356b5a87dce3a6e`. It replaces `44c4680` (`Build: Sep 21 2026 17:21:24`). The artifact hash was verified immediately before upload and the archived `.hex` is committed at `8e6c9c6`, **before** the flash, so the intended artifact is a matter of record independent of the outcome. Full record: [`ai/evidence/2026-09-26-26f2bee-first-boot.md`](evidence/2026-09-26-26f2bee-first-boot.md).
+**The board now runs `dcfbffa`**, `Build: Sep 26 2026 16:36:53   v0.6.0`, sha256 `24b71d73bf60a0d6ff9cbb5737a46bba6a04887a1fe55479d356b5a87dce3a6e`. It replaces `029ac05` (`Build: Sep 21 2026 17:21:24`). The artifact hash was verified immediately before upload and the archived `.hex` is committed at `8a38e05`, **before** the flash, so the intended artifact is a matter of record independent of the outcome. Full record: [`ai/evidence/2026-09-26-dcfbffa-first-boot.md`](evidence/2026-09-26-dcfbffa-first-boot.md).
 
-**⚠️ Commits after `8e6c9c6` are comment and documentation only. The board is not HEAD and does not need to be.** Any behavioural change invalidates the flashed artifact and requires a new candidate.
+**⚠️ Commits after `8a38e05` are comment and documentation only. The board is not HEAD and does not need to be.** Any behavioural change invalidates the flashed artifact and requires a new candidate.
 
 **Verified `OBS`:** build identity exact · DataSender up (4096 B TX, 128 live bins, 4:1, protocol v2) · **session id `0`** · route `TS return, no injection` (ADR-004 boot default) · validation harness *announced* but **no test ran** · no generator, injection, relay transition or measurement · block period 46.3–46.7 ms against 46.4 expected · transport call time max **282 µs**.
 
@@ -3766,22 +3766,22 @@ The general lesson is worth keeping: **an expectation about the analog domain do
 
 ---
 
-## 🔒 FLASH REVIEW GATE — what enters the board relative to `44c4680`
+## 🔒 FLASH REVIEW GATE — what enters the board relative to `029ac05`
 
-**Nine firmware files, two tracks, and they cannot be separated.** The transport work and the Phase 9 harness work both sit between `44c4680` and HEAD, so **there is no flash that carries one without the other.**
+**Nine firmware files, two tracks, and they cannot be separated.** The transport work and the Phase 9 harness work both sit between `029ac05` and HEAD, so **there is no flash that carries one without the other.**
 
 | File | Δ | Track |
 |---|---|---|
 | `data_sender.{h,cpp}` | +663 | Phase 10 transport (TODO-56/57/58/59) |
 | `config.h` | +46 | transport + jack-detect availability |
-| `signal_router.{h,cpp}` | +54 | TODO-58 + one stale-comment fix (`aec99bf`) |
+| `signal_router.{h,cpp}` | +54 | TODO-58 + one stale-comment fix (`4e347d6`) |
 | `guitar_rig_analyzer.ino` | +53 | transport orchestration **+ Phase 9 Group C** |
 | **`validation.{h,cpp}`** | **+276** | **Phase 9 Groups A/C/D — never runtime-tested** |
 | `measurement_core.h` | +6 | Phase 9 Group D |
 
 This is not a surprise — TODO-9 already named this flash an *"EVIDENCE-ENABLING INTERMEDIATE BUILD, NOT the Phase 9 acceptance firmware."* One flash unlocks **two independent tracks**: passive `Serial1` capture, and TODO-48's runtime proof on the USB shell. They do not interact, and neither blocks the other.
 
-### The safety question: what does booting this image do that `44c4680` did not?
+### The safety question: what does booting this image do that `029ac05` did not?
 
 Examined file by file, restricted to code reachable **without operator input**:
 
@@ -3791,7 +3791,7 @@ Examined file by file, restricted to code reachable **without operator input**:
 | Relay state | **Unchanged.** Both relay pins still driven LOW at init → K1 NC, K2 TS. No new write anywhere | `OBS` |
 | Generator / injection | **Unchanged.** `signalGen_init()` untouched; `ENABLE_DUT_INJECTION` still 0; `signalRouter_setInjectionEnabled()` still has zero callers | `OBS` |
 | Audio routing | **Unchanged.** No edit to `audio_capture`, `audio_engine`, or the route set at boot | `OBS` |
-| Validation at startup | **`validation_init()` is print-only** — four `Serial.printf` calls, no GPIO, no relay, no audio. Its diff since `44c4680` is **comment and printf text only** | `OBS` |
+| Validation at startup | **`validation_init()` is print-only** — four `Serial.printf` calls, no GPIO, no relay, no audio. Its diff since `029ac05` is **comment and printf text only** | `OBS` |
 | `measurement_core.h` | **Comment-only diff.** No constant changed | `OBS` |
 | Phase 9 test bodies | Reachable **only** via `v` / `1`–`4` on USB Serial. Not invoked at boot or idle | `OBS` |
 | `signal_router.cpp` | One comment correction plus four writes to `s_status.detect_available` — **RAM struct fields, no hardware access** | `OBS` |
@@ -3799,14 +3799,14 @@ Examined file by file, restricted to code reachable **without operator input**:
 
 ### 🔺 One genuinely new boot-time side effect, and it is not zero
 
-**`dataSender_init()` now performs an EEPROM read-modify-write** — the TODO-56 session counter. That is **the firmware's only flash write**, and `44c4680` had none.
+**`dataSender_init()` now performs an EEPROM read-modify-write** — the TODO-56 session counter. That is **the firmware's only flash write**, and `029ac05` had none.
 
 - It writes **2 bytes at `EEPROM_ADDR_LINK_SESSION` (0)**, once per `_PI` boot.
 - It runs at `.ino:311`, **before** `audioCap_init()` at `:323`, so no audio is running and there is no acquisition timing to perturb.
 - Teensy 4.1 emulates EEPROM in a **reserved flash region separate from the program image**; nothing else in this firmware uses EEPROM.
 - Endurance at one write per boot is not a concern, and **no wear-levelling scheme is implemented or relied upon** (documented at `nextSessionId()`).
 
-**Credible hardware risk from booting: none identified.** No pin changes state that did not already, no relay actuates, no signal is generated or injected. The Teensy drives `Serial1` TX into open air, which it already did at `44c4680`. `Serial1` RX is enabled and never drained — unchanged, and harmless while nothing transmits into it.
+**Credible hardware risk from booting: none identified.** No pin changes state that did not already, no relay actuates, no signal is generated or injected. The Teensy drives `Serial1` TX into open air, which it already did at `029ac05`. `Serial1` RX is enabled and never drained — unchanged, and harmless while nothing transmits into it.
 
 **New idle behaviour to expect on USB Serial:** an added `[DataSender] Session id N | HELLO re-announced every 1000 ms | STATE every 500 ms` line at boot, and `Router:` / `State:` / `Atomicity:` lines in the `u` diagnostics.
 
@@ -4042,13 +4042,13 @@ The placement objection resolved itself on inspection: `dataSender_init()` runs 
 
 **⚠️ A method defect found while trying to prove the control run was untouched.** I attempted to show `_NONE` is binary-identical before and after the change by comparing hex md5. The hashes differed. The correct control — **building HEAD twice** — also produced two different hashes, because [.ino:215](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L215) stamps `__DATE__`/`__TIME__` into the firmware. That is TODO-52/53's build-identity feature working as designed, and it means **the build is not reproducible and hash comparison cannot answer questions about source equivalence.**
 
-What was actually established for `_NONE`: section sizes are **byte-identical** (`code:152448 data:72200 headers:8820`), `data_sender.cpp` is entirely `#if`'d out for that target, and the `config.h` addition is a `#define` emitting no code. **Carry this forward: "rebuild the commit and check the md5 matches" is not a valid identity procedure.** The md5 recorded for `44c4680` identifies the flashed *artifact* — which is still sound, because it was compared against the artifact that was flashed, not against a rebuild.
+What was actually established for `_NONE`: section sizes are **byte-identical** (`code:152448 data:72200 headers:8820`), `data_sender.cpp` is entirely `#if`'d out for that target, and the `config.h` addition is a `#define` emitting no code. **Carry this forward: "rebuild the commit and check the md5 matches" is not a valid identity procedure.** The md5 recorded for `029ac05` identifies the flashed *artifact* — which is still sound, because it was compared against the artifact that was flashed, not against a rebuild.
 
 **Evidence.** `_PI` and `_NONE` compile clean with **zero warnings**. `_RA8875` still stops on its **pre-existing** `AUDIO_SHIELD_STACKED` `#error` — verified untouched by this change, not a regression. 79 Pi tests pass (70 → 79): six `session_id` tests including wire-position and the `0`-is-valid case, plus drift checks for `DS_HELLO_REANNOUNCE_MS` and for the `[18-19]` field no longer being documented as reserved. Both new guards verified by negative control — drifting the firmware period to 2000 ms fails the sync test, and making the Pi stop decoding the field fails three session tests.
 
 **🔺 EVIDENCE BOUND, unchanged from slice 1 and worth restating because the work got more convincing, not more proven.** The parser and the firmware still share one author's reading of `data_sender.h`. Offline tests do **not** prove agreement with the compiled firmware on the wire; only a captured real Teensy stream does. **Nothing was flashed. No serial session was opened. T1 remains required, and no Phase 10 step is passed.**
 
-**Bench state untouched.** The board still runs `44c4680`. No relay actuated, no generator or injection enabled, no validation routine run. Phase 9 remains exactly where 2026-09-22 (6) left it — and the Test 4 corner is still uncharacterised; the `1989.0f` figure in the tree is a nominal unloaded reference, not behaviour.
+**Bench state untouched.** The board still runs `029ac05`. No relay actuated, no generator or injection enabled, no validation routine run. Phase 9 remains exactly where 2026-09-22 (6) left it — and the Test 4 corner is still uncharacterised; the `1989.0f` figure in the tree is a nominal unloaded reference, not behaviour.
 
 **Portfolio note.** The reusable lesson is about the shape of the original audit. Protocol v2's audit asked *"is every verdict on the wire?"* and found 17 findings. It did not ask *"can a receiver that arrives late ever decode this?"* — and so a defect that makes every RESULT permanently undecodable to a late-attaching Pi sat in the tree, through an audit, until somebody tried to be the receiver. The second lesson is smaller and sharper: the fix that looked complete (announce periodically) was still wrong until the ambiguity it introduced — repeat versus restart — was closed in the same slice.
 
@@ -4101,7 +4101,7 @@ The third is the important one: transposing those nibbles turns every railed bin
 
 **No Phase 10 step is passed by this work.** Steps 8 (CRC rejection) and 9 (unknown-packet tolerance) now have offline coverage; the steps themselves are bench steps against a real stream.
 
-**State of the bench — unchanged and untouched.** No firmware was compiled or flashed. The board still runs `44c4680` (`Build: Sep 21 2026 17:21:24 v0.6.0`, hex md5 `65405de70fc778fdd8cf6a48e1cbe45e`). No serial port was opened — `list_ports` enumerated the Teensy at `/dev/cu.usbmodem192895301` and nothing else was done. No relay was actuated, no generator enabled, no validation routine run. **Phase 9 remains blocked exactly where 2026-09-22 (6) left it.**
+**State of the bench — unchanged and untouched.** No firmware was compiled or flashed. The board still runs `029ac05` (`Build: Sep 21 2026 17:21:24 v0.6.0`, hex md5 `65405de70fc778fdd8cf6a48e1cbe45e`). No serial port was opened — `list_ports` enumerated the Teensy at `/dev/cu.usbmodem192895301` and nothing else was done. No relay was actuated, no generator enabled, no validation routine run. **Phase 9 remains blocked exactly where 2026-09-22 (6) left it.**
 
 **Portfolio note.** The two defects are the material worth keeping, and they are the same lesson from two directions: *writing the consumer is what audits the producer*. The protocol had been audited once already — 17 findings, five severe — and the HELLO retransmission gap survived that audit because the audit asked *"is every verdict on the wire?"* and not *"can a receiver that arrives late ever decode this?"* Nobody had tried to be the receiver. Photograph-equivalent for this entry: the negative-control table above, and the `DS_PACKET_ROUTER` / `ROUTER_STATUS` mismatch the drift guard caught within seconds of first existing.
 
@@ -4127,7 +4127,7 @@ Group B (Test 4 text/default/criterion)
 
 **Waiting for Group B before flashing prevents collecting the evidence Group B requires.** The
 dependency is inverted for Test 4 and only for Test 4; Groups A, C and D were genuinely finishable
-first, and they are (`119a737`, `8878bb4`, `cec814a`).
+first, and they are (`8daddfc`, `0a530d7`, `1f8c7c1`).
 
 ### 🔺 The first flash is NOT the Phase 9 acceptance firmware
 
@@ -4150,7 +4150,7 @@ rule that cannot reject a corner that is too low.
 2. **Compile HEAD as one integrated state** before flashing. C and D were compile-verified
    individually; the accumulated state has not been built as a whole.
 3. **Flash and IMMEDIATELY identify** — record commit, build stamp and hex MD5, and establish that
-   the board is no longer running `44c4680`.
+   the board is no longer running `029ac05`.
 4. **TODO-48 runtime/preflight work BEFORE using the harness for characterisation.** Group C's
    `validation_promptExpectedOffset()` has **never been runtime-tested** — compiling is not
    evidence that it rejects `6dB`, accepts `0`, or handles overlength input. **Do not go from
@@ -4172,7 +4172,7 @@ rule that cannot reject a corner that is too low.
 must be established is that its **collection is technically valid** and what it actually measures. **A
 legitimate Test 1 failure may reveal a real hardware or system problem that must be fixed before
 Test 4 characterisation. Test 1 is NOT to be tuned until it passes** — that is precisely the
-acceptance-boundary defect removed in `cec814a`.
+acceptance-boundary defect removed in `1f8c7c1`.
 
 ### `DECISION` — the 100 nF film capacitor is a VALIDATION-FIXTURE dependency, not a build blocker
 
@@ -4206,7 +4206,7 @@ running as a PARALLEL validation track.**
 ### Not done here
 
 **Records only.** No firmware, no runbook, no compile, no flash, no serial traffic, no bench action.
-**Group B not drafted.** The board still runs `44c4680`. *(Runbook note, not edited: the Phase 9
+**Group B not drafted.** The board still runs `029ac05`. *(Runbook note, not edited: the Phase 9
 parts tray still lists the 1 nF C0G as "optional — RC filter calibration", which Group B supersedes.)*
 
 ---
@@ -4221,9 +4221,9 @@ Phase 9.**
 
 | Group | Commit | What it fixed |
 |---|---|---|
-| **A** | `119a737` | The external-generator/`SOURCE_NODE` contention hazard. Text only, token-identical |
-| **C** | `8878bb4` | Test 3's nominal −6.02 dB and the `-6.0` default hidden in the serial parser |
-| **D** | `cec814a` | Acceptance-run-driven tolerance-tightening advice |
+| **A** | `8daddfc` | The external-generator/`SOURCE_NODE` contention hazard. Text only, token-identical |
+| **C** | `0a530d7` | Test 3's nominal −6.02 dB and the `-6.0` default hidden in the serial parser |
+| **D** | `1f8c7c1` | Acceptance-run-driven tolerance-tightening advice |
 
 **⚠️ The line this pass exists to hold: none of that is validation evidence.** Three commits of
 corrected text and compiled behaviour, **none flashed, none run.** **Tests 1 and 2 have never been
@@ -4235,21 +4235,21 @@ into evidence by the act of recording it.**
 ### `DECISION` — status after reconciliation
 
 - **TODO-55 → 🛑 Phase 9 instructions STILL BLOCKED**, not downgraded to 🟡. The header now separates
-  **RESOLVED** (the contention hazard, `119a737`) from **STILL BLOCKED** (Test 4's text, its
+  **RESOLVED** (the contention hazard, `8daddfc`) from **STILL BLOCKED** (Test 4's text, its
   `1989.0f` default, its defective criterion 1, and the TODO-48 reconciliation that follows).
   **Status communicates operational readiness, not the severity of the original defect** — an
   operator following the Test 4 text today would still build the abandoned fixture.
 - **TODO-9 → 🔴 blocked, unchanged.** Its Proof still requires `1`, `2`, `3`, `4` to actually PASS.
   Stale gate language is corrected: the fixture instructions are no longer "electrically unsafe",
-  the parts row records Test 3 decided and Test 4's topology frozen, and **`b275852` is no longer the
-  flash target** — the accumulated set runs through `cec814a`, plus Group B.
+  the parts row records Test 3 decided and Test 4's topology frozen, and **`61fc0dc` is no longer the
+  flash target** — the accumulated set runs through `1f8c7c1`, plus Group B.
 - **TODO-16 → 🔴 open. Goal preserved, mechanism reversed.** It may no longer say "after Phase 9
   passes, tighten based on observed headroom". A revision is now a **separate, justified design
   decision, journalled and frozen before the next acceptance run**, with evidence from
-  characterisation runs. **`cec814a` did not close it:** Group D removed the bad mechanism; it did
+  characterisation runs. **`1f8c7c1` did not close it:** Group D removed the bad mechanism; it did
   not do the characterisation.
 - **TODO-48** — scope/state note only; the Proof reconciliation is **not** done. Records that newer
-  unflashed commits sit above `399e54b`, and that step 3 now also owns **harness-level post-consent
+  unflashed commits sit above `4ab4d8e`, and that step 3 now also owns **harness-level post-consent
   cancellation**.
 - **TODO-52** — its Y-split reference is **preserved and marked HISTORICAL**, with a note that the
   cleared finding still applies to the loop, which uses the same tip.
@@ -4275,7 +4275,7 @@ values) that the two known sites would have left in place.**
 ### Not done here
 
 **Group B not drafted. TODO-48's Proof not reconciled. Nothing compiled, flashed or run.** The board
-still runs `44c4680`. No bench action, no serial traffic.
+still runs `029ac05`. No bench action, no serial traffic.
 
 ---
 
@@ -4367,7 +4367,7 @@ evolution is evidence and is to be preserved.**
 
 Not compiled, not staged, not committed. **No tolerance constant, threshold, criterion, measurement
 calculation, result structure, status propagation or pass/fail expression changed.** TODO files
-untouched. The board still runs `44c4680`. No bench action, no serial traffic.
+untouched. The board still runs `029ac05`. No bench action, no serial traffic.
 
 ---
 
@@ -4381,7 +4381,7 @@ things that change what the prompt must say and what the fix must touch. **Neith
 
 ### 🔺 Finding 1 — the decision and the estimator describe different quantities
 
-**`OBS`, code at `119a737`.** `validation_runKnownGainOffset()` (`validation.cpp:1023`) compares
+**`OBS`, code at `8daddfc`.** `validation_runKnownGainOffset()` (`validation.cpp:1023`) compares
 `expected_offset_db` against `band_mean`: the mean over 200 Hz–10 kHz of
 `20·log10(mean_return[k] / mean_source[k])`, where the two accumulations come from **two different
 ADC channels** — SOURCE on LINE-IN-L (ch0), RETURN on LINE-IN-R (ch1). Pass is
@@ -4450,7 +4450,7 @@ name a DMM, a scope, a Test-1 correction or any combination until one is validat
 
 ### 🔺 Finding 3 — the harness has NO post-consent operator cancellation, anywhere
 
-**`OBS`, code at `119a737`, from a read-only inventory of the harness's cancellation semantics:**
+**`OBS`, code at `8daddfc`, from a read-only inventory of the harness's cancellation semantics:**
 
 - **`validation_waitForUser()` (`validation.cpp:471`) is the harness's ONLY operator-facing
   cancellation mechanism, and it exists ONLY as a pre-test consent gate.** It prints
@@ -4516,7 +4516,7 @@ nominal "6 dB" as the expectation).
 ### Not done here
 
 **TODO-55/TODO-9 not updated. Groups B and D untouched. TODO-48's Proof line remains step 3.** Not
-compiled, not flashed. The board still runs `44c4680`, and Group A's prompts are already not on it.
+compiled, not flashed. The board still runs `029ac05`, and Group A's prompts are already not on it.
 No bench action, no serial traffic.
 
 ---
@@ -4690,13 +4690,13 @@ rather than substituting a better guess. **Not fixed in this entry.**
 ### Not done here
 
 **No code changed. TODO-55 not updated.** Nothing purchased or built, no bench action, no serial
-traffic, no external sources consulted. The board still runs `44c4680`.
+traffic, no external sources consulted. The board still runs `029ac05`.
 
 ---
 
 ## 2026-09-22 (1) — Test 4's attenuation criterion is **one-sided: it cannot reject a corner that is too LOW.** Model-derived replacement proposed. Fixture candidate 1 kΩ + 100 nF film — **candidate, NOT a specification. No code changed**
 
-### Observed — `OBS (code)`, read from the tree at `e88f6a4`
+### Observed — `OBS (code)`, read from the tree at `0b738e4`
 
 - Test 4 applies four criteria ([`validation.cpp:1097–1237`](../firmware/guitar_rig_analyzer/validation.cpp#L1097-L1237)): **delta at 2·fc**
   versus the 200 Hz–fc passband mean must be `< -4.0 dB`; **slope** over [fc, 10 kHz] must be within
@@ -4794,7 +4794,7 @@ fixtures → only then Phase 9.
 ### Not done here
 
 **No code changed. TODO-55 not updated.** No fixture built, nothing purchased, no bench action, no
-serial traffic. The board still runs `44c4680`.
+serial traffic. The board still runs `029ac05`.
 
 ---
 
@@ -4826,9 +4826,9 @@ location (this one) was held until the new environment had been verified.
 
 | Check | Result | Tier |
 |---|---|---|
-| HEAD, old vs new | both `d8e1c9ab8e2b5393bf167aa42659628ee1eb37ad` | `OBS` |
+| HEAD, old vs new | both `61a913326abe80c4860099e8a896b45e91e36c62` | `OBS` |
 | HEAD tree, old vs new | both `a0c250729fd11cd3a56c0250470e9fdc18862049` | `OBS` |
-| Four local branches | identical commits in both repositories: `docs/asbuilt-capture` `d8e1c9a`, `main` `aa9a795`, `firmware/bench-safe-todos` `f1b13ed`, `firmware/todo-51-send-relay-toggle` `3ea3880` | `OBS` |
+| Four local branches | identical commits in both repositories: `docs/asbuilt-capture` `61a9133`, `main` `8701649`, `firmware/bench-safe-todos` `d5d8fe4`, `firmware/todo-51-send-relay-toggle` `bd46fcc` | `OBS` |
 | Object storage | no `objects/info/alternates` file in the new repository | `OBS` |
 | Tags / custom hooks | none / none | `OBS` |
 | `origin` | `github.com/conley-vidal-eng-goat/guitar_rig_analyzer`; GitHub's default branch queried and confirmed as `main` | `OBS` |
@@ -4866,7 +4866,7 @@ from the migration session and were not repeated.
   decision.
 - **Do not put the canonical repository under Desktop or Documents** while those folders are iCloud
   managed.
-- **The board is unchanged:** it still runs the `44c4680` build, and this commit is records-only.
+- **The board is unchanged:** it still runs the `029ac05` build, and this commit is records-only.
   Firmware identity was **not** re-read in the new environment, since no port was opened.
 
 No hardware action. No serial traffic. POWER ON (Teensy connected by USB only). No breadboard
@@ -4884,11 +4884,11 @@ and so that the move that followed is never read as proof of the mechanism.
 
 ### What was observed — `OBS` / `MEAS`
 
-- **Deleted by Git:** `b6db3d6` (2026-09-20, the runbook v3.1 correction pass) deleted
+- **Deleted by Git:** `47edb0f` (2026-09-20, the runbook v3.1 correction pass) deleted
   `docs/breadboard_bringup_v3.pdf`. It is not in HEAD.
 - **Came back, byte-identical:** the file then reappeared in the Desktop working tree, where
   Git reports it as untracked (`??`). Its Git blob hash, `d066b4db3262a3089a0a21b2fc6bf140cbd5b4a5`,
-  matches the blob `b6db3d6` removed.
+  matches the blob `47edb0f` removed.
 - **Quarantine xattr names `com.apple.cloudd`.** Its embedded timestamp decodes to
   **2026-09-04 19:54**, which is **before** the 2026-09-20 deletion.
 - **File dates:** birth and mtime are the original 2026-08-24 20:16:54; ctime is
@@ -4990,7 +4990,7 @@ external source → J4 Instrument In → C1 → U1 buffer → C2 → col 48 = SO
 ```
 
 **SOURCE is sampled at col 48 / LINE-IN-L; RETURN at LINE-IN-R.** Preconditions: pin 14 LOW
-(relay #1 NC) and pin 15 LOW (relay #2 TS) — both the boot defaults on `44c4680`.
+(relay #1 NC) and pin 15 LOW (relay #2 TS) — both the boot defaults on `029ac05`.
 
 **Why this topology is the right one.** The generator drives the high-impedance instrument input
 (R5 through C1; the JFET draws pA) instead of fighting the op-amp output. And because **SOURCE is
@@ -5096,9 +5096,9 @@ boundary — it gave the hardware claim evidence.
 ### Verification — stronger than "it compiles"
 
 **Compile:** `teensy:avr:teensy41`, **exit code 0** (captured as the return status), `--warnings all
---verbose`, fresh build path. **0 warnings, 0 errors.** Memory figures identical to `44c4680`.
+--verbose`, fresh build path. **0 warnings, 0 errors.** Memory figures identical to `029ac05`.
 
-**Machine-code comparison against the archived `44c4680` build artifact**, section by section.
+**Machine-code comparison against the archived `029ac05` build artifact**, section by section.
 That artifact is bound to the board by the controlled flash-and-identity record in entry (3) —
 **the board's flash contents were not read back and compared.** The sections compared are the
 allocated sections with file contents, enumerated from the ELF section table; `.bss`,
@@ -5111,7 +5111,7 @@ allocated sections with file contents, enumerated from the ELF section table; `.
 
 **The four bytes are exactly the time digits of `__TIME__`** — at offsets 16705, 16707, 16710,
 16711, `17:21:24` → `19:41:10`. The date string is unchanged. **Every compared loadable section
-is byte-identical to the archived `44c4680` artifact except `.data`, which differs by exactly the
+is byte-identical to the archived `029ac05` artifact except `.data`, which differs by exactly the
 four time digits of `__TIME__`.**
 
 > **So "comment-only" is established at the machine-code level, not asserted from the diff.**
@@ -5131,10 +5131,10 @@ apart from build-identity timestamp data, so there is no runtime behaviour to va
 
 ### State after this commit
 
-- **The board still runs `44c4680`** (`Build: Sep 21 2026 17:21:24   v0.6.0`, hex md5
+- **The board still runs `029ac05`** (`Build: Sep 21 2026 17:21:24   v0.6.0`, hex md5
   `65405de70fc778fdd8cf6a48e1cbe45e`). **HEAD is now ahead of the board by a comment-only
   commit.** No executable difference was found between the two in the compared sections, but the board's
-  self-reported identity is still `44c4680`'s, and any future bench entry should record it as such.
+  self-reported identity is still `029ac05`'s, and any future bench entry should record it as such.
 - Power **OFF**.
 
 **Next:** TODO-48 — the validation harness runtime check — and then the Phase 9 fixtures.
@@ -5159,7 +5159,7 @@ the only evidence.** It no longer is.
 
 ### Evidence layer 1 — `OBS/RUN`: the fresh boot
 
-- **Fresh boot of identified firmware `44c4680`** (`Build: Sep 21 2026 17:21:24   v0.6.0`,
+- **Fresh boot of identified firmware `029ac05`** (`Build: Sep 21 2026 17:21:24   v0.6.0`,
   hex md5 `65405de70fc778fdd8cf6a48e1cbe45e`). The upload rebooted the board.
 - **No serial command was sent.**
 - `signalRouter_init()`'s own output was captured:
@@ -5171,7 +5171,7 @@ the only evidence.** It no longer is.
 
 ### Evidence layer 2 — `CODE/ELF`: the unobserved prefix contains no path that can drive a relay pin
 
-Traced read-only at clean `08f50cf`, checked against the **flashed ELF** rather than source
+Traced read-only at clean `b93f689`, checked against the **flashed ELF** rather than source
 alone.
 
 **Where the capture began:** `audio_capture.cpp:412`
@@ -5275,7 +5275,7 @@ rather than on an inference from the pulldown.
 
 | Proof clause | Evidence | Result |
 |---|---|---|
-| Fresh boot with no commands | Upload rebooted `44c4680`; no command sent | **PASS** |
+| Fresh boot with no commands | Upload rebooted `029ac05`; no command sent | **PASS** |
 | Route description matches router selection | Router reported TS; `[Main] Route: TS return, no injection` agreed | **PASS** |
 | Boot shows no relay actuation | Captured router output shows no actuation/transition; **layer 2** shows the uncaptured prefix contains no firmware path capable of it | **PASS** |
 | No ROUTE_CHANGED | None in the capture; the fix uses a description-only setter by design | **PASS** |
@@ -5317,7 +5317,7 @@ firmware, **after** the rule had been written down. What changed this time is th
 lesson altered the *method* — audit first, edit second — rather than only being
 recorded afterward.
 
-### The audit inventory (`44c4680`, 10 sites / 7 files)
+### The audit inventory (`029ac05`, 10 sites / 7 files)
 
 | Class | Site | What was wrong |
 |---|---|---|
@@ -5363,7 +5363,7 @@ at which results arrive.
 
 | Tier | Link | Value |
 |---|---|---|
-| `OBS/BUILD` | Clean revision | **`44c4680`**, tree verified CLEAN |
+| `OBS/BUILD` | Clean revision | **`029ac05`**, tree verified CLEAN |
 | `OBS/BUILD` | Artifact | HEX **MD5 `65405de70fc778fdd8cf6a48e1cbe45e`**, embedded `Sep 21 2026 17:21:24   v0.6.0` |
 | `OBS/BUILD` | Re-verified | MD5 re-checked immediately before upload, after the session scratchpad path changed |
 | `OBS/UPLOAD` | Upload | **EXIT 0**, captured as the process return status |
@@ -5416,7 +5416,7 @@ strategies failed to solve earlier today.
 
 ### 🔍 Loop rate — second observation, still unexplained
 
-`~975 180/sec` on `44c4680`, following `~973 469/sec` on `399e54b`, against
+`~975 180/sec` on `029ac05`, following `~973 469/sec` on `4ab4d8e`, against
 `≈ 950 000/sec` in every earlier capture.
 
 **Two separately compiled post-change binaries now reproduce the higher rate.** That
@@ -5468,7 +5468,7 @@ Every step below is `OBS`; **there is no inference between them.**
 
 | Tier | Link | Value |
 |---|---|---|
-| `OBS/BUILD` | Clean revision | **`399e54b`**, tree verified CLEAN at build time |
+| `OBS/BUILD` | Clean revision | **`4ab4d8e`**, tree verified CLEAN at build time |
 | `OBS/BUILD` | Artifact it produced | HEX **MD5 `55a45287ae39c5a5ffbc33f08e6801eb`**, 674 074 B |
 | `OBS/BUILD` | Identity embedded in it | **`Sep 21 2026 17:09:03   v0.6.0`** |
 | `OBS/UPLOAD` | First attempt | **EXIT 1 — FAILED. Nothing was written.** |
@@ -5493,9 +5493,9 @@ Every step below is `OBS`; **there is no inference between them.**
 `FIRMWARE_VERSION`; it **positively identifies the COMPILE and nothing more.**
 
 The revision→artifact association comes from the **controlled clean-tree build
-record above** — a build run from a verified-clean `399e54b`, whose artifact hash
+record above** — a build run from a verified-clean `4ab4d8e`, whose artifact hash
 and embedded stamp were both recorded before the upload. **Taken together** the two
-halves bind this running compile to `399e54b`.
+halves bind this running compile to `4ab4d8e`.
 
 > **Do not restate the stamp as though it independently asserts the commit.** It
 > does not. If this record is lost, the board can still tell you *which compile* is
@@ -5530,7 +5530,7 @@ about this build worth explaining; if it vanishes, that is also information.
 
 **1. Bench firmware identity must be observable AFTER attachment, not only during boot.**
 
-The first stamp (`57dcdc1`) printed once in `setup()` and **was never captured, across
+The first stamp (`8a77d5c`) printed once in `setup()` and **was never captured, across
 four independent strategies**: a late monitor open, a DTR/RTS pulse (Teensy 4.x ignores
 those lines — uptime ran straight through, proving no reset), a physical button press
 (the Teensy 4.1 button is *program mode*, not reset — it halts the sketch rather than
@@ -5542,7 +5542,7 @@ restarting it), and a USB power cycle with a pre-armed catcher.
 into a void on every cold boot, and **no amount of host-side care could recover it.**
 
 > **A once-at-boot banner cannot establish identity on a USB-CDC board.** The fix
-> (`399e54b`) was to repeat the identity in the 5 s diagnostics, so **every captured
+> (`4ab4d8e`) was to repeat the identity in the 5 s diagnostics, so **every captured
 > interval carries its own compile provenance** instead of needing correlation with a
 > boot event that may never have been captured. A bounded host-wait was added too, but
 > **the periodic line is the one that actually solves it.**
@@ -5554,7 +5554,7 @@ reboot request"` — because an open serial connection held the port. **Nothing 
 written.**
 
 **This is the sharper half of the lesson:** the *earlier* upload in this session
-(2026-09-21, pre-`399e54b`) was reported as success **on the strength of normal-looking
+(2026-09-21, pre-`4ab4d8e`) was reported as success **on the strength of normal-looking
 output alone, because the exit code was lost to a shell-construction error.** It
 happened to succeed only because no serial connection was open at that moment. **Had
 one been, it would have failed identically and the failure would have been invisible**
@@ -5568,7 +5568,7 @@ evidence you can rely on.**
 
 **TODO-53 → 🟢 CLOSED.** Its Proof line is exactly two clauses and both are now met:
 *"the board runs a build whose identity is recorded in the journal"* (this entry) and
-*"no temporary relay command remains in the active tree"* (`q` absent from `399e54b`
+*"no temporary relay command remains in the active tree"* (`q` absent from `4ab4d8e`
 and from the flashed artifact).
 
 **TODO-27 stays 🟡 and must NOT be promoted on this capture.** Its corrected constant
@@ -5655,7 +5655,7 @@ therefore 🟡 with the hazard resolved and the record clause outstanding.
 
 ### Where this leaves the Phase 9 chain
 
-`preserve/understand q worktree` ✅ (`3ea3880`) → **`TODO-52 feed-count` ✅ (today)**
+`preserve/understand q worktree` ✅ (`bd46fcc`) → **`TODO-52 feed-count` ✅ (today)**
 → `build/flash an identified HEAD` → `bench-verify 27/48/50` → `construct
 fixtures` → `Phase 9`.
 
@@ -5680,7 +5680,7 @@ Journal 2026-09-19 (5) recorded three firmware fixes and an eleven-defect runboo
 pass as *"done on branch `firmware/bench-safe-todos` in a separate git worktree
 … Nothing is committed. Review with `git diff main firmware/bench-safe-todos`."*
 
-**That branch is an empty label.** It points at `f1b13ed`, the same commit as
+**That branch is an empty label.** It points at `d5d8fe4`, the same commit as
 `docs/asbuilt-capture`, with **zero commits on it.** The worktree it lived in was
 under a session scratchpad, `git worktree list` marks it **prunable**, and the
 directory is gone. No stash. `git fsck` turns up two dangling commits, both
@@ -5706,10 +5706,10 @@ the runbook had no Appendix C.1 and no "Board coordinates" section.
 
 | Commit | What | Status |
 |---|---|---|
-| `b2cdb4f` | **TODO-48** — harness consent + shared preflight gate | compile/link verified |
-| `3fdde97` | **TODO-50** — `audioEngine_setRouteDescription()`, boot stays a non-transition | compile/link verified |
-| `b275852` | **TODO-27** — `EXPECTED_BLOCK_MS` uses the FFT hop; `config.h` comment corrected | compile/link verified |
-| `b6db3d6` | **Runbook v3.1** — thirteen defects, Board coordinates section, Appendix C.1; stale PDF removed | documentation only |
+| `65c9a80` | **TODO-48** — harness consent + shared preflight gate | compile/link verified |
+| `3c1c59e` | **TODO-50** — `audioEngine_setRouteDescription()`, boot stays a non-transition | compile/link verified |
+| `61fc0dc` | **TODO-27** — `EXPECTED_BLOCK_MS` uses the FFT hop; `config.h` comment corrected | compile/link verified |
+| `47edb0f` | **Runbook v3.1** — thirteen defects, Board coordinates section, Appendix C.1; stale PDF removed | documentation only |
 
 **⚠️ ALL FOUR ARE COMPILE AND LINK VERIFIED ONLY. NOTHING HAS BEEN FLASHED.
 NOTHING IS BENCH-VERIFIED.** No TODO moves off 🟡 on account of these commits.
@@ -5745,7 +5745,7 @@ Teensy 4.1, `teensy:avr:teensy41`, clean build, no errors and no new warnings:
 
 | | FLASH code | FLASH data | RAM1 vars |
 |---|---|---|---|
-| Baseline `f1b13ed` | 156 608 | 72 200 | 218 080 |
+| Baseline `d5d8fe4` | 156 608 | 72 200 | 218 080 |
 | All three firmware commits | 157 248 | 73 224 | 219 104 |
 
 The baseline **reproduces journal (5)'s recorded numbers exactly**, which is what
@@ -5757,7 +5757,7 @@ false alarm, and it was checked the way that entry says to rather than by trusti
 the numbers: the `.elf` md5s differ, `audioEngine_setRouteDescription(char const*)`
 is in the symbol table, and searching the binaries for the IEEE-754 bytes of the
 timing constant finds **4 occurrences of 46.44 ms and zero of 92.88 ms** in the
-full build, and the reverse in baseline. `b2cdb4f` was also rebuilt standalone,
+full build, and the reverse in baseline. `65c9a80` was also rebuilt standalone,
 because it was staged from a split patch and a split patch can leave an
 inconsistent tree.
 
@@ -5778,7 +5778,7 @@ calls a column free, **including this one**."*
 **This is the most transferable thing this session produced, and it was found by
 closing TODO-31 rather than by the correction pass itself.**
 
-`b6db3d6` corrected C1-01 — the Phase 0 step 5 instruction that bridges the red
+`47edb0f` corrected C1-01 — the Phase 0 step 5 instruction that bridges the red
 rails which Phase 1 step 7 then re-purposes as VGND — in the **numbered step** and
 in the **end-of-phase verify row**. Closing TODO-31 required auditing for *other*
 rail re-purposings, and that audit found the same obsolete instruction still alive
@@ -5809,7 +5809,7 @@ line, and Appendix C.1's C1-01 row records that the defect spanned **four** site
 The audit found **no other rail re-purposing** in the document: `BOT_RED` → VGND in
 Phase 1 step 7 is the only one.
 
-**This was deliberately NOT folded back into `b6db3d6` by amending it.** The
+**This was deliberately NOT folded back into `47edb0f` by amending it.** The
 history is more useful showing *correction → independent audit → discovery that the
 correction was incomplete → follow-up* than showing a first pass that was
 magically complete. The miss is the lesson.
@@ -5826,7 +5826,7 @@ COIL (+) → +5V rail. Jumper from `55f` (pin 10)"*).
 this machine, and the original embeds 26 images, so the pipeline had an SVG
 conversion stage that cannot be reconstructed from the artifact. Improvising a
 different renderer would have produced something nobody could vouch for.
-**Removed instead; the bytes remain in history at `64894d4`.** The Markdown is now
+**Removed instead; the bytes remain in history at `c163c72`.** The Markdown is now
 the only copy.
 
 ### ⚠️ Phase 9 is NOT unblocked by this session
@@ -5988,7 +5988,7 @@ TODO-51's Proof line reads: *"pin 14 observably driven HIGH and LOW from an oper
 
 ### ⚠️ What is actually on the board right now
 
-**The Teensy is running the TEST build, not `f1b13ed`** — boot stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95`. It contains the `q` toggle and the bring-up boot banner.
+**The Teensy is running the TEST build, not `d5d8fe4`** — boot stamp `Sep 19 2026 22:20:52`, md5 `a07722c6e6f5bb64f27b1719a7aa1b95`. It contains the `q` toggle and the bring-up boot banner.
 
 **This now matters more than it did when the toggle was written.** When `56a`/`57a`/`58a` were unwired, a stray `q` was electrically inert. **With the three jumpers fitted, `q` routes a real signal** — and, if the hazard above is real, into an output-contention condition. Anyone using this board should know `q` is live.
 
@@ -6043,7 +6043,7 @@ Driven by the temporary `q` toggle, which writes `RELAY_SEND_PIN` directly and d
 
 ### Firmware status
 
-The `q` toggle and the boot identifier are **temporary** and live only on branch `firmware/todo-51-send-relay-toggle` (one file, additive). They must be removed when the send path gets a real owner. Main tree remains clean at `f1b13ed`.
+The `q` toggle and the boot identifier are **temporary** and live only on branch `firmware/todo-51-send-relay-toggle` (one file, additive). They must be removed when the send path gets a real owner. Main tree remains clean at `d5d8fe4`.
 
 ## 2026-09-19 (5) — ✅ **XLR RETURN PATH BENCH-VALIDATED WITH A REAL SIGNAL.** Stimulus-present TS/XLR A/B completed with both return sources live. Send-side relay found **unreachable from the running firmware** — code-derived, before any bench time was spent on it
 
@@ -6082,7 +6082,7 @@ The fix was to feed the **same** `SOURCE_NODE` stimulus to both return sources a
 
 ### Send-side relay: stopped before the bench, on code evidence
 
-The stated next step was to test the send-side relay "the same way." **It is not currently testable that way, and the reason is in the firmware, not the hardware.** Established by reading the active tree at `f1b13ed`:
+The stated next step was to test the send-side relay "the same way." **It is not currently testable that way, and the reason is in the firmware, not the hardware.** Established by reading the active tree at `d5d8fe4`:
 
 1. **`signalRouter_setInjectionEnabled()` has zero callers.** Only its definition (`signal_router.cpp:331`), its declaration (`signal_router.h:235`), and references in `signal_router_contract.md` / the runbook. The contract's step 6 — `measurement_engine` calling it at CAPTURE entry/exit — was never done (TODO-11). The Phase 6 `p`/`P` toggle was removed per the runbook's own step 13. `i` is `insightsEngine_printToSerial()`. **Nothing in the running firmware can drive pin 14 HIGH.**
 2. **It is gated even if reached.** It rejects unless `s_jack_rig_send.debounced` is true (pin 17), and `config.h:279` still carries `JACK_RIG_SEND_DETECT_INVERTED 0 // Phase 7 — not built, sense unverified`.
@@ -6095,7 +6095,7 @@ The stated next step was to test the send-side relay "the same way." **It is not
 
 ### Firmware and runbook work done in parallel (compile-verified, NOT bench-verified)
 
-Done on branch `firmware/bench-safe-todos` in a **separate git worktree**, deliberately so the main tree stayed clean at `f1b13ed` and could not be flashed with unproven code mid-session. **Nothing here has been on the board.**
+Done on branch `firmware/bench-safe-todos` in a **separate git worktree**, deliberately so the main tree stayed clean at `d5d8fe4` and could not be flashed with unproven code mid-session. **Nothing here has been on the board.**
 
 - **TODO-48** — `validation_waitForUser()` returned `void` and read-and-discarded every byte, which is exactly why a cancel keystroke could not be distinguished from consent. Now captures the first byte and returns `bool`. Added `validation_preflightGate()` so the `1`–`4` single-test commands run the same level check that only `v` ran. `runAll()` aborts on decline. *(Consent accepts `y` as well as CR/LF: a monitor set to "No Line Ending" sends nothing on Enter, and strict CR/LF-only would hang the prompt with no exit.)*
 - **TODO-50** — added `audioEngine_setRouteDescription()`, a description-only setter (no mixer gains, no smoothing reset, no `ROUTE_CHANGED`), called from `signalRouter_init()`. **ADR-004 Decision 2 is preserved** — boot is still not a route-change transition. Verified `signalRouter_init()` (`.ino:327`) runs after `audioEngine_init()` (`.ino:257`), so the sync is not overwritten.
@@ -6316,7 +6316,7 @@ Which rail pair was probed (netlist **GAP-5**); the adapter row; **relay #2's ma
 
 ---
 
-## 2026-09-17 (1) — 🔨 RELAY_RETURN driver #2 BUILT at cols 8–18 and measured de-energised at rest. 🛑 Then `j` came back **"Unknown command"**: the Teensy is running a build older than `3460080`. Compile ≠ flashed, caught at the bench
+## 2026-09-17 (1) — 🔨 RELAY_RETURN driver #2 BUILT at cols 8–18 and measured de-energised at rest. 🛑 Then `j` came back **"Unknown command"**: the Teensy is running a build older than `ae02a8b`. Compile ≠ flashed, caught at the bench
 
 ### What was built, and where
 
@@ -6336,11 +6336,11 @@ Powered, before any Serial command (`MEAS`): base `10a` → GND **1.7 mV** · Te
 
 ### 🛑 The flash mismatch
 
-`j` returned `[Main] Unknown command: 'j'.`, and the help list ended at `r=reset EMA` with **no `j`/`k` line** (`MEAS`, serial readback). The local tree and `HEAD` **do** contain it (`guitar_rig_analyzer.ino:452`, committed in `3460080`). So **source ✅ / flashed ❌**: the board is running a build older than ADR-004.
+`j` returned `[Main] Unknown command: 'j'.`, and the help list ended at `r=reset EMA` with **no `j`/`k` line** (`MEAS`, serial readback). The local tree and `HEAD` **do** contain it (`guitar_rig_analyzer.ino:452`, committed in `ae02a8b`). So **source ✅ / flashed ❌**: the board is running a build older than ADR-004.
 
 **`k` was correctly not sent.** On the old build it is equally unknown, and no other command drives pin 15 — so nothing could have been learned, and the next thing typed should be a reflash.
 
-**This is the third time this project has been saved by reading state back from the board instead of trusting a report** (see 2026-09-16 (3) item 3, which used the same unknown-command trick to prove which build was flashed). `3460080`'s own commit message says "compile-verified, NOT bench-verified" — this is what that boundary looks like when it bites. **Keep the help-list readback as the standard first check after any upload.**
+**This is the third time this project has been saved by reading state back from the board instead of trusting a report** (see 2026-09-16 (3) item 3, which used the same unknown-command trick to prove which build was flashed). `ae02a8b`'s own commit message says "compile-verified, NOT bench-verified" — this is what that boundary looks like when it bites. **Keep the help-list readback as the standard first check after any upload.**
 
 ### No new Phase 7 firmware
 
@@ -6354,7 +6354,7 @@ Powered, before any Serial command (`MEAS`): base `10a` → GND **1.7 mV** · Te
 
 ---
 
-## 2026-09-16 (5) — ✅ ADR-004 IMPLEMENTED IN FIRMWARE (`3460080`). **Compile-verified only: there is zero hardware evidence.** The ordering audit found two things worth more than the implementation: a latent injection hazard and a RAWDUMP conflict with measurement
+## 2026-09-16 (5) — ✅ ADR-004 IMPLEMENTED IN FIRMWARE (`ae02a8b`). **Compile-verified only: there is zero hardware evidence.** The ordering audit found two things worth more than the implementation: a latent injection hazard and a RAWDUMP conflict with measurement
 
 ### ⚠️ Evidence boundary. Read this first.
 
@@ -6362,7 +6362,7 @@ Powered, before any Serial command (`MEAS`): base `10a` → GND **1.7 mV** · Te
 
 ### What landed
 
-`e9ebd75` (docs/contract) → **`3460080`** (firmware), reviewed separately.
+`9e41943` (docs/contract) → **`ae02a8b`** (firmware), reviewed separately.
 - `s_selected_return` is the only return-routing state: TS at boot; changed only by `signalRouter_setReturnSource()`. That rejects NONE, treats an unchanged selection as a no-op with no ROUTE_CHANGED, and otherwise does state → relay → `audioEngine_setRoute()` → status. It is not refused mid-measurement.
 - Jack inputs stay informational. `update()` returns only NONE or JACK_CHANGED.
 - `ReturnPreference`, `setReturnPreference()` and `computeReturnSource()` are removed. Keeping a function called *compute* when there is nothing to compute would have been a fossil of the auto-detect design.
@@ -6958,7 +6958,7 @@ Entry (10) says, in consecutive sentences: *"It appears in **no** parts table an
 
 **Checked against ADR-002:** the detect path is `pin 16 → RING → (plug sleeve) → SLEEVE → GND`. **It never touches TIP**, so it imposes no loading on the guitar signal node and the ~1 MΩ requirement is untouched. Closed resistance is metal-to-metal, ~0 Ω, far inside the < 9.4 kΩ bound. **Compliant.**
 
-**Polarity:** this is the *opposite* sense from the microswitch — empty HIGH, inserted LOW — so `JACK_INSTRUMENT_DETECT_INVERTED` would be **0**, not 1. The per-connector polarity defines added in `b32d04a` already accommodate this without a code change, which is an unplanned vindication of choosing four defines over one global flag.
+**Polarity:** this is the *opposite* sense from the microswitch — empty HIGH, inserted LOW — so `JACK_INSTRUMENT_DETECT_INVERTED` would be **0**, not 1. The per-connector polarity defines added in `e5b702b` already accommodate this without a code change, which is an unplanned vindication of choosing four defines over one global flag.
 
 **The caveat that is genuinely this project's problem, and it is not generic.** The detect return path runs through the **audio ground at the jack**, and pin 16's 22 kΩ pull-up sources ~150 µA into it when a plug is inserted. That is DC and tiny. But **TODO-40 recorded a 33.1 dB change in the SOURCE noise floor from moving one ground return**, and the mechanism is still unidentified. A project with demonstrated extreme sensitivity to audio-ground return topology should not add a new DC path into that node without measuring. **Not disqualifying — it needs a before/after noise-floor measurement, which this project already knows how to take.**
 
@@ -6989,7 +6989,7 @@ With `COM → pin 16` (INPUT_PULLUP, 22 kΩ) and `NC → GND`:
 | released | closed | **LOW** | 1 | 1^1 | **0** | plug absent ✓ |
 | pressed | open | **HIGH** | 0 | 0^1 | **1** | plug inserted ✓ |
 
-`readJackInserted()` computes `raw_present = (digitalRead(pin) == LOW)` then `raw_present ^ inverted`, and `JACK_INSTRUMENT_DETECT_INVERTED` is already **1**. **No firmware change is required** — the polarity mechanism written for the assumed shunt topology happens to be exactly right for this one. Firmware `b32d04a` as running on the board is correct for this design.
+`readJackInserted()` computes `raw_present = (digitalRead(pin) == LOW)` then `raw_present ^ inverted`, and `JACK_INSTRUMENT_DETECT_INVERTED` is already **1**. **No firmware change is required** — the polarity mechanism written for the assumed shunt topology happens to be exactly right for this one. Firmware `e5b702b` as running on the board is correct for this design.
 
 ### ADR-002 compliance, and it is not marginal
 
@@ -7114,7 +7114,7 @@ Leave the `col 30` → GND jumper fitted, wire SHUNT → pin 16, confirm empty =
 
 ## 2026-09-13 (7) — 🔴 Phase 5 detect: the conductor was never run, AND the runbook's prescribed fix cannot work on this circuit
 
-**Live null result.** `b32d04a` uploaded and running. Across **uptime 18 → 218 s, 45 diagnostic windows, continuous capture with no gaps**, covering a deliberate **empty → insert → remove → insert** sequence on the Switchcraft #11 instrument jack:
+**Live null result.** `e5b702b` uploaded and running. Across **uptime 18 → 218 s, 45 diagnostic windows, continuous capture with no gaps**, covering a deliberate **empty → insert → remove → insert** sequence on the Switchcraft #11 instrument jack:
 
 - **Zero `JACK_CHANGED` events.**
 - **Zero `detail(change)` lines.** Only `detail(init)` exists.
@@ -7176,7 +7176,7 @@ If both hold, the coupling is demonstrated rather than argued, and the design qu
 3. **Controlled correction:** switching the physical probe to 10× with the channel still at 10× yields 16.3 mV<sub>rms</sub> at the same node, same tone, same everything else.
 4. **Independent consistency check:** 16.3 mV<sub>rms</sub> predicts −29.2 dBFS, consistent with the measured ~−30 dBFS.
 
-**What this rules out, positively:** no ~19 dB codec conversion-gain anomaly, no 10:1 loss through the shield input network, no failed SGTL5000 configuration. The register dump (2026-09-13 (4), commit `d63a753`) and the datasheet verification (2026-09-13 (5)) were both correct and both necessary — they eliminated the codec so completely that the instrument became the only remaining suspect.
+**What this rules out, positively:** no ~19 dB codec conversion-gain anomaly, no 10:1 loss through the shield input network, no failed SGTL5000 configuration. The register dump (2026-09-13 (4), commit `2aebbbb`) and the datasheet verification (2026-09-13 (5)) were both correct and both necessary — they eliminated the codec so completely that the instrument became the only remaining suspect.
 
 ### ⚠️ I withdraw the counter-evidence I raised in 2026-09-13 (5)
 
@@ -7214,7 +7214,7 @@ TODO-41B and journal 2026-09-13 (1)/(3) record the stimulus as **0.141 V<sub>rms
 
 - Firmware: `s_mixer_src.gain(0, 1.0f)`, all other slots 0.0f ([audio_capture.cpp:296](../firmware/guitar_rig_analyzer/audio_capture.cpp#L296)). Unity. The peak detector hangs directly off that mixer output.
 - Codec digital path: `CHIP_SSS_CTRL = 0x0010` — ADC→I2S direct, the DAP is powered but **not in the routing path**. `CHIP_I2S_CTRL = 0x0030` — 16-bit, 64×Fs, I2S format. `CHIP_DAC_VOL` is DAC-side only and cannot touch the ADC.
-- Every register readback matches what the library wrote, so the I²C write path is landing (see 2026-09-13 (4) and commit `d63a753`).
+- Every register readback matches what the library wrote, so the I²C write path is landing (see 2026-09-13 (4) and commit `2aebbbb`).
 
 ### The observation that reframes this
 
@@ -7248,7 +7248,7 @@ Either outcome closes a branch. **Do not probe anything new until this is done**
 
 ## 2026-09-13 (4) — ⚠️ Lesson: a clean compile is not verification that a diagnostic decodes correctly
 
-**What happened.** While writing the read-only SGTL5000 register dump (TODO-43, commit `a298f1c`) I got two bit positions wrong in my own decode: `REFTOP_POWERUP` and `HEADPHONE_POWERUP` were both read from `CHIP_ANA_POWER` bit 4, and `CHIP_DIG_POWER`'s ADC/DAC were placed at bits 6/5 instead of 5/4. Then a patch intended to fix them **failed silently** on a string-escaping error inside a heredoc, and the compile I ran afterwards passed — against the *uncorrected* file.
+**What happened.** While writing the read-only SGTL5000 register dump (TODO-43, commit `ace5e7c`) I got two bit positions wrong in my own decode: `REFTOP_POWERUP` and `HEADPHONE_POWERUP` were both read from `CHIP_ANA_POWER` bit 4, and `CHIP_DIG_POWER`'s ADC/DAC were placed at bits 6/5 instead of 5/4. Then a patch intended to fix them **failed silently** on a string-escaping error inside a heredoc, and the compile I ran afterwards passed — against the *uncorrected* file.
 
 **Why this matters more than the bug.** Every field in a register dump is a bit-shift of a value the compiler cannot check. `(anap >> 4) & 1` and `(anap >> 5) & 1` are both perfectly valid C. A diagnostic can therefore be 100% compilable, 100% read-only, produce plausibly-shaped output, and still be **confidently wrong** — which is strictly worse than having no diagnostic, because it manufactures evidence. This project has already had to withdraw several claims (see 2026-09-12 (2), and the D2/OPA_BIAS gradient withdrawal); a mis-decoded register would be a much harder withdrawal to catch, because nothing about the output would look anomalous.
 
@@ -7354,7 +7354,7 @@ Preparing to "re-establish the exact previously documented Run-D stimulus level"
 
 ## 2026-09-13 (1) — TODO-41A PASS: native stack takes BOTH channels to ≈−65.3 dBFS and collapses the asymmetry from 29.4 dB to 0.13 dB. First hardware evidence for the Pi link and for TODO-29
 
-**Hardware:** new Teensy 4.1 + new Audio Shield Rev D, soldered as a native stack (shield → Teensy → breakout). Flashed with **`c18fac7`** — the first upload since `e6daac8`, so TODO-29's clamp marking and the whole `c64e876` architecture reach hardware for the first time. Pre-power 3V3→GND resistance check clean. **LINE-IN-L deliberately left disconnected**, so this isolates the effect of the stack itself.
+**Hardware:** new Teensy 4.1 + new Audio Shield Rev D, soldered as a native stack (shield → Teensy → breakout). Flashed with **`4314e52`** — the first upload since `9aa2322`, so TODO-29's clamp marking and the whole `305a780` architecture reach hardware for the first time. Pre-power 3V3→GND resistance check clean. **LINE-IN-L deliberately left disconnected**, so this isolates the effect of the stack itself.
 
 ### The result — 8 consecutive windows, uptime 20–55 s
 
@@ -7382,7 +7382,7 @@ Raw data is ±15–16 counts on both channels, sample-for-sample near-identical.
 
 It does not diminish the result — the configuration works, which is what matters for proceeding — but the *causal* claim must stay conditional. If an explanation is ever needed, the only clean test is re-creating the flying-wire topology on the new boards, which is not worth the disturbance now.
 
-### First hardware evidence for `c64e876` — the Pi link, measured rather than predicted
+### First hardware evidence for `305a780` — the Pi link, measured rather than predicted
 
 | Metric | Value |
 |---|---|
@@ -7414,11 +7414,11 @@ What the idle data supports: across 8 windows both channels stayed inside ±16 c
 
 ### The pin-map question, settled against the active tree
 
-An assisting session flagged two potential conflicts from project PDFs that predate commit `eeaec99` and the `DISPLAY_TARGET` work. **Both dissolve against the current source:**
+An assisting session flagged two potential conflicts from project PDFs that predate commit `8410563` and the `DISPLAY_TARGET` work. **Both dissolve against the current source:**
 
 | Claim from the PDFs | Active tree |
 |---|---|
-| "RA8875 uses 8–10 for display signals" | **`RA8875_RESET_PIN` is 5, not 8.** Moved 8→5 in `eeaec99` *because* pin 8 is I2S RX_DATA0 (TODO-24, already closed in source) |
+| "RA8875 uses 8–10 for display signals" | **`RA8875_RESET_PIN` is 5, not 8.** Moved 8→5 in `8410563` *because* pin 8 is I2S RX_DATA0 (TODO-24, already closed in source) |
 | "pin 10 conflicts with the shield's SD CS" | **True only when `DISPLAY_TARGET == RA8875`.** `RA8875_CS_PIN` is referenced only inside `display_engine.cpp`, which is wholly wrapped at lines 46–820. Under `_PI` (current) or `_NONE` that unit is not compiled and **no Adafruit library is linked** — verified from `arduino-cli compile -v`. Nothing configures or drives 5, 9 or 10 |
 
 Confirmed correct: calibration uses `SD.begin(BUILTIN_SDCARD)` — the Teensy 4.1 SDIO socket — so the shield's SPI SD path is irrelevant to the analyzer's storage.
@@ -7845,7 +7845,7 @@ The library column is from `arduino-cli compile -v` "Using library" lines and is
 
 The one that matters most:
 
-**L1 — the TF clamp mask is not transmitted.** `AudioFrame.tf_clamped_bits[]` and `tf_clamped_count` exist precisely so a consumer can tell a saturation rail from a measurement, and `audio_engine.h:310` makes checking them **mandatory** for "any consumer that RENDERS `tf_db` to a human". `sendLiveFrame()` sends neither. So the Pi would plot a flat, confident, entirely fictional −24.0 dB curve — **the identical defect that printed `1kHz=-24.0dB` in 33 of 33 consecutive windows on 2026-09-07** before `aa9a795` fixed it for the serial diagnostic. This also means **promoting `data_sender` re-opens TODO-29 on a new surface**, which is an argument for eventually fixing that bug class at the presentation boundary rather than once per renderer.
+**L1 — the TF clamp mask is not transmitted.** `AudioFrame.tf_clamped_bits[]` and `tf_clamped_count` exist precisely so a consumer can tell a saturation rail from a measurement, and `audio_engine.h:310` makes checking them **mandatory** for "any consumer that RENDERS `tf_db` to a human". `sendLiveFrame()` sends neither. So the Pi would plot a flat, confident, entirely fictional −24.0 dB curve — **the identical defect that printed `1kHz=-24.0dB` in 33 of 33 consecutive windows on 2026-09-07** before `8701649` fixed it for the serial diagnostic. This also means **promoting `data_sender` re-opens TODO-29 on a new surface**, which is an argument for eventually fixing that bug class at the presentation boundary rather than once per renderer.
 
 Then: **R1** `result_valid` — the top-level verdict — is not transmitted at all; the Pi must infer validity from the quality enum. **R2/R3** calibration provenance, type and warnings are not transmitted, so a calibrated result would display with its own caveats silently dropped, and the "show quality *and provenance*" requirement (README, TODO-12's proof criterion) cannot be met by either renderer today.
 
@@ -8013,7 +8013,7 @@ This is the same class of error the project has now hit repeatedly: **a document
 
 ### The evidence, captured before touching anything
 
-33 consecutive 5 s windows, uptime 390–550 s, firmware at `e6daac8` with no local modifications, bench in the verified post-Phase-4 baseline. Full table in **`ai/evidence/2026-09-07-tf-clamp-preserved.md`**.
+33 consecutive 5 s windows, uptime 390–550 s, firmware at `9aa2322` with no local modifications, bench in the verified post-Phase-4 baseline. Full table in **`ai/evidence/2026-09-07-tf-clamp-preserved.md`**.
 
 | | Range across 33 windows |
 |---|---|
@@ -8047,7 +8047,7 @@ So the fix is **purely additive**: record the clamp, and make the renderer say s
 
 | | FLASH code | RAM1 variables |
 |---|---|---|
-| Baseline (`e6daac8`, stashed) | 158 340 | 218 752 |
+| Baseline (`9aa2322`, stashed) | 158 340 | 218 752 |
 | With the change | 158 532 | **218 816** |
 | Δ | +192 | **+64** |
 
@@ -8057,7 +8057,7 @@ Clean compile. The two warnings emitted (`payload_size` unused in `data_sender.c
 
 ### ⛔ Not done, deliberately
 
-- **Not uploaded.** The board is still running `e6daac8`. The bench is untouched and stays in the verified baseline until Conley has photographed it.
+- **Not uploaded.** The board is still running `9aa2322`. The bench is untouched and stays in the verified baseline until Conley has photographed it.
 - **`display_engine.cpp` still renders railed bins as curve points** ([display_engine.cpp:347](../firmware/guitar_rig_analyzer/display_engine.cpp#L347) reads `tf_db[bin]` directly). The accessor exists for it; wiring it in is a separate change against a separate consumer. Recorded on TODO-29.
 - **TODO-18, TODO-27 and TODO-30 deliberately NOT bundled.** One defect, one change, one verification trail — Conley's call, and the right one given how much of this project's lost time came from confounded multi-variable changes.
 
@@ -8221,7 +8221,7 @@ Then repeat the identical ≥300-window measurement. **If the error rate collaps
 
 ### 🔺 New hypothesis: pin 8 was damaged by output-vs-output contention
 
-**Until 2026-09-05, `RA8875_RESET_PIN` was defined as pin 8** (`config.h`, changed to 5 in commit `eeaec99`). `display_engine.cpp:36` passes it to `Adafruit_RA8875`, whose `begin()` does `pinMode(reset, OUTPUT)` and toggles it — **and it does that even when the display is absent, because the pin setup happens before the chip-ID check fails.**
+**Until 2026-09-05, `RA8875_RESET_PIN` was defined as pin 8** (`config.h`, changed to 5 in commit `8410563`). `display_engine.cpp:36` passes it to `Adafruit_RA8875`, whose `begin()` does `pinMode(reset, OUTPUT)` and toggles it — **and it does that even when the display is absent, because the pin setup happens before the chip-ID check fails.**
 
 **Meanwhile the Audio Shield's SGTL5000 was driving that same pin as DOUT.** That is a direct **output-driving-output contention**: the Teensy actively pulling pin 8 while the codec actively drove it, through however many boot cycles occurred while the shield was wired and `RA8875_RESET_PIN` was still 8.
 
@@ -8784,7 +8784,7 @@ Both ends were read from the library source this build compiles (`.../teensy/har
 
 ## 2026-09-05 (15) — Fork resolved: `available()` is TRUE every window. The analyzers are receiving real, genuinely full-scale samples. The peak bug was real but incidental
 
-**Run:** TODO-28 build (`b6f3dc1`) uploaded and captured. *(The board dropped off USB before the first upload attempt and the upload aborted without writing; it came back after a reconnect and the second attempt succeeded. No wiring was touched.)*
+**Run:** TODO-28 build (`8a123ac`) uploaded and captured. *(The board dropped off USB before the first upload attempt and the upload aborted without writing; it came back after a reconnect and the second attempt succeeded. No wiring was touched.)*
 
 ```
 [Main] --- 5s diagnostics (uptime 15s) ---
@@ -8954,14 +8954,14 @@ This also **weakens entry (12)'s alignment hypothesis**. The "disconnecting L ch
 
 ## 2026-09-05 (10) — Display guard CONFIRMED on hardware: 2194 → 46.3 ms/block, a 47× recovery. And the "expected 92.9 ms" constant is itself wrong by 2×
 
-**Why this entry exists:** on-hardware verification of TODO-25's guard (committed `8548c4c`, uploaded and run). The pass criterion was a measurement, not a compile, and it passed decisively. Investigating the residual discrepancy then turned up a separate firmware bug.
+**Why this entry exists:** on-hardware verification of TODO-25's guard (committed `5b239c2`, uploaded and run). The pass criterion was a measurement, not a compile, and it passed decisively. Investigating the residual discrepancy then turned up a separate firmware bug.
 
 **✅ The guard works. Measured, before and after:**
 
 | | Blocks | Window | Period |
 |---|---|---|---|
-| Before (`9037726`) | 3 | 6583 ms | **2194.3 ms/block** |
-| After (`8548c4c`) | **108** | 5000 ms | **46.3 ms/block** |
+| Before (`32974f0`) | 3 | 6583 ms | **2194.3 ms/block** |
+| After (`5b239c2`) | **108** | 5000 ms | **46.3 ms/block** |
 
 A **47× improvement**, and stable across consecutive diagnostic windows (uptime 20 s and 25 s both report 108 blocks / 46.3 ms). The unguarded `waitPoll()` spin against the absent RA8875 was the entire bottleneck, exactly as diagnosed in entry (9). TODO-25's proof criterion is met.
 

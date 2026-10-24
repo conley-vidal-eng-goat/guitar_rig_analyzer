@@ -200,7 +200,7 @@ class TestEstablishment(unittest.TestCase):
 
 @unittest.skipUnless(RESULT_BIN.is_file(), "RESULT fixture not present")
 class TestAgainstTheRealResult(unittest.TestCase):
-    """2026-09-27, firmware 26f2bee, over the physical Teensy pin 1 -> Pi GPIO15."""
+    """2026-09-27, firmware dcfbffa, over the physical Teensy pin 1 -> Pi GPIO15."""
 
     @classmethod
     def setUpClass(cls):

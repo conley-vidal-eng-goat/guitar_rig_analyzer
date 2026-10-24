@@ -36,7 +36,7 @@ capture independent of serial-console configuration.
 `guitar-rig-analyzer`. `raspi-config`: serial login shell NO, serial hardware
 YES. `console=serial0` removed from cmdline; `dtparam=uart0=on`.
 
-**Teensy:** `26f2bee` `_PI` artifact, v0.6.0, protocol v2. **No firmware change
+**Teensy:** `dcfbffa` `_PI` artifact, v0.6.0, protocol v2. **No firmware change
 was made during this work.**
 
 ## 🛑 The device finding — `/dev/serial0` was the wrong peripheral

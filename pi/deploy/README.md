@@ -29,7 +29,7 @@ rather than merely describing it.
 | | `/etc/xdg/labwc/autostart` (root-owned, **never modified**) |
 
 **`~/guitar_rig_analyzer` is the Pi's own stale git checkout.** It sits at
-`ce682cd` with 49 dirty/untracked entries and is **deliberately not updated** —
+`86fb78a` with 49 dirty/untracked entries and is **deliberately not updated** —
 it holds the known-good Tk launcher the fallback uses, and uncommitted work that
 exists nowhere else. Do not `git checkout .` in it.
 

@@ -63,7 +63,7 @@ with contact bounce; reading immediately after a transition produces false state
 ## Routing Policy — Return Source Selection
 
 > **Decided by [ADR-004](adr/ADR-004-return-source-is-operator-selected.md), 2026-09-16.
-> Implemented in firmware at `3460080`; compile-verified, ⚠️ NOT bench-verified.** The superseded
+> Implemented in firmware at `ae02a8b`; compile-verified, ⚠️ NOT bench-verified.** The superseded
 > auto-detect policy at the end of this section is kept for the record only.
 
 The **operator's selection is the only authority.** Jack presence is not consulted.
@@ -157,7 +157,7 @@ Operator return selection (outside update(), applied immediately):
   set RELAY_RETURN → call audioEngine_setRoute()
 ```
 
-*Implemented in firmware at `3460080`; not bench-verified.* *Superseded:* step 2 previously recomputed the return source from jack state,
+*Implemented in firmware at `ae02a8b`; not bench-verified.* *Superseded:* step 2 previously recomputed the return source from jack state,
 set the relay on change, and invalidated the route when a return jack was removed.
 
 **Route changes from signal_router always go through the existing chain:**

@@ -4,7 +4,7 @@
 `blocks_skipped = 44490`. **The stop was correct and the metric is wrong.**
 Acquisition was healthy; the harness was manufacturing skips arithmetically.
 
-Firmware `26f2bee`, unmodified. No flash, no firmware edit, no retry.
+Firmware `dcfbffa`, unmodified. No flash, no firmware edit, no retry.
 Primary record: [`t1-run2-pi-normal.txt`](t1-run2-pi-normal.txt).
 
 ## The numbers that gave it away
@@ -109,7 +109,7 @@ cross-checked, and the compile-only status of `timing_probe` is exactly why.
 ## What to fix, and what NOT to do
 
 **Do not fix this during acceptance on the current image.** The board runs
-`26f2bee` and that artifact is what the RESULT-transport evidence of 2026-09-27
+`dcfbffa` and that artifact is what the RESULT-transport evidence of 2026-09-27
 was gathered against. Changing the firmware to repair its own instrumentation
 mid-matrix would invalidate the artifact under test and force the whole Phase 10
 evidence chain to be re-established.

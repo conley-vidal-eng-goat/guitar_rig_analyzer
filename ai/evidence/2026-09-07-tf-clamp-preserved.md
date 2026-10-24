@@ -1,6 +1,6 @@
 # Evidence: TF diagnostic pinned at the −24.0 dB clamp rail (PRE-FIX behaviour)
 
-Captured 2026-09-07 from `/dev/cu.usbmodem195969201` @ 115200, firmware as of commit `e6daac8`
+Captured 2026-09-07 from `/dev/cu.usbmodem195969201` @ 115200, firmware as of commit `9aa2322`
 (no local modifications). Bench in the verified post-Phase-4 baseline: short I²S leads,
 LINE-IN-L jumper in row 48, headphone jack unplugged, 1 kHz tone at 0.143 V<sub>rms</sub>.
 

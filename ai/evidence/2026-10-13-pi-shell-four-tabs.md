@@ -1,7 +1,7 @@
 # The four-tab shell on the Pi — all four screens, 60 fps, and the pause proven
 
 **2026-10-13, 00:35–00:52 PDT.** The navigation shell and the TODO-80 fix
-(`cc7b704`) running on the physical Pi 5 and Touch Display 2.
+(`2cf3593`) running on the physical Pi 5 and Touch Display 2.
 
 **No firmware change. No protocol change. No wiring change. No measurement
 initiated.** Code was staged in `~/gra-webtest`, never the Pi's repository

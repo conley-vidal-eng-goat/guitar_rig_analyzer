@@ -603,8 +603,8 @@ later phase that needs one of these to be true will make assuming it feel
 reasonable. Every value defect found in the 2026-09-07 audits — A1, A3, and the
 R5 under-rating — came from exactly that, applied earlier and in good faith.
 
-**Phase 5 baseline:** branch `docs/asbuilt-capture`, commits `b764bd6` and
-`97ce50a`. This document is the reference for what the board was before Phase 5
+**Phase 5 baseline:** branch `docs/asbuilt-capture`, commits `9dc916e` and
+`4073d1b`. This document is the reference for what the board was before Phase 5
 touched it.
 
 ---
@@ -857,7 +857,7 @@ high-impedance instrument input instead avoids it, and because **SOURCE is
 measured at the fixture's input terminal and RETURN at its output**, the measured
 transfer function is the fixture's own loaded voltage ratio — the driving
 impedance, C2's reactance and the relay contact resistance all drop out. The
-Y-split topology was replaced in `119a737`.
+Y-split topology was replaced in `8daddfc`.
 
 **Status:** approved in principle as the design basis. **Not authorized for
 testing, and no hardware is to be built from the current Phase 9 instructions**

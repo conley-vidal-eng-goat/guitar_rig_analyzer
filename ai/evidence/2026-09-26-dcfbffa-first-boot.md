@@ -1,18 +1,18 @@
-# First boot of `26f2bee` — flash verification
+# First boot of `dcfbffa` — flash verification
 
 **2026-09-26.** First run of the Phase 10 transport work on hardware.
-Raw log: [`2026-09-26-26f2bee-first-boot.jsonl`](2026-09-26-26f2bee-first-boot.jsonl)
+Raw log: [`2026-09-26-dcfbffa-first-boot.jsonl`](2026-09-26-dcfbffa-first-boot.jsonl)
 
 ## Flashed artifact
 
 | | |
 |---|---|
-| Source commit | `26f2bee` |
-| Artifact | `ai/evidence/firmware/26f2bee-PI/guitar_rig_analyzer.ino.hex` |
+| Source commit | `dcfbffa` |
+| Artifact | `ai/evidence/firmware/dcfbffa-PI/guitar_rig_analyzer.ino.hex` |
 | **sha256** | `24b71d73bf60a0d6ff9cbb5737a46bba6a04887a1fe55479d356b5a87dce3a6e` |
 | md5 | `55ee39a5d8fba94cdad9606e9fa20a2f` |
 | Hash verified immediately before upload | yes |
-| Replaces | `44c4680`, `Build: Sep 21 2026 17:21:24` |
+| Replaces | `029ac05`, `Build: Sep 21 2026 17:21:24` |
 
 ## Verification — `OBS`
 

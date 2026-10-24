@@ -17,7 +17,7 @@ Captured 2026-09-13. Raw serial log preserved as `2026-09-13-41B-capture.log.gz`
 | Waveform | clean sine, no visible clipping |
 | Analog path | jack → C1 → OPA1642 → C2 → `48e` → LINE-IN-L |
 | Hardware | new Teensy 4.1 + new Rev D shield, **native stack** |
-| Firmware | `c18fac7`, `DISPLAY_TARGET_PI` |
+| Firmware | `4314e52`, `DISPLAY_TARGET_PI` |
 | Probe | CH1 tip `48e`, ground spring to nearby analog GND, board powered |
 
 ## Outlier detector v1 — frozen criterion

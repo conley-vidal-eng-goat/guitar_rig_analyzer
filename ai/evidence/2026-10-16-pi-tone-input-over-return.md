@@ -1,7 +1,7 @@
 # TONE draws the input over the level-matched return, live on the Pi panel
 
-**2026-10-16, 20:49 PDT.** The redesigned TONE view (`bc3d4b9`, plus the
-hold fix `afd1944`) running in the production kiosk against the real UART,
+**2026-10-16, 20:49 PDT.** The redesigned TONE view (`9dfe254`, plus the
+hold fix `2302156`) running in the production kiosk against the real UART,
 with a Fender Stratocaster strummed about once a second.
 
 **No firmware change, no protocol change, no wiring change, no measurement
@@ -53,9 +53,9 @@ gain. See TODO-93.
 | | |
 |---|---|
 | Target | `~/gra-ui/` (production, per `labwc-autostart.kiosk`) |
-| Pre-check | `~/gra-ui/pi` matched `39a7d55` path-for-path, except the absent `pi/deploy/` and an older `pi/tests/test_web_tone.py` |
+| Pre-check | `~/gra-ui/pi` matched `16d3d7a` path-for-path, except the absent `pi/deploy/` and an older `pi/tests/test_web_tone.py` |
 | Backup | the 8 replaced files, verbatim: `~/gra-ui-backup-39a7d55/` |
-| Copied | the 8 files of `bc3d4b9`, then the 3 of `afd1944`; sha256 checked both sides |
+| Copied | the 8 files of `9dfe254`, then the 3 of `2302156`; sha256 checked both sides |
 | Tests on the Pi | `python3 -m unittest discover` in `~/gra-ui/pi`: **544 run, OK, 5 skipped** |
 | Restart | SIGTERM to the one `run_web.sh` by PID → supervisor logged "ran 19168 s … not restarting", lock released → `run_kiosk_boot.sh` relaunched with the Wayland env; attempt 1 succeeded |
 | `boot_id` | `82171efb-c105-45dd-8f80-9d28a1b46b6f` (no reboot) |

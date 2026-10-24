@@ -1,4 +1,4 @@
-# FLASH CANDIDATE — `26f2bee` · `DISPLAY_TARGET_PI`
+# FLASH CANDIDATE — `dcfbffa` · `DISPLAY_TARGET_PI`
 
 **This is the artifact to flash. Do not rebuild.**
 
@@ -24,7 +24,7 @@ Not yet flashed as of this manifest.
 
 | | |
 |---|---|
-| Commit | `26f2beef3994cdffdbe0ad834873ef086fbe9ac6` (`26f2bee`) |
+| Commit | `dcfbffabb791923e9c36f0fdbaf75d00fe9052f5` (`dcfbffa`) |
 | Subject | docs(phase10): reconcile runbook with the final producer contract |
 | Firmware-bearing files uncommitted | **none** |
 | Other tree state | `docs/asbuilt/*` and `tools/gen_schematic.py` modified by the concurrent as-built capture session — **not compiled, cannot affect this binary** |
@@ -69,7 +69,7 @@ prints, since it is what HELLO carries.
 
 ## Replaces
 
-`44c4680` — `Build: Sep 21 2026 17:21:24 v0.6.0`, hex md5
+`029ac05` — `Build: Sep 21 2026 17:21:24 v0.6.0`, hex md5
 `65405de70fc778fdd8cf6a48e1cbe45e` (journal 2026-09-21 (3)).
 
 Flash safety review for this transition: journal **2026-09-26 (7)**. Summary —

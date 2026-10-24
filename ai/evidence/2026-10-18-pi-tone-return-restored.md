@@ -1,6 +1,6 @@
 # The return is restored, and TONE draws a level-matched return on the panel for the first time
 
-**2026-10-18.** TODO-93 closed. Production kiosk (`~/gra-ui`, `afd1944`), real
+**2026-10-18.** TODO-93 closed. Production kiosk (`~/gra-ui`, `2302156`), real
 UART, Stratocaster strummed through J4 → J5 → rig → J6 → J8.
 
 ![TONE with a working return](2026-10-18-pi-tone-return-restored.png)

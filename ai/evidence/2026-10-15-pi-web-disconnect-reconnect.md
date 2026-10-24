@@ -10,7 +10,7 @@ at the bench by the operator; nothing else was touched.
 
 | | |
 |---|---|
-| Repository | `b68d648`, clean tree |
+| Repository | `1278253`, clean tree |
 | Code running | `~/gra-ui/pi/`, **byte-identical to Mac HEAD** (60 files, `__pycache__` excluded) |
 | Launcher | `sh run_web.sh --serial /dev/ttyAMA0 --prefer live` |
 | Transport | `python3 -m web.server`, pid **11153**, sole `/dev/ttyAMA0` holder |
@@ -136,4 +136,4 @@ read a non-zero `frames_in` as "frames received during this session".
 | Tk UI | stopped by SIGTERM at 20:25 for the UART handoff; **not** respawned, launcher preserved |
 | Web kiosk | **running**, sole UART holder |
 | Rollback | `~/gra-rollback/` — backup, hash record, and `restore-tk-startup.sh` |
-| Pi's own checkout | untouched, `ce682cd`, 49 dirty/untracked entries preserved |
+| Pi's own checkout | untouched, `86fb78a`, 49 dirty/untracked entries preserved |

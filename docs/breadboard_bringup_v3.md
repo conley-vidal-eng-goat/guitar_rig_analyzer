@@ -2541,7 +2541,7 @@ It was **not regenerated** because the toolchain that produced it (pandoc + a Te
 distribution, plus an SVG conversion stage for the 26 embedded diagrams) is not
 present, and improvising a different renderer would have produced an artifact
 whose provenance nobody could vouch for. **The bytes remain in git history at
-`64894d4`** if they are ever needed.
+`c163c72`** if they are ever needed.
 
 **This Markdown file is now the only copy. Treat it as the source of truth.**
 

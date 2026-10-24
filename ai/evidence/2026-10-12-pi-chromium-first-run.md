@@ -23,7 +23,7 @@ undisturbed on pid 1514 throughout — the same pid before, during and after.
 ## Method
 
 Code was staged in a **scratch directory** (`~/gra-webtest`), not the Pi's
-repository checkout, which sits at `ce682cd` with 16 modified and 30 untracked
+repository checkout, which sits at `86fb78a` with 16 modified and 30 untracked
 files and was deliberately left alone.
 
 ```

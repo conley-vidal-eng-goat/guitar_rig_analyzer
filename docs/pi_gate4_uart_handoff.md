@@ -4,7 +4,7 @@
 step ADR-005 §2 condition 2 has never cleared: a browser on this Pi rendering a
 live Teensy frame.
 
-**Execution state: §1 has been run and passed (2026-10-13 ~20:45, `08dc450`,
+**Execution state: §1 has been run and passed (2026-10-13 ~20:45, `e81b16d`,
 journal 2026-10-13 (6)). §2 onward has NOT been run.** Each section says so at
 its head; do not assume a section is proven because the one above it is.
 
@@ -19,7 +19,7 @@ getting from cold to a trustworthy link. This covers the handoff itself.
 |---|---|
 | Staged code | `/home/conley/gra-stage-todo82`, sha256-identical to the Mac, **505 tests green on the Pi** |
 | Fixture rendering | All four views on the physical panel, touch navigation in three directions, swipe-to-orbit by finger |
-| Launcher lifecycle | `3399a94` — supervisor shell, bounded shutdown, port guard, profile cleanup. Verified on the hardware |
+| Launcher lifecycle | `b10cc67` — supervisor shell, bounded shutdown, port guard, profile cleanup. Verified on the hardware |
 | UART ownership | Tk, pid 1505, `fd 3 -> /dev/ttyAMA0`, `O_RDONLY`, sole holder |
 | Privilege | **No `sudo` anywhere in this procedure.** `conley` is in `dialout`; `sudo` needs a password and cannot be used non-interactively |
 
@@ -52,7 +52,7 @@ XWayland, so an SSH session that inherits no `DISPLAY` is the obvious failure.
 It can be proven in advance, because **a second Tk instance backed by a fixture
 needs no serial port at all**:
 
-> ## ✅ EXECUTED AND PASSED — 2026-10-13, ~20:45, repository `08dc450`
+> ## ✅ EXECUTED AND PASSED — 2026-10-13, ~20:45, repository `e81b16d`
 >
 > Journal 2026-10-13 (6). The command below is the one that **actually worked**,
 > not the one originally drafted here. **Do not reconstruct it from memory;
@@ -191,7 +191,7 @@ claim; `0` is an observation.
 
 ## §4 — Raw bytes first, no renderer
 
-> ## ✅ EXECUTED AND PASSED — 2026-10-13 20:57:48, repository `6161b5b`
+> ## ✅ EXECUTED AND PASSED — 2026-10-13 20:57:48, repository `a5c2319`
 >
 > `15s of 15s · 547 219 B · **36 481 B/s** · sha256 e90f74a4…580a`
 > `frames ok 382 · CRC failures 0 · oversize 0 · discarded 1532 (lead 1532, **interior 0 in 0 events**) · decode_errors 0 · session 47`
@@ -366,7 +366,7 @@ curl -s http://guitar-rig-analyzer.local:8711/api/frame |
 | `decode_errors` climbing | Stop and go back to §4. Decode errors against live bytes *with a clean raw capture* is the firmware-agreement evidence this project has never had |
 | `CalledProcessError` on start | `stty` rejected the device. Capture the traceback verbatim |
 
-Then the kiosk — **one pidfile, because `3399a94` made the launcher a real
+Then the kiosk — **one pidfile, because `b10cc67` made the launcher a real
 supervisor**:
 
 ```sh

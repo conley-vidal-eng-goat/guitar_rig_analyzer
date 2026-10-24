@@ -1,6 +1,6 @@
 # Raw UART capture with no renderer attached — the independent reference for Gate 4
 
-**2026-10-13, 20:57:48–20:58:03 PDT (03:57:48Z). Repository `6161b5b`.
+**2026-10-13, 20:57:48–20:58:03 PDT (03:57:48Z). Repository `a5c2319`.
 `OBS`.**
 
 The first raw capture taken on this instrument **with nothing else holding the

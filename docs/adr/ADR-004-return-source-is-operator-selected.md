@@ -1,6 +1,6 @@
 # ADR-004 — Return source is selected by the operator; TS on every boot
 
-**Status:** ACCEPTED · 2026-09-16 · **implemented in firmware at `3460080`;
+**Status:** ACCEPTED · 2026-09-16 · **implemented in firmware at `ae02a8b`;
 compile-verified, NOT bench-verified** (see *Implementation status*)
 **Decided by:** Conley Vidal
 **Supersedes:**
@@ -97,13 +97,13 @@ therefore breaks no consumer.
 
 | Step | Status |
 |---|---|
-| Decision + contract | ✅ `e9ebd75` |
-| Firmware | ✅ **`3460080`**: compiles (teensy41), and the new symbol is present in the ELF. Pre-commit ordering audit: post-switch audio cannot enter an in-progress measurement before ROUTE_CHANGED aborts it, for all currently reachable arm paths (journal 2026-09-16 (5)) |
+| Decision + contract | ✅ `9e41943` |
+| Firmware | ✅ **`ae02a8b`**: compiles (teensy41), and the new symbol is present in the ELF. Pre-commit ordering audit: post-switch audio cannot enter an in-progress measurement before ROUTE_CHANGED aborts it, for all currently reachable arm paths (journal 2026-09-16 (5)) |
 | **Bench verification** | ❌ **None.** The pin-15 RELAY_RETURN driver is not built. Relay switching, TS/XLR routing and physical TS-at-power-on (which depends on the driver's base pulldown) are all unobserved. TODO-7's proof is the acceptance test |
 
 *Historical:* this section originally recorded "documentation and contract only;
 firmware deliberately untouched". The firmware requirements it listed are kept
-below as the specification `3460080` was checked against.
+below as the specification `ae02a8b` was checked against.
 
 The firmware change must at least:
 

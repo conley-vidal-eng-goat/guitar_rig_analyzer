@@ -1,7 +1,7 @@
 # Negative control — `m` with NO stimulus: ARMED → ABORTED(TIMEOUT) on the link
 
 **Captured 2026-09-27T07:02:11Z UTC (= 00:02 local, 2026-09-27); analysed and
-preserved 2026-09-27.** Firmware `26f2bee` unmodified. No Phase 9 validation, no
+preserved 2026-09-27.** Firmware `dcfbffa` unmodified. No Phase 9 validation, no
 generator, no injection, no relay or route change.
 
 ## 🔺 CORRECTION TO THE RUN'S OWN DESCRIPTION — read this first

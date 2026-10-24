@@ -111,7 +111,7 @@ hand over SSH to see the error directly.
 | | |
 |---|---|
 | Display | DSI-2, **720×1280 portrait**, transform normal, scale 1.0 |
-| Teensy | firmware `26f2bee`, **session 9**, IDLE — the Teensy is not rebooting, so the session id should still read **9** afterwards |
+| Teensy | firmware `dcfbffa`, **session 9**, IDLE — the Teensy is not rebooting, so the session id should still read **9** afterwards |
 | Stimulus | ~1 kHz tone playing, SOURCE ≈ −22 dBFS |
 | UART | free — `0` fds on `/dev/ttyAMA0`, no `python3` running |
 | `run_ui.sh` | present, `-rwxr-xr-x`, `sh -n` clean |

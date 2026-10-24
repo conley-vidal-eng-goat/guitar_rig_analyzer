@@ -130,7 +130,7 @@ inconvenient one. Decide the requirement before selecting a mechanism.
 - Phase 5 closes on signal path alone. Its remaining work is measurement, not
   construction or procurement.
 - **$0 spend.** No jacks replaced, no microswitches bought.
-- `b32d04a` **stays in the tree unchanged.** The router runs, reads four pins and
+- `e5b702b` **stays in the tree unchanged.** The router runs, reads four pins and
   gates nothing. There is no benefit to removing it because some inputs are not
   yet authoritative — it is the framework in which the Phase 7 decision will be
   made, and removing it would cost work now and again later.

@@ -153,7 +153,7 @@ failure gives you two candidate causes.
 >
 > **The Tk UI is still installed and still works**, as ADR-005 §2's reference
 > renderer. It no longer starts by itself. `~/guitar_rig_analyzer` remains at
-> **`ce682cd` with 49 dirty/untracked entries**, deliberately untouched — it
+> **`86fb78a` with 49 dirty/untracked entries**, deliberately untouched — it
 > holds the known-good Tk launcher the boot fallback uses, and uncommitted work
 > that exists nowhere else. **Do not `git checkout .` in it.**
 

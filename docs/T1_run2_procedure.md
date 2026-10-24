@@ -19,7 +19,7 @@ generator, no injection, no validation.
 | Item | Required state | How to confirm |
 |---|---|---|
 | Teensy power | USB only, as now. No supply change | — |
-| Firmware on board | **`26f2bee`**, `_PI` | banner must read `Build: Sep 26 2026 16:36:53   v0.6.0` |
+| Firmware on board | **`dcfbffa`**, `_PI` | banner must read `Build: Sep 26 2026 16:36:53   v0.6.0` |
 | `DISPLAY_TARGET` | **`DISPLAY_TARGET_PI`** | banner: `[Main] Display target: Pi 5 (UART)` |
 | `config.h` | **unmodified** | `git diff --stat config.h` → empty |
 | UART wiring | Teensy pin 1 → Pi physical pin 10; Teensy GND → Pi physical pin 9. **Teensy pin 0 and Pi GPIO14 unconnected.** No rail shared | visual, no probing needed — unchanged since 2026-09-26 |
@@ -311,7 +311,7 @@ correctly; comparison pending run 1."
 | Capture log | `ai/evidence/t1-run2-pi-normal.capturelog` | small; carries start/end/elapsed/bytes/sha256/rate |
 | sha256 of the `.bin` | from the capture log | record whether or not the file is committed |
 | Session id | from `[Link] Session id:` | the boot discriminator |
-| Build identity | `Sep 26 2026 16:36:53 v0.6.0` | ties the run to `26f2bee` |
+| Build identity | `Sep 26 2026 16:36:53 v0.6.0` | ties the run to `dcfbffa` |
 | SOURCE peak start / end | dBFS, both | stimulus-stability guard |
 | Deviations | anything at all | *recorded, not smoothed over* |
 

@@ -5,7 +5,7 @@ energised** transfer function off `/dev/ttyAMA0` on the Touch Display 2.
 
 **No flash. No firmware change. No commands transmitted. No measurement
 initiated. No wiring, routing, generator or injection change.** Firmware
-`26f2bee`, session **9**, unchanged since T1 Run 2.
+`dcfbffa`, session **9**, unchanged since T1 Run 2.
 
 | Media | |
 |---|---|

@@ -189,7 +189,7 @@ targets; only `presentation_*()` dispatch differs, inside
   image, so strictly *safer*. It also means the session-id sequence will show
   `_PI` boots only — useful to know when reading the next capture's HELLO.
 
-**Precedent:** the same review was performed for the `44c4680 → 26f2bee`
+**Precedent:** the same review was performed for the `029ac05 → dcfbffa`
 transition (journal 2026-09-26 (7), and the `_PI` MANIFEST records its summary).
 Its conclusion — *"no credible boot-time electrical change to the breadboard; GPIO
 modes, relay state, generator/injection and audio routing all unchanged"* —
@@ -206,13 +206,13 @@ already happens on every power cycle of the current image, so it is not new to
 
 | Run | Target | Artifact | Rebuild needed? |
 |---|---|---|---|
-| 2, 3, 4 | `_PI` | **already on the board**, `26f2bee` | **No.** No flash at all if these run first |
-| 2, 3, 4 (restore) | `_PI` | [`ai/evidence/firmware/26f2bee-PI/guitar_rig_analyzer.ino.hex`](../ai/evidence/firmware/26f2bee-PI/guitar_rig_analyzer.ino.hex) | **No — flash the archived hex, do not rebuild** |
+| 2, 3, 4 | `_PI` | **already on the board**, `dcfbffa` | **No.** No flash at all if these run first |
+| 2, 3, 4 (restore) | `_PI` | [`ai/evidence/firmware/dcfbffa-PI/guitar_rig_analyzer.ino.hex`](../ai/evidence/firmware/dcfbffa-PI/guitar_rig_analyzer.ino.hex) | **No — flash the archived hex, do not rebuild** |
 | 1 | `_NONE` | **does not exist** | **Yes**, one build + one new manifest |
 
 **Why the archived `_PI` hex is the right way back.** `__DATE__`/`__TIME__` are
 stamped into the image ([.ino:215](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L215)), so
-recompiling `26f2bee` produces a **different binary with a different hash** and
+recompiling `dcfbffa` produces a **different binary with a different hash** and
 the board could no longer be matched against the flashed-artifact record. Its
 MANIFEST says so outright: *"This is the artifact to flash. Do not rebuild."*
 `arduino-cli upload -i <hex>` (verified available: `arduino-cli 1.4.1`, `-i,
@@ -220,9 +220,9 @@ MANIFEST says so outright: *"This is the artifact to flash. Do not rebuild."*
 then print `Build: Sep 26 2026 16:36:53   v0.6.0`.
 
 **Source-drift check, done 2026-09-27:** the only firmware-source difference
-between `26f2bee` and the current tree is a **comment-only** edit to
+between `dcfbffa` and the current tree is a **comment-only** edit to
 `data_sender.h`. The `_NONE` build will therefore be behaviourally equivalent to
-`26f2bee` apart from `DISPLAY_TARGET` — but it is still a *different binary* and
+`dcfbffa` apart from `DISPLAY_TARGET` — but it is still a *different binary* and
 needs its own manifest with its own hash.
 
 ### Build command for run 1 (not executed)
@@ -234,7 +234,7 @@ arduino-cli compile --clean --fqbn teensy:avr:teensy41 \
 ```
 Record: warnings (**must be 0**), FLASH code/data/headers, RAM1/RAM2, the
 extracted `__DATE__`/`__TIME__`, md5 and sha256 — same MANIFEST shape as
-`26f2bee-PI`. **Then revert `config.h` before anything else is built.**
+`dcfbffa-PI`. **Then revert `config.h` before anything else is built.**
 
 ---
 
@@ -243,7 +243,7 @@ extracted `__DATE__`/`__TIME__`, md5 and sha256 — same MANIFEST shape as
 **One flash completes all four runs. Two returns the board to the known-good image.**
 
 ```
-  board is HERE:  _PI  26f2bee  (known good, flashed 2026-09-26)
+  board is HERE:  _PI  dcfbffa  (known good, flashed 2026-09-26)
         │
         ├── PHASE A — NO FLASH ─────────────────────────────
         │     boot ▸ run 2   (reader consuming)
@@ -253,7 +253,7 @@ extracted `__DATE__`/`__TIME__`, md5 and sha256 — same MANIFEST shape as
         ├── FLASH 1 ▸ _NONE (new build) ───────────────────
         │     boot ▸ run 1   THE CONTROL
         │
-        └── FLASH 2 ▸ archived 26f2bee-PI hex ─────────────
+        └── FLASH 2 ▸ archived dcfbffa-PI hex ─────────────
               boot ▸ run 2-REPEAT  (drift control, optional)
               board is back on the known-good image
 ```
@@ -491,8 +491,8 @@ Expect: the [Link] block is replaced by the single line
 ### Run 2-repeat — drift control (after FLASH 2, optional but cheap)
 
 ```
-Flash the ARCHIVED 26f2bee-PI hex:
-    arduino-cli upload -i ai/evidence/firmware/26f2bee-PI/guitar_rig_analyzer.ino.hex \
+Flash the ARCHIVED dcfbffa-PI hex:
+    arduino-cli upload -i ai/evidence/firmware/dcfbffa-PI/guitar_rig_analyzer.ino.hex \
         --fqbn teensy:avr:teensy41 -p <port>
 Confirm:  Build: Sep 26 2026 16:36:53   v0.6.0
 Repeat run 2 exactly. If it matches the first run 2, the bench did not

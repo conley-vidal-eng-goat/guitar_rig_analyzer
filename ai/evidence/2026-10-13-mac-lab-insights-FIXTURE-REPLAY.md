@@ -25,7 +25,7 @@ file beside it.
 |---|---|
 | Source | `ai/evidence/phase10-result-1khz.bin` |
 | Served by | `python3 -m web.server --fixture … --port 8801` |
-| Rendered by | `pi/web/static/view_lab.js` at `26bf173`+1 |
+| Rendered by | `pi/web/static/view_lab.js` at `c770053`+1 |
 | Harness | a temporary page importing the real module; **deleted after capture**, never committed |
 
 Four insights, authored on the Teensy and printed verbatim:
