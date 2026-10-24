@@ -1,186 +1,147 @@
 # How AI was used on this project
 
-**Conley Vidal · 2026-10-14**
+*Conley Vidal*
 
-I built this instrument's hardware. AI wrote most of its software. Both of
-those are true, and this document says which is which, because the repository
-is hard to read correctly without it.
+I built this instrument's hardware. AI wrote most of its software. This page
+says which parts are which.
 
----
-
-## This was never hidden
-
-Every one of the **159 commits** in this repository carries a machine-readable
-AI co-authorship trailer:
+Every commit in this repository carries a trailer like:
 
 ```
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 ```
 
-No commit lacks it. Anyone running `git log` has always been able to see it.
-This document explains that record; it does not confess it.
-
----
+So `git log` has always shown it. This page explains the details.
 
 ## What I did
 
-**Architecture.** I decided the instrument should be split across two
-processors: a **Teensy 4.1** to acquire the audio and compute the measurement,
-and a **Raspberry Pi 5** to display the result. I researched that the Teensy
-could handle the time-critical acquisition and signal processing while the Pi
-handled the graphics. I bought the hardware for that plan — the Pi 5, the 7"
-Touch Display 2, the cooler, the PSU and the HAT — before any of it was
-implemented. The repository's own audit later described it as *"the original
-plan"* while finding that the code had quietly drifted to a different display;
-[ADR-001](adr/ADR-001-display-architecture.md) put it back.
+**Architecture.** I decided to split the instrument across two processors: a
+Teensy 4.1 to capture audio and compute the measurement, and a Raspberry Pi 5
+to display it. I researched whether the Teensy could handle the time-critical
+signal processing while the Pi handled graphics, and I bought the Pi, the 7"
+Touch Display 2, the cooler, the power supply and the HAT for that plan before
+any code existed. Partway through, the code drifted to a different display
+setup; [ADR-001](adr/ADR-001-display-architecture.md) brought it back to the
+original plan.
 
-**The physical build.** I selected and bought the components, and I assembled
+**The physical build.** I chose and bought the components and assembled
 everything: the OPA1642 soldered onto its surface-mount adapter, the breadboard
 wiring, the TQ2-5V relays with their MMBT3904 drivers and 1N4148 flyback
-diodes, the 1/4" and XLR audio jacks, and the Raspberry Pi with its
-touchscreen. My bosses at 4Wall taught me to solder; I did this assembly
-myself.
+diodes, the 1/4" and XLR jacks, and the Raspberry Pi with its touchscreen. My
+bosses at 4Wall taught me to solder; I did this assembly myself.
 
-**The bench measurements.** I performed the physical bench measurements during
-construction and troubleshooting — the voltage, resistance, continuity and scope
-readings taken on the board. AI helped plan those tests, interpret what came
-back, and write the records. In this project the readings are not a formality;
-they are repeatedly the thing that decided between two competing explanations.
+**Bench measurements.** I took the voltage, resistance, continuity and scope
+readings during construction and troubleshooting. AI helped plan those tests,
+interpret the results and write the records. Several times, a reading I took
+was what decided between two competing explanations.
 
-**Questioning the written procedure.** The bring-up procedure was developed
-with AI, and building the board exposed **eleven defects in it**, two of which
-damage hardware if followed literally. Those came out of the gap between what
-the document said and what the board in front of me actually did.
+**Checking the procedure against the board.** The bring-up procedure was
+written with AI. Building the board exposed eleven mistakes in it, two of
+which would have damaged hardware if followed exactly. I found those where the
+document didn't match the board in front of me.
 
 ## What AI did
 
-I came to Claude and ChatGPT because I knew considerably more about hardware
-than software. **Claude generated most of the Teensy firmware and Raspberry Pi
-software. I am not the independent author of that code and I do not claim to
-be.** I directed parts of the architecture and behaviour, tested the
-implementation on physical hardware, and worked with AI to investigate
-problems.
+I knew a lot more about hardware than software going in, so I used Claude and
+ChatGPT for the software. **Claude generated most of the Teensy firmware and
+the Raspberry Pi software. I'm not the independent author of that code.** I
+directed parts of the architecture and behavior, tested it on the hardware, and
+worked with AI to track down problems.
 
-AI also co-wrote the breadboard bring-up procedure, the architecture decision
-records, and the engineering journal.
+AI also co-wrote the bring-up procedure, the architecture decision records, and
+the engineering journal.
 
 **The journal is AI-written.** [`ai/journal.md`](../ai/journal.md) is written in
-the first person by an AI, about work the two of us did together. Its own
-header says it is written for AI readers — it is a handoff document between
-sessions. The engineering voice in it is not mine; the measurements in it are.
-Where it says "Conley," it means me: the AI accounts belong to my father,
-**the account holder**, and I use them with his permission, so that is the name the
-sessions recorded. See [`ai/README.md`](../ai/README.md).
+the first person by AI, about work we did together. It was a handoff document
+between sessions. The voice isn't mine; the measurements are. See
+[`ai/README.md`](../ai/README.md).
 
-**One convention worth correcting.** 45 of the 159 commits begin with `ai:`. I
-had assumed that marked AI-authored changes. It does not — those commits touch
-only `.md`, `.log` and `.jpg` files, never a single source file. `ai:` is an
-ordinary scope prefix meaning *"this updates the `ai/` engineering record,"*
-alongside `docs:`, `feat(pi):` and `fix:`. The `Co-Authored-By` trailer was
-always the thing doing that job.
+A note on commit prefixes: 46 commits begin with `ai:`. That doesn't mean "AI
+wrote this." It's a scope prefix meaning "updates the `ai/` engineering
+record," like `docs:` or `fix:`. Those commits only touch notes, logs and
+photos. The `Co-Authored-By` trailer is what marks AI involvement.
 
----
+## Three cases
 
-## Three specific cases, graded honestly
+### 1. "Written" isn't "working" (2026-08-25, mine)
 
-### 1. "Written" is not "working" — 2026-08-25 · **mine**
+I read the first journal and todo entries and objected that they marked
+"firmware written" and "hardware proven" as the same status. I wanted the
+records to separate what existed in code from what had been tested on the
+instrument.
 
-I read the first journal and todo entries and objected that they recorded
-*firmware written* and *hardware proven* as the same status. I wanted the
-documentation to distinguish what existed in software from what had actually
-been tested on the physical instrument.
+The `[drafted]` / `[compiles]` / `[bench]` maturity tags were added in
+response. The wider evidence tags (`PHYS`, `MEAS`, `RPT`, `NYV` and the rest)
+and the rule that entries are never deleted grew out of that over the next few
+weeks, worked out with AI. The original objection is mine; the system that grew
+from it isn't mine alone.
 
-Maturity tags — `[drafted]` / `[compiles]` / `[bench]` — were added in
-response, and the journal records the reason as *"collapsing those two facts
-into one flag was the root problem"* I had flagged. The wider evidence-tier
-vocabulary (`PHYS` / `MEAS` / `DERIV` / `RPT` / `INF` / `NYV`) and the
-never-delete rule grew from that over the following weeks **through the same
-AI-assisted workflow.** The original objection is mine. The full system that
-grew out of it is not mine alone.
+### 2. Column 45 (2026-09-15, mine)
 
-### 2. Column 45 — 2026-09-15 · **mine**
+Partway through Phase 6, the procedure told me to run a jumper from breadboard
+column 45 to Teensy pin 14 and said the column was free. A continuity reading
+didn't behave the way it should have, and I remembered putting two resistors
+there earlier in the build. The instructions didn't match my board, so I
+stopped and asked before connecting anything.
 
-Mid-way through Phase 6, the procedure told me to run a jumper from breadboard
-column 45 to Teensy pin 14 and described that column as free. I had taken a
-continuity reading that did not behave, and I remembered putting two resistors
-there earlier in the build. The instructions didn't match what was physically on
-my breadboard, so I stopped and asked about it before connecting anything.
+Column 45 was the midpoint of the +5 V / ground divider that makes the analog
+reference voltage, built back in Phase 1. The firmware already on the board
+drives pin 14 high on command, so that jumper would have put a 3.3 V output
+straight onto the analog reference at the next power-up. Phase 6 was stopped
+before the board was powered.
 
-That was the right call. Column 45 is the midpoint of the +5 V / ground divider
-that generates the analog reference rail, built back in Phase 1. The firmware
-already on the board sets pin 14 as an output and drives it high on command, so
-fitting that jumper would have put a 3.3 V push-pull output directly onto the
-analog reference — on the next power-up. Phase 6 was halted before the board was
-energised.
+### 3. The OPA1642 bias (shared)
 
-### 3. The OPA1642 bias — **collaborative, and the record is specific about who did what**
+The buffer was biased at 2.5 V, the middle of its single 5 V supply. That's
+outside the part's input common-mode range: TI's datasheet allows (V−) − 0.1 V
+to (V+) − 3.5 V, which is −0.1 V to +1.5 V on this supply. The supply voltage
+was fine; the bias point wasn't. That's why it was easy to miss.
 
-The buffer was biased at the 2.5 V mid-supply point while running on a single
-+5 V rail. That is outside the part's specified input common-mode range — TI's
-datasheet gives `(V−) − 0.1 V` to `(V+) − 3.5 V`, so −0.1 V to +1.5 V on this
-rail, and states that below ±3.5 V supplies the range does not include
-mid-supply. The supply voltage was legal; **the input bias point at that supply
-was not.** That is what makes the defect easy to miss.
+- **AI found the defect** by checking the datasheet against the procedure.
+- **My measurements narrowed it down:** 2.480 V at the input with the chip out
+  and 2.153 V with it in, a 327 mV droop showing the input stage loading a node
+  it shouldn't. A 159 kΩ pin-to-pin reading showed no short, which was reason
+  enough to investigate the bias before replacing the part. That reading alone
+  didn't prove the chip was undamaged; passing signal correctly after the fix
+  did.
+- **We worked out the fix together.** I remember suggesting a resistor-based way
+  to lower the bias. AI had also listed a divider as one of three options,
+  though it recommended a different one (raising the analog supply to 9 V). The
+  record doesn't settle exactly who proposed what first, so I won't claim more
+  than that. What got built is a 47 kΩ / 10 kΩ divider holding the input at
+  0.874 V, with the unused half of the op-amp tied to the same node so it
+  can't oscillate.
+- **It worked.** Input droop went from 327 mV to 6 mV, and over the next three
+  days, through a rework and several power cycles, the operating point moved
+  3–4 mV. The divider later measured 8.20 kΩ against 8.246 kΩ predicted.
 
-- **AI found the defect**, by checking the manufacturer's datasheet against the
-  bring-up procedure.
-- **My measurements localised it**: 2.480 V at the input with the chip removed
-  and 2.153 V with it installed — a 327 mV droop showing the input stage loading
-  a node it should not. A 159 kΩ pin-to-pin reading showed **no direct short**,
-  which was enough reason to investigate the bias conditions before replacing
-  the part. It did not by itself prove the IC was undamaged; what showed the
-  part was working was that it passed signal correctly after the bias was
-  fixed.
-- **The fix was developed together.** I remember suggesting a resistor-based
-  approach to bring the bias down. AI had also written a divider up as one of
-  three options, and had recommended a different one (raising the analog supply
-  to 9 V). The contemporaneous record does not establish the exact sequence of
-  who proposed what, and I am not going to claim more than that. What got built
-  is a 47 kΩ / 10 kΩ divider holding the input at **0.874 V**, with the unused
-  half of the op-amp moved onto the same node so it could not oscillate.
-- **It worked, measurably.** Input droop went from 327 mV to **6 mV**, and over
-  the following three days — across an interconnect rework and several power
-  cycles — the operating point moved **3–4 mV**. The divider's resistance later
-  measured 8.20 kΩ against 8.246 kΩ predicted, 0.6% agreement.
-
-This remains a **bring-up configuration**, not a final design. Saying otherwise
-would be the one thing that would make the story dishonest.
-
----
+It's still a bring-up fix, not a final design.
 
 ## Things I got wrong
 
-Some of my own bench reports were later found to be mistaken, and they are
-still in the record with their corrections:
+Some of my bench reports were wrong, and they're still in the record with their
+corrections:
 
-- A report transposed two jacks, sending a research effort at the wrong one.
-- One measurement was taken with the Teensy powered off, which made its
-  conclusion void in both directions rather than evidence for either.
-- One component placement I reported was written down as `PHYS` (observed) when
-  it should have been `RPT` (reported). The todo file calls that *"this
-  project's own named failure mode,"* committed in the very document that cites
-  the lesson.
-
-I am leaving these in. The grading system exists because of mistakes like
-these, and a record that never caught its author in an error would not be worth
-reading.
-
----
+- I swapped two jacks in a report, which sent a research effort at the wrong
+  one.
+- I took one measurement with the Teensy powered off, so it proved nothing
+  either way.
+- One part placement I reported got tagged `PHYS` (observed) when it should
+  have been `RPT` (reported).
 
 ## How I tried to use it
 
-In my own words, from when I was asked about this directly:
+In my own words, from when I was asked about this:
 
 > I didn't want to let AI diminish my cognitive thinking. I simply wanted to use
 > it as a tool to help with the things I didn't know what to do. I would then
 > learn from the AI and boom — we make progress.
 
-That is the whole approach. I evaluated what it told me instead of accepting it
-automatically — sometimes I was right to push back, and sometimes the thing
-that turned out to be wrong was my own report.
+I checked what it told me instead of accepting it automatically. Sometimes I was
+right to push back, and sometimes the thing that turned out wrong was my own
+report.
 
-What I can defend is this: I identified a problem I wanted to measure, chose
-and bought the hardware, built the instrument with my hands, took the bench
-readings during construction and troubleshooting, and insisted that the
-documentation tell the difference between what we had written and what we had
-actually proven. The code that runs on it is largely not mine.
+What I can stand behind: I picked a problem I wanted to measure, chose and
+bought the hardware, built the instrument by hand, took the bench readings, and
+pushed for the records to keep what we had written separate from what we had
+actually proven. Most of the code that runs on it isn't mine.
