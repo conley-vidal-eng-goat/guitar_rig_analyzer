@@ -38,7 +38,7 @@ Two relays, each SPDT, controlled by one GPIO each.
 **Default power-on state:** Both relays de-energised.
 - Rig Send carries the buffered instrument signal (safe — no generator surprises)
 - Return path is TS. The software return selection also starts at TS on **every** boot
-  and is never saved ([ADR-004](docs/adr/ADR-004-return-source-is-operator-selected.md)),
+  and is never saved ([ADR-004](adr/ADR-004-return-source-is-operator-selected.md)),
   so relay, software state and display start in agreement.
 
 ## Jack Detection
@@ -62,7 +62,7 @@ with contact bounce; reading immediately after a transition produces false state
 
 ## Routing Policy — Return Source Selection
 
-> **Decided by [ADR-004](docs/adr/ADR-004-return-source-is-operator-selected.md), 2026-09-16.
+> **Decided by [ADR-004](adr/ADR-004-return-source-is-operator-selected.md), 2026-09-16.
 > Implemented in firmware at `3460080`; compile-verified, ⚠️ NOT bench-verified.** The superseded
 > auto-detect policy at the end of this section is kept for the record only.
 

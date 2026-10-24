@@ -121,7 +121,7 @@ Numbered TODO-71 on the assumption 70 is the current maximum; renumber as needed
 
 ## 6. Source change — separate commit, not part of the above
 
-**[`signal_router.h:72`](../../signal_router.h#L72)** states:
+**[`signal_router.h:72`](../../firmware/guitar_rig_analyzer/signal_router.h#L72)** states:
 > *"The RELAY_RETURN driver is not built yet: that is a Phase 7 bench requirement, not something this code proves."*
 
 **Stale.** K2 and its driver were built in Phase 7 and are recorded in

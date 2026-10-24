@@ -37,7 +37,7 @@ against them.
 
 ## Resolution status — protocol v2 (2026-09-11)
 
-`PI_PROTOCOL_VERSION` is now **2** ([config.h](../config.h)). All three
+`PI_PROTOCOL_VERSION` is now **2** ([config.h](../firmware/guitar_rig_analyzer/config.h)). All three
 `DISPLAY_TARGET` builds compile clean, and the `_PI` and `_NONE` builds compile
 with **zero warnings** — the unused `payload_size` that finding T5 names is gone
 along with the code that held it.
@@ -146,9 +146,9 @@ because no Pi has been connected.
 
 | Source | Shape |
 |---|---|
-| `AudioFrame` ([audio_engine.h:104](../audio_engine.h#L104)) | live: 512-bin linear spectra ×2, 512-bin `tf_db`, clamp bitmask, persistence flag, confidence, peaks |
-| `MeasurementResult` ([measurement_core.h:420](../measurement_core.h#L420)) | result: 8 × 512-bin float arrays, validity, quality, health metrics, calibration status + 96-char provenance, hardware context, firmware version |
-| `InsightList` ([insights_engine.h:122](../insights_engine.h#L122)) | up to `INSIGHTS_MAX_COUNT` = 12 insights, MEASUREMENT vs ADVISORY |
+| `AudioFrame` ([audio_engine.h:104](../firmware/guitar_rig_analyzer/audio_engine.h#L104)) | live: 512-bin linear spectra ×2, 512-bin `tf_db`, clamp bitmask, persistence flag, confidence, peaks |
+| `MeasurementResult` ([measurement_core.h:420](../firmware/guitar_rig_analyzer/measurement_core.h#L420)) | result: 8 × 512-bin float arrays, validity, quality, health metrics, calibration status + 96-char provenance, hardware context, firmware version |
+| `InsightList` ([insights_engine.h:122](../firmware/guitar_rig_analyzer/insights_engine.h#L122)) | up to `INSIGHTS_MAX_COUNT` = 12 insights, MEASUREMENT vs ADVISORY |
 
 ---
 
@@ -159,13 +159,13 @@ because no Pi has been connected.
 `audio_engine` clamps each bin's raw TF into `[TF_DB_MIN-6, TF_DB_MAX+6]` before
 the EMA, and records which bins were railed in `AudioFrame.tf_clamped_bits[]` plus
 `tf_clamped_count`. The header states the contract explicitly
-([audio_engine.h:310](../audio_engine.h#L310)):
+([audio_engine.h:310](../firmware/guitar_rig_analyzer/audio_engine.h#L310)):
 
 > "Any consumer that RENDERS `tf_db` to a human (serial diagnostic, display curve,
 > export) **must check this first** and present the bin as saturated rather than
 > printing the rail as a number."
 
-[`dataSender_sendLiveFrame()`](../data_sender.cpp) decimates `tf_db` straight to
+[`dataSender_sendLiveFrame()`](../firmware/guitar_rig_analyzer/data_sender.cpp) decimates `tf_db` straight to
 the wire and transmits **neither** `tf_clamped_bits` nor `tf_clamped_count`. Under
 ADR-001 the Pi becomes precisely the consumer that header is addressing, and it
 is structurally unable to comply.
@@ -173,14 +173,14 @@ is structurally unable to comply.
 **Why this matters concretely.** On 2026-09-07, with nothing connected to
 RETURN_NODE, the true TF was ~−47 dB — 23 dB below the −24.0 dB rail — and the
 diagnostic printed `1kHz=-24.0dB` in 33 of 33 consecutive windows "as though it
-were data" ([audio_engine.h:145](../audio_engine.h#L145), evidence file
+were data" ([audio_engine.h:145](../firmware/guitar_rig_analyzer/audio_engine.h#L145), evidence file
 `ai/evidence/2026-09-07-tf-clamp-preserved.md`). Commit `aa9a795` fixed that for
 the serial diagnostic. Shipping the current packet layout would reintroduce the
 identical defect on the Pi's TF plot — a flat, confident, entirely fictional
 −24 dB curve.
 
 This is also the same still-open defect as TODO-29's second half
-([display_engine.cpp:347](../display_engine.cpp#L347) renders railed bins as
+([display_engine.cpp:347](../firmware/guitar_rig_analyzer/display_engine.cpp#L347) renders railed bins as
 ordinary curve points). **Promoting `data_sender` re-opens TODO-29 on a new
 surface**, which is an argument for fixing the class of bug at the presentation
 boundary rather than once per renderer.
@@ -194,13 +194,13 @@ count of clamped source bins, or a two-bit state (none / partial / all).
 
 ### 🟡 L2 — `decimateBins()` applies one arithmetic mean across two different domains
 
-[`decimateBins()`](../data_sender.cpp) block-averages with a plain arithmetic mean.
+[`decimateBins()`](../firmware/guitar_rig_analyzer/data_sender.cpp) block-averages with a plain arithmetic mean.
 It is called on three arrays that are **not in the same domain**:
 
 | Array | Domain | Source |
 |---|---|---|
-| `fft_source`, `fft_return` | **linear** magnitude 0.0–1.0 | [audio_engine.h:107](../audio_engine.h#L107) |
-| `tf_db` | **dB** | [audio_engine.h:115](../audio_engine.h#L115) |
+| `fft_source`, `fft_return` | **linear** magnitude 0.0–1.0 | [audio_engine.h:107](../firmware/guitar_rig_analyzer/audio_engine.h#L107) |
+| `tf_db` | **dB** | [audio_engine.h:115](../firmware/guitar_rig_analyzer/audio_engine.h#L115) |
 
 Consequences differ per array and neither is recorded as a decision:
 
@@ -224,7 +224,7 @@ valid bin and three NaN therefore emerges as a **fully valid** output bin.
 
 In `tf_db`, NaN is meaningful: it marks a bin whose source fell below
 `TF_SOURCE_GATE`, i.e. unenergised — it is the pen-lift signal that keeps the
-display from drawing through gaps ([audio_engine.h:118](../audio_engine.h#L118)).
+display from drawing through gaps ([audio_engine.h:118](../firmware/guitar_rig_analyzer/audio_engine.h#L118)).
 The Pi receives no way to distinguish "4 of 4 bins measured" from "1 of 4 bins
 measured", so partial validity renders as full confidence.
 
@@ -242,7 +242,7 @@ Flags bit 2. The "sticky instrument" state reaches the Pi. No action.
 
 ### 🔴 R1 — `result_valid` is not transmitted
 
-[`MeasurementResult.result_valid`](../measurement_core.h#L424) is the firmware's
+[`MeasurementResult.result_valid`](../firmware/guitar_rig_analyzer/measurement_core.h#L424) is the firmware's
 top-level verdict on whether the measurement means anything. The RESULT payload
 carries `result_quality` but **not `result_valid`**. The Pi would have to infer
 validity from the quality enum.
@@ -313,7 +313,7 @@ At 460800 baud 8-N-1 the wire moves 46 080 bytes/s:
 | RESULT, 0 insights | 8 224 B | ~178 ms | ~3.8 block periods |
 | RESULT, 12 insights (max) | 9 880 B | **~214 ms** | **~4.6 block periods** |
 
-`DISPLAY_UPDATE_EVERY_N_FRAMES` is **1** ([config.h:317](../config.h#L317)), so a
+`DISPLAY_UPDATE_EVERY_N_FRAMES` is **1** ([config.h:317](../firmware/guitar_rig_analyzer/config.h#L317)), so a
 live frame is sent **every** output block. The block period is 46.3 ms measured
 (journal 2026-09-05 (10); note the `EXPECTED_BLOCK_MS` constant itself is wrong by
 2×, TODO-27).
@@ -352,7 +352,7 @@ HELLO packet with numeric `protocol_version`, `live_bins`, `fft_bins`,
 ### 🟡 T3 — No view-change packet
 
 `presentation_restoreLive()` has no packet to map to and currently sends a STATUS
-string `"VIEW:LIVE"` (see [presentation.cpp](../presentation.cpp)). A Pi state
+string `"VIEW:LIVE"` (see [presentation.cpp](../firmware/guitar_rig_analyzer/presentation.cpp)). A Pi state
 model cannot distinguish a view transition from ordinary status text without
 sniffing for a magic prefix. Add an explicit view/state packet.
 
@@ -360,14 +360,14 @@ sniffing for a magic prefix. Add an explicit view/state packet.
 
 The payload has `injection_active` and `monitor_mode` bytes, but
 `ENABLE_DUT_INJECTION` and `ENABLE_MONITOR_MODE` are both **0**
-([config.h](../config.h)), so `monitor_mode` is written as a literal 0. The Pi
+([config.h](../firmware/guitar_rig_analyzer/config.h)), so `monitor_mode` is written as a literal 0. The Pi
 cannot distinguish "monitor mode is off" from "monitor mode does not exist in this
 build" — and would be entitled to render a UI control for a capability that cannot
 respond. Put the feature-promotion state in the HELLO capability bitmap (T2).
 
 ### 🟡 T5 — `payload_size` is computed and unused in `sendLiveFrame`
 
-[data_sender.cpp:129](../data_sender.cpp#L129) computes `payload_size` and then
+[data_sender.cpp:129](../firmware/guitar_rig_analyzer/data_sender.cpp#L129) computes `payload_size` and then
 passes `pos` to `sendPacket()`. They are currently equal, so this is not a live
 bug — it is the one site where a header-length / payload-length desync could
 appear silently, and it is the source of the build's one remaining warning. Either

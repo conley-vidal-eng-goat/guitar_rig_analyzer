@@ -2,7 +2,7 @@
 
 **This is the artifact to flash. Do not rebuild.**
 
-Because [guitar_rig_analyzer.ino:215](../../../guitar_rig_analyzer.ino#L215) stamps
+Because [guitar_rig_analyzer.ino:215](../../../../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L215) stamps
 `__DATE__`/`__TIME__`, builds are **not reproducible**: recompiling this exact
 commit produces a different binary with a different hash. **Any rebuild, source
 change, or configuration change invalidates this candidate** and requires a new

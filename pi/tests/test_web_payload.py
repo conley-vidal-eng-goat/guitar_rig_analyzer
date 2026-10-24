@@ -20,6 +20,7 @@ from analyzer_ui.sources import FixtureSource
 from web import payload
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+FIRMWARE = REPO / "firmware" / "guitar_rig_analyzer"
 RESULT_BIN = REPO / "ai" / "evidence" / "phase10-result-1khz.bin"
 IDLE_BIN = REPO / "ai" / "evidence" / "phase10-teensy-pi-idle-30s.bin"
 STATIC = pathlib.Path(__file__).resolve().parents[1] / "web" / "static"
@@ -664,7 +665,7 @@ class TestToneFloor(unittest.TestCase):
     def test_the_tone_floor_is_the_firmware_gate(self):
         """The floor is the Teensy's own "energised" level, not a number chosen
         on the Pi. If TF_SOURCE_GATE moves, this must fail."""
-        cfg = (REPO / "config.h").read_text()
+        cfg = (FIRMWARE / "config.h").read_text()
         m = _re.search(r"#define\s+TF_SOURCE_GATE\s+([\d.]+)f?", cfg)
         self.assertIsNotNone(m)
         self.assertAlmostEqual(payload.TONE_FLOOR_DB,

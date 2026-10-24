@@ -26,6 +26,7 @@ from analyzer_link.state import ReceiverState, UNKNOWN
 from . import vectors
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+FIRMWARE = REPO / "firmware" / "guitar_rig_analyzer"
 GEO = protocol.Geometry()
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
@@ -133,7 +134,7 @@ class TestSourceInvariant(unittest.TestCase):
     """
 
     def _try_send_body(self) -> str:
-        src = (REPO / "data_sender.cpp").read_text()
+        src = (FIRMWARE / "data_sender.cpp").read_text()
         start = src.index("static bool trySendBestEffort(")
         end = src.index("\n}", start)
         return src[start:end]
@@ -157,7 +158,7 @@ class TestSourceInvariant(unittest.TestCase):
     def test_the_refusal_is_counted(self):
         self.assertIn("blocked_by_result", self._try_send_body())
         self.assertIn("uint32_t blocked_by_result;",
-                      (REPO / "data_sender.h").read_text())
+                      (FIRMWARE / "data_sender.h").read_text())
 
     def test_only_two_functions_write_to_the_uart(self):
         # The invariant is only as good as its coverage: a future packet type
@@ -170,7 +171,7 @@ class TestSourceInvariant(unittest.TestCase):
         # Comments must be stripped first: this file's own banner warns
         # "If you add a code path that calls DS_UART_PORT.write() without
         # first checking room", and that prose is not a writer.
-        src = _strip_comments((REPO / "data_sender.cpp").read_text())
+        src = _strip_comments((FIRMWARE / "data_sender.cpp").read_text())
         starts = [(m.start(), m.group(1)) for m in re.finditer(
             r"^(?:static\s+)?[\w:<>*&]+[\w\s:<>*&]*?\b(\w+)\s*\([^;{]*\)\s*\{",
             src, re.M)]

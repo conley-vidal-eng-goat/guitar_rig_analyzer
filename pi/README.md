@@ -90,7 +90,7 @@ directory.
 - Renderer / UI — **blocked on T1** per TODO-36, and the framework choice needs
   its own ADR rather than being buried in a code change
 - Pi→Teensy command path — **does not come through the presentation boundary**
-  ([presentation.h](../presentation.h)); it is CONTROL, with its own validation
+  ([presentation.h](../firmware/guitar_rig_analyzer/presentation.h)); it is CONTROL, with its own validation
 
 ## HELLO lifecycle (TODO-56)
 
@@ -141,15 +141,15 @@ assumptions:
 
 **Why `VIEW(LIVE)` does not clear an abort.** `presentation_restoreLive()` is
 called from two places in the firmware — after `acknowledgeAbort()`
-([.ino:590](../guitar_rig_analyzer.ino#L590)) *and* after `returnToLive()` from
-a RESULT view ([:600](../guitar_rig_analyzer.ino#L600)) — and `presentation.h`
+([.ino:590](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L590)) *and* after `returnToLive()` from
+a RESULT view ([:600](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L600)) — and `presentation.h`
 documents it as a **view** transition. "Show the live view" is not "the engine
 is no longer ABORTED". The protocol does not make the first imply the second,
 so the model moves the view and leaves the latch alone.
 
 **Why an `IDLE` observation does clear it.** The firmware leaves `ABORTED` only
 through `measurementEngine_acknowledgeAbort() → IDLE`
-([measurement_engine.h:167](../measurement_engine.h#L167)). So an authoritative
+([measurement_engine.h:167](../firmware/guitar_rig_analyzer/measurement_engine.h#L167)). So an authoritative
 `IDLE` is evidence of acknowledgement — a Teensy-authored fact, not a Pi
 decision. The rule is written against *any* packet carrying a measurement
 state, not against `LIVE_FRAME`, so TODO-57's state packet plugs in unchanged.

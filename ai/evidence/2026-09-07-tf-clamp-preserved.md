@@ -53,8 +53,8 @@ All values in dB / dBFS. "true gap" = SOURCE peak − RETURN peak.
 
 - **1 kHz reads exactly −24.0 dB in 33 of 33 windows.** That is
   `TF_DB_MIN - 6.0f` = `-18.0f - 6.0f` — the lower rail of the `constrain()` at
-  [audio_engine.cpp:283](../../audio_engine.cpp#L283), with `TF_DB_MIN` at
-  [config.h:391](../../config.h#L391). It is the clamp, not the signal.
+  [audio_engine.cpp:283](../../firmware/guitar_rig_analyzer/audio_engine.cpp#L283), with `TF_DB_MIN` at
+  [config.h:391](../../firmware/guitar_rig_analyzer/config.h#L391). It is the clamp, not the signal.
 - **The true transfer function is ≈ −47 dB**, 23 dB below the rail. Nothing is connected
   to RETURN_NODE; what it sees is channel crosstalk. There is no rig in the loop, so the
   correct answer is "out of range", and the correct display is *not* a number.
@@ -72,7 +72,7 @@ All values in dB / dBFS. "true gap" = SOURCE peak − RETURN peak.
 
 Confined to the live frame (`AudioFrame.tf_db[]`), the display curve, and this serial
 diagnostic. **`validation.cpp` is NOT affected** — it computes TF from raw FFT means with
-the EMA bypassed ([validation.cpp:47](../../validation.cpp#L47)), so the 40 dB gate gap is
+the EMA bypassed ([validation.cpp:47](../../firmware/guitar_rig_analyzer/validation.cpp#L47)), so the 40 dB gate gap is
 measured on unclamped data.
 
 Fix tracked as TODO-29. See journal.md 2026-09-07 (7) and (8).

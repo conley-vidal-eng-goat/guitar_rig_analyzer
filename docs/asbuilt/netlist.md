@@ -214,7 +214,7 @@ on the data lines, so the distinction has to be stated rather than assumed:
 | **7** | `I2S_DIN` — the *codec's* data input | would be "DOUT" — the *Teensy's* data output | Teensy → codec |
 | **8** | `I2S_DOUT` — the *codec's* data output | would be "DIN" — the *Teensy's* data input | codec → Teensy |
 
-**Authority for the direction** (not the name): [config.h:81-85](../../config.h#L81-L85)
+**Authority for the direction** (not the name): [config.h:81-85](../../firmware/guitar_rig_analyzer/config.h#L81-L85)
 — *"pin 8 is I2S RX_DATA0 on Teensy 4.x … and carries Audio Shield line-in INTO
 the Teensy"* — and [journal.md:1077](../../ai/journal.md#L1077) — *"Pin 8 is the
 line carrying line-in audio into the Teensy."* Pin 7 is `SAI1_TX_DATA0`
@@ -232,7 +232,7 @@ signal line and the `SAI1_*` aliases inline, so neither reading can go wrong.
 **Cross-check: the physical set matches the firmware exactly.** Pins 7, 8, 18,
 19, 20, 21, 23 — the same seven derived independently from `AudioInputI2S`,
 `AudioOutputI2S` and `AudioControlSGTL5000` in
-[audio_capture.cpp](../../audio_capture.cpp). Physical observation and firmware
+[audio_capture.cpp](../../firmware/guitar_rig_analyzer/audio_capture.cpp). Physical observation and firmware
 agree with no leftovers on either side.
 
 **⚠️ Two orange wires in one bundle.** Pin 8 (`I2S_DOUT`) and pin 19 (`I2C_SCL`)
@@ -293,7 +293,7 @@ no marking was read back. The count slip
 
 ### 🔴 A2 — RETURN_NODE was missing from the schematic entirely
 
-`RETURN_NODE_PHYSICAL_CH 1` ([config.h:174](../../config.h#L174)) binds
+`RETURN_NODE_PHYSICAL_CH 1` ([config.h:174](../../firmware/guitar_rig_analyzer/config.h#L174)) binds
 RETURN_NODE to I²S channel 1 = U3 **LINE IN R**, which **has no conductor
 fitted**. The drawing simply omitted it, so a reader could not tell whether the
 channel was absent by design, forgotten, or drawn elsewhere.
@@ -339,7 +339,7 @@ Run after the topology and direction audits, in the order clocks → 5 V functio
 
 Derived **and** independently measured, agreeing to within meter resolution:
 
-| Net | Derived from `SAMPLE_RATE 44100` ([config.h:208](../../config.h#L208)) | Scope, RIGOL DHO804 | Verif |
+| Net | Derived from `SAMPLE_RATE 44100` ([config.h:208](../../firmware/guitar_rig_analyzer/config.h#L208)) | Scope, RIGOL DHO804 | Verif |
 |---|---|---|---|
 | `I2S_LRCLK` | 44.100 kHz (1× Fs) | **44.108 kHz** — 0.018 % | `FW`+`MEAS` |
 | `I2S_BCLK` | 2.8224 MHz (64× Fs) | **~2.82 MHz** | `FW`+`MEAS` |
@@ -367,7 +367,7 @@ a pin is unused on this document's authority.
 The marking on U3's codec has never been read; the QFN is not legible in any
 photo. The identification rests on two things: the Rev D silkscreen, and
 `AudioControlSGTL5000::enable()` returning true
-([audio_capture.cpp:349](../../audio_capture.cpp#L349)) — i.e. a device at the
+([audio_capture.cpp:349](../../firmware/guitar_rig_analyzer/audio_capture.cpp#L349)) — i.e. a device at the
 SGTL5000 I²C address accepts SGTL5000 register writes. That is good evidence and
 adequate for this document, but it is `DERIV`, not `PHOTO`.
 

@@ -24,6 +24,7 @@ import unittest
 from analyzer_link import protocol
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+FIRMWARE = REPO / "firmware" / "guitar_rig_analyzer"
 
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 _LINE_COMMENT = re.compile(r"//[^\n]*")
@@ -34,10 +35,10 @@ def _strip_comments(text: str) -> str:
 
 
 def _read(name: str) -> str:
-    path = REPO / name
+    path = FIRMWARE / name
     if not path.is_file():
         raise AssertionError(
-            f"{name} is missing from {REPO}. This test is a mirror of the "
+            f"{name} is missing from {FIRMWARE}. This test is a mirror of the "
             f"firmware headers and cannot run without them.")
     return _strip_comments(path.read_text())
 
@@ -97,7 +98,7 @@ class TestFramingConstants(unittest.TestCase):
         # the same offset, the Pi would read a constant 0 and silently lose
         # the ability to detect a Teensy reboot — a failure with no symptom
         # until reconnect behaviour is wrong.
-        raw = (REPO / "data_sender.h").read_text()
+        raw = (FIRMWARE / "data_sender.h").read_text()
         self.assertIn("[18-19]   uint16  session_id", raw)
         self.assertNotIn("[18-19]   uint16  reserved", raw)
 

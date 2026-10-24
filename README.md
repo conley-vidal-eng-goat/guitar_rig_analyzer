@@ -254,7 +254,7 @@ Documentation and record
 arduino-cli compile --fqbn teensy:avr:teensy41 .
 ```
 
-Select the display backend with `DISPLAY_TARGET` in [config.h](config.h) —
+Select the display backend with `DISPLAY_TARGET` in [config.h](firmware/guitar_rig_analyzer/config.h) —
 `DISPLAY_TARGET_PI` is production. The Adafruit RA8875 libraries are needed
 *only* for the debug backend. Current version: **0.6.0**. The wire format
 carries its own `PI_PROTOCOL_VERSION` (**2**), deliberately separate so a
@@ -290,7 +290,7 @@ was invisible to every synthetic test because the test vectors used a hyphen.
 Only real bytes from real hardware found it.
 
 Hardware verification is the four-test validation harness in
-[validation.cpp](validation.cpp), and it has not been passed — see *"What is not
+[validation.cpp](firmware/guitar_rig_analyzer/validation.cpp), and it has not been passed — see *"What is not
 proven"* above.
 
 ---

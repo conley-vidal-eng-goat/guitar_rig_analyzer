@@ -7,7 +7,7 @@ below is quoted or referenced from existing project authority:
 | Authority | What it owns |
 |---|---|
 | [breadboard_bringup_v3.md](breadboard_bringup_v3.md) Phase 10 **step 11** | the procedure and the metric table |
-| [timing_probe.h](../timing_probe.h) | the question, the failure hierarchy, "the control run is the threshold" |
+| [timing_probe.h](../firmware/guitar_rig_analyzer/timing_probe.h) | the question, the failure hierarchy, "the control run is the threshold" |
 | `ai/todo.md` **TODO-35** | the acceptance matrix and its pass condition |
 | `ai/todo.md` **TODO-34** T1 | why the measurement exists |
 | [ADR-001](adr/ADR-001-display-architecture.md) | the failure hierarchy being defended |
@@ -160,17 +160,17 @@ relative to the `_PI` image currently on the board?
 `guitar_rig_analyzer.ino` contains **no `#if DISPLAY_TARGET` guard anywhere**.
 Every hardware bring-up call runs unconditionally and identically under both
 targets; only `presentation_*()` dispatch differs, inside
-[presentation.cpp](../presentation.cpp).
+[presentation.cpp](../firmware/guitar_rig_analyzer/presentation.cpp).
 
 | Subsystem | Call site | Differs under `_NONE`? | Evidence |
 |---|---|---|---|
-| Relay GPIOs | `signalRouter_init()` — [.ino:402](../guitar_rig_analyzer.ino#L402) | **No** | `pinMode(OUTPUT)` + `digitalWrite(LOW)` on both relay pins, unconditional ([signal_router.cpp:210-214](../signal_router.cpp#L210)) |
+| Relay GPIOs | `signalRouter_init()` — [.ino:402](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L402) | **No** | `pinMode(OUTPUT)` + `digitalWrite(LOW)` on both relay pins, unconditional ([signal_router.cpp:210-214](../firmware/guitar_rig_analyzer/signal_router.cpp#L210)) |
 | Relay state at boot | same | **No** | both **de-energised (LOW)**; `applyReturnRelay(TS)` |
 | Return source | same | **No** | `ReturnSource::TS` on every boot, never restored from storage (ADR-004) |
 | Injection | same | **No** | `s_injection_active = false`; `ENABLE_DUT_INJECTION` is 0 |
-| Monitor mode | same | **No** | `MonitorMode::SOURCE_RETURN`; `ENABLE_MONITOR_MODE` is 0 ([config.h:358](../config.h#L358)) |
+| Monitor mode | same | **No** | `MonitorMode::SOURCE_RETURN`; `ENABLE_MONITOR_MODE` is 0 ([config.h:358](../firmware/guitar_rig_analyzer/config.h#L358)) |
 | Jack-detect GPIOs | same | **No** | four × `INPUT_PULLUP`, unconditional |
-| Generator | `signalGen_init()` — [.ino:356](../guitar_rig_analyzer.ino#L356) | **No** | sine and noise amplitude `0.0f`, `GeneratorState::IDLE` ([signal_generator.cpp:323](../signal_generator.cpp#L323)) |
+| Generator | `signalGen_init()` — [.ino:356](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L356) | **No** | sine and noise amplitude `0.0f`, `GeneratorState::IDLE` ([signal_generator.cpp:323](../firmware/guitar_rig_analyzer/signal_generator.cpp#L323)) |
 | Codec / I2S / AudioMemory | `audioCap_init()` | **No** | unconditional, fatal-halt on failure in both |
 | Validation harness | `validation_init()` | **No** | print-only; tests reachable only by explicit USB command |
 | Calibration / export / SD | `calStore_init()`, `exportEngine_init()` | **No** | unconditional |
@@ -211,7 +211,7 @@ already happens on every power cycle of the current image, so it is not new to
 | 1 | `_NONE` | **does not exist** | **Yes**, one build + one new manifest |
 
 **Why the archived `_PI` hex is the right way back.** `__DATE__`/`__TIME__` are
-stamped into the image ([.ino:215](../guitar_rig_analyzer.ino#L215)), so
+stamped into the image ([.ino:215](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L215)), so
 recompiling `26f2bee` produces a **different binary with a different hash** and
 the board could no longer be matched against the flashed-artifact record. Its
 MANIFEST says so outright: *"This is the artifact to flash. Do not rebuild."*
@@ -230,7 +230,7 @@ needs its own manifest with its own hash.
 ```
 # one line changed in config.h:129 —  DISPLAY_TARGET DISPLAY_TARGET_NONE
 arduino-cli compile --clean --fqbn teensy:avr:teensy41 \
-    --output-dir ai/evidence/firmware/<sha>-NONE
+    --output-dir ai/evidence/firmware/<sha>-NONE firmware/guitar_rig_analyzer
 ```
 Record: warnings (**must be 0**), FLASH code/data/headers, RAM1/RAM2, the
 extracted `__DATE__`/`__TIME__`, md5 and sha256 — same MANIFEST shape as
@@ -322,7 +322,7 @@ Nothing timestamped it against the drain. Tracked as **TODO-63**.
 
 ### `TX room min: 0 B` is ambiguous in the current build
 
-[data_sender.cpp:1002](../data_sender.cpp#L1002) prints
+[data_sender.cpp:1002](../firmware/guitar_rig_analyzer/data_sender.cpp#L1002) prints
 `(s.tx_room_min == 0xFFFFFFFFu) ? 0UL : s.tx_room_min` — so the **never-sampled
 sentinel prints as 0**, indistinguishable from a genuinely observed zero. In `_PI`
 with traffic flowing the sentinel is always overwritten, so today's reading was
@@ -348,8 +348,8 @@ differ consume? Traced call site by call site 2026-09-27.
 | **entire `[Link]` block** | `s_stats` in `data_sender.cpp` | **BOOT** | power cycle only (TODO-63) |
 
 **Verified exhaustively:** `timingProbe_reset()` is called from exactly two places
-— `setup()` ([.ino:363](../guitar_rig_analyzer.ino#L363)) and the `t` command
-([.ino:602](../guitar_rig_analyzer.ino#L602)). `AudioMemoryUsageMaxReset()` is
+— `setup()` ([.ino:363](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L363)) and the `t` command
+([.ino:602](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L602)). `AudioMemoryUsageMaxReset()` is
 called from exactly one place, inside `timingProbe_reset()`. `dataSender_resetStats()`
 is called from exactly one place, `dataSender_init()`. Nothing else resets any of
 them, and no other command (`r`, `u`, `m`, `x`, `j`, `k`) touches them.
@@ -375,7 +375,7 @@ figures up.
 
 ### ⚠️ `loop_us_max` is dominated by the 5 s diagnostic print, in every run
 
-[.ino:930](../guitar_rig_analyzer.ino#L930) closes the loop-body timer as the
+[.ino:930](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L930) closes the loop-body timer as the
 **last statement in `loop()`**, deliberately, so the measured duration covers the
 5 s diagnostic print on the iterations where it fires — the source comment says so.
 

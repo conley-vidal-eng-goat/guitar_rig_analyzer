@@ -86,7 +86,7 @@ architecture documents and found the two pointing in opposite directions.
 
 **Evidence that the Pi was the intended architecture:**
 
-- [`data_sender.h:5`](../../data_sender.h#L5) — a complete binary UART protocol
+- [`data_sender.h:5`](../../firmware/guitar_rig_analyzer/data_sender.h#L5) — a complete binary UART protocol
   (5 packet types, CRC-16/CCITT, 460800 baud, 128 live bins, `Serial1` on pins
   0/1), described as streaming to "an external display processor (Raspberry Pi 5
   or similar)" and as *replacing* `display_engine`.
@@ -237,7 +237,7 @@ and TODO-14 do not proceed in their current form.
 
 **Note on step 3.** Audit expectation was that `displayEngine_init()` failure
 halted boot. It does not, and has not since the TODO-25 work:
-[`guitar_rig_analyzer.ino:197`](../../guitar_rig_analyzer.ino#L197) already logs a
+[`guitar_rig_analyzer.ino:197`](../../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L197) already logs a
 warning and continues, and `display_engine.cpp` guards all six entry points on
 `s_display_ok`. The dependency direction was fixed before this ADR was written;
 it is recorded here as verified rather than as changed. The `presentation_*`

@@ -226,15 +226,16 @@ later claim depends on.
    ```sh
    cd ~/Developer/guitar_rig_analyzer
    rsync -av --delete pi/ conley@guitar-rig-analyzer.local:~/gra-webtest/pi/
-   rsync -av config.h data_sender.h data_sender.cpp insights_engine.h \
+   (cd firmware/guitar_rig_analyzer && \
+    rsync -av --mkpath config.h data_sender.h data_sender.cpp insights_engine.h \
              measurement_core.h measurement_engine.h signal_router.h \
-             conley@guitar-rig-analyzer.local:~/gra-webtest/
+             conley@guitar-rig-analyzer.local:~/gra-webtest/firmware/guitar_rig_analyzer/)
    rsync -av ai/evidence/phase10-result-1khz.bin \
              ai/evidence/phase10-teensy-pi-idle-30s.bin \
              conley@guitar-rig-analyzer.local:~/gra-webtest/ai/evidence/
    ```
    The C++ headers are **not optional**: `test_firmware_header_sync.py` and
-   `test_transport_atomicity.py` read them from the tree root. Omitting them
+   `test_transport_atomicity.py` read them from `firmware/guitar_rig_analyzer/`. Omitting them
    produced "44 failures / 4 errors" on 2026-10-12 that were entirely a sync
    gap and not a Pi defect.
 2. On the **Pi**:

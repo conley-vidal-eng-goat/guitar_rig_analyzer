@@ -1697,9 +1697,9 @@ weeks of reasoning built on it.
 **`OBS` — the session id went 46 → 47 between two panel photographs**, ~20:04
 and ~20:23.
 
-`s_session_id` has exactly one assignment ([`data_sender.cpp:462`](../data_sender.cpp#L462)),
+`s_session_id` has exactly one assignment ([`data_sender.cpp:462`](../firmware/guitar_rig_analyzer/data_sender.cpp#L462)),
 fed by `nextSessionId()`, called from `dataSender_init()`, whose only call site
-is `presentation_init()` ([`presentation.cpp:38`](../presentation.cpp#L38)) in
+is `presentation_init()` ([`presentation.cpp:38`](../firmware/guitar_rig_analyzer/presentation.cpp#L38)) in
 `setup()`. **There is no path that changes the session without re-running
 `setup()`.** One increment means one restart — not two, and not a re-announce.
 
@@ -3322,9 +3322,9 @@ Exact to four decimals. The counter ticks once per **128-sample audio block**, n
 
 ### Traced to three source facts, not inferred from the counter's name
 
-[timing_probe.cpp:89](../timing_probe.cpp#L89) tests `gap > 1`. [audio_engine.cpp:338](../audio_engine.cpp#L338) assigns `frame->output_block_number = block.audio_block_counter`. [audio_capture.h:103](../audio_capture.h#L103) documents that counter as *"the master timebase. Increments once per"* 128-sample block. Expected stride 1, real stride 16.
+[timing_probe.cpp:89](../firmware/guitar_rig_analyzer/timing_probe.cpp#L89) tests `gap > 1`. [audio_engine.cpp:338](../firmware/guitar_rig_analyzer/audio_engine.cpp#L338) assigns `frame->output_block_number = block.audio_block_counter`. [audio_capture.h:103](../firmware/guitar_rig_analyzer/audio_capture.h#L103) documents that counter as *"the master timebase. Increments once per"* 128-sample block. Expected stride 1, real stride 16.
 
-**There is a second counter that would have been right.** `s_output_block_number` ([audio_capture.cpp:226](../audio_capture.cpp#L226)) does increment once per analysis block — and is **incremented, reset, and never read by anything**. Its own comment claims it *"appears in AudioRawBlock.output_block_number"*; it does not. [audio_engine.h:195](../audio_engine.h#L195) says the field *"Increments each time capture() returns true"*; false for the value assigned. **Two wrong comments and one dead counter fed one wrong instrument.**
+**There is a second counter that would have been right.** `s_output_block_number` ([audio_capture.cpp:226](../firmware/guitar_rig_analyzer/audio_capture.cpp#L226)) does increment once per analysis block — and is **incremented, reset, and never read by anything**. Its own comment claims it *"appears in AudioRawBlock.output_block_number"*; it does not. [audio_engine.h:195](../firmware/guitar_rig_analyzer/audio_engine.h#L195) says the field *"Increments each time capture() returns true"*; false for the value assigned. **Two wrong comments and one dead counter fed one wrong instrument.**
 
 ### ✅ Acquisition was fine, and three independent things say so
 
@@ -3336,7 +3336,7 @@ The 5 s diagnostic block — which uses a **different** counter — read **107�
 
 ### The repair is in the detector, and that is evidence-backed rather than preferred
 
-I inspected every consumer before proposing anything, because the tempting fix — change what gets transmitted so the stride becomes 1 — is the wrong one. `output_block_number` goes on the wire as LIVE_FRAME bytes [2-3] ([data_sender.cpp:627](../data_sender.cpp#L627)), the Pi decodes it **correctly**, and `state.py` uses it for link staleness. Changing the transmitted value would break a correct consumer and silently redefine the wire under an unchanged `PI_PROTOCOL_VERSION`. **Fix `timingProbe_noteBlock()` to expect the real stride** — derived from existing constants, not a hard-coded 16 — and flag `gap != expected`, since a gap *smaller* than expected is also a finding that `gap > 1` cannot express.
+I inspected every consumer before proposing anything, because the tempting fix — change what gets transmitted so the stride becomes 1 — is the wrong one. `output_block_number` goes on the wire as LIVE_FRAME bytes [2-3] ([data_sender.cpp:627](../firmware/guitar_rig_analyzer/data_sender.cpp#L627)), the Pi decodes it **correctly**, and `state.py` uses it for link staleness. Changing the transmitted value would break a correct consumer and silently redefine the wire under an unchanged `PI_PROTOCOL_VERSION`. **Fix `timingProbe_noteBlock()` to expect the real stride** — derived from existing constants, not a hard-coded 16 — and flag `gap != expected`, since a gap *smaller* than expected is also a finding that `gap > 1` cannot express.
 
 **Not fixed tonight, deliberately.** `26f2bee` is the artifact every 2026-09-27 RESULT-transport claim rests on. Reflashing to repair its own instrumentation mid-matrix would invalidate that chain. Batch it with TODO-61/63/64.
 
@@ -3435,7 +3435,7 @@ The replay reported **1 598 bytes discarded** alongside zero CRC failures, zero 
 
 ### 🔴 A second defect the hardware bytes found, of a kind the tests could not
 
-The STATUS packet carries `"Measuring \xe2\x80\x94 external stimulus"` — a **UTF-8 em dash**, because [guitar_rig_analyzer.ino:560](../guitar_rig_analyzer.ino#L560) contains a literal one, as do ~20 other `presentation_status()` sites and many in `validation.cpp`. The receiver decoded **ASCII**, so every one rendered as three U+FFFD characters. **The Pi was corrupting a human-readable string the Teensy authored correctly.**
+The STATUS packet carries `"Measuring \xe2\x80\x94 external stimulus"` — a **UTF-8 em dash**, because [guitar_rig_analyzer.ino:560](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L560) contains a literal one, as do ~20 other `presentation_status()` sites and many in `validation.cpp`. The receiver decoded **ASCII**, so every one rendered as three U+FFFD characters. **The Pi was corrupting a human-readable string the Teensy authored correctly.**
 
 **This is the shared-author blind spot again, and the specific mechanism is worth naming:** `tests/vectors.py` wrote the same message with an **ASCII hyphen**, so encoder and decoder agreed with each other and the test passed. The synthetic vectors could not have caught it in principle. That is the second defect the real byte stream has broken open that offline testing was structurally unable to reach, and it is the clearest argument yet for pinning regression tests to captured artifacts rather than to generated ones.
 
@@ -3837,7 +3837,7 @@ Examined file by file, restricted to code reachable **without operator input**:
 
 **What the design pass changed.** The item began as a one-line fix: `presentation_routerStatus()` is implemented in all three backends and called nowhere, so call it. Inspecting *what the packet would say* stopped that.
 
-**🔴 Every `jacks` bit was a pullup artefact.** All four detect inputs are `INPUT_PULLUP` ([signal_router.cpp:208-211](../signal_router.cpp#L208)) with **nothing attached**. `config.h` says so about three of them in its own comments — *"Phase 7 — not built, sense unverified"* — and the fourth, marked `INSTALLED`, is a **two-terminal jack with no switch terminal** (TODO-44); TODO-5 states plainly that *"pin 16 currently feeds nothing at all."* The D2F-01L microswitches intended to provide detection are parts-blocked at zero on hand.
+**🔴 Every `jacks` bit was a pullup artefact.** All four detect inputs are `INPUT_PULLUP` ([signal_router.cpp:208-211](../firmware/guitar_rig_analyzer/signal_router.cpp#L208)) with **nothing attached**. `config.h` says so about three of them in its own comments — *"Phase 7 — not built, sense unverified"* — and the fourth, marked `INSTALLED`, is a **two-terminal jack with no switch terminal** (TODO-44); TODO-5 states plainly that *"pin 16 currently feeds nothing at all."* The D2F-01L microswitches intended to provide detection are parts-blocked at zero on hand.
 
 So adding the missing call would have begun streaming a physical claim that **no hardware supports**, to a renderer whose job is to display physical claims. The defect would have been introduced by the fix.
 
@@ -3848,7 +3848,7 @@ So adding the missing call would have begun streaming a physical claim that **no
 - `route_valid` was `(selected_return != NONE)`. ADR-004 guarantees a selection always exists, so it is a **tautology** — always true, fully recomputable from `return_source`, which is already on the wire. It carried zero information and its name asserted connectivity it never established.
 - `can_inject` was that tautology **AND** an unavailable detector. Its honest value today is UNKNOWN, and there is no Boolean encoding of that.
 
-Then the decisive evidence: **neither has a consumer.** `signalRouter_canInject()` and `signalRouter_canMeasure()` are defined and called nowhere; [.ino:386](../guitar_rig_analyzer.ino#L386) records that the measurement engine does not consult them. They existed only to be transmitted. Removing them costs nothing, and injection readiness can return as an authoritative fact when the Teensy can actually establish it. **Prefer primitive facts the producer owns over derived booleans it cannot guarantee.**
+Then the decisive evidence: **neither has a consumer.** `signalRouter_canInject()` and `signalRouter_canMeasure()` are defined and called nowhere; [.ino:386](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L386) records that the measurement engine does not consult them. They existed only to be transmitted. Removing them costs nothing, and injection readiness can return as an authoritative fact when the Teensy can actually establish it. **Prefer primitive facts the producer owns over derived booleans it cannot guarantee.**
 
 `injection_active` was kept, and the distinction is worth stating because it looks like the same case: HELLO's capability bit answers *"can this build inject?"*, ROUTER_STATUS answers *"is injection active right now?"*. Different facts. Constantly 0 today, and **truthfully** 0 — not unknown.
 
@@ -3876,7 +3876,7 @@ Unlike TODO-57, on-change is tractable here: the authoritative field has **exact
 
 ## 2026-09-26 (5) — **TODO-57 implemented: `DS_PACKET_STATE` 0x08, periodic at 500 ms. Every measurement state is now observable, and a dropped ABORTED self-heals.** Two verification questions were answered before writing code, and one of them made the design *more* restrictive
 
-**What was broken.** The only carrier of measurement state was LIVE_FRAME byte [0], and `presentation_updateLive()` is gated to `IDLE|ARMED` ([.ino:748-756](../guitar_rig_analyzer.ino#L748)) — so that byte was effectively a two-value field, CAPTURE/PROCESSING/RESULT/EXPORTING were never observable, and a Pi attaching during a sticky ABORTED got geometry and then silence. Two comments in `data_sender.cpp` and one clause in TODO-34 asserted a safety net that did not exist.
+**What was broken.** The only carrier of measurement state was LIVE_FRAME byte [0], and `presentation_updateLive()` is gated to `IDLE|ARMED` ([.ino:748-756](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L748)) — so that byte was effectively a two-value field, CAPTURE/PROCESSING/RESULT/EXPORTING were never observable, and a Pi attaching during a sticky ABORTED got geometry and then silence. Two comments in `data_sender.cpp` and one clause in TODO-34 asserted a safety net that did not exist.
 
 **Why periodic, not transition-triggered — the evidence inverts the intuition.** "Announce on change, repair periodically" sounds strictly better. The call-site evidence says otherwise: `measurement_engine.cpp` has **16** `transitionTo()` sites, `update()` ever returns only **5** non-`NONE` events, and `arm`, `returnToLive`, `acknowledgeAbort` and `exportToSD` transition inside *command functions* that never pass through `update()`. `MeasurementEvent::STATE_CHANGED` exists and **the `.ino` never handles it.** Transition-triggered announcement would mean wiring ~11 currently-silent transitions across two call paths, and **its failure mode is a missing announcement — the exact defect being repaired.** A periodic snapshot reads the authoritative getter and needs none of that plumbing. Transition-triggered remains available later as an *optimisation* for latency, which is a different problem from observability.
 
@@ -3918,11 +3918,11 @@ The drift guard earned its keep again — it failed immediately on `DS_PACKET_ST
 
 **The defect.** `dataSender_service()` drains a staged RESULT in chunks across loop iterations, writing straight into the UART ring. `trySendBestEffort()` wrote to that same ring with **no result-pending interlock** — only a `txRoom()` check. Anything emitted between two drain passes therefore landed **inside** the RESULT's byte stream. The receiver consumes the interleaved packet as RESULT payload, fails the CRC, and **the whole result is lost.**
 
-`dataSender_sendResult()` already knew this hazard and guarded RESULT-vs-RESULT ([data_sender.cpp:539-545](../data_sender.cpp#L539)) with the words *"interleaving two packets would corrupt both."* **The same reasoning was simply never applied to event packets.** The knowledge was in the file; its scope was too narrow.
+`dataSender_sendResult()` already knew this hazard and guarded RESULT-vs-RESULT ([data_sender.cpp:539-545](../firmware/guitar_rig_analyzer/data_sender.cpp#L539)) with the words *"interleaving two packets would corrupt both."* **The same reasoning was simply never applied to event packets.** The knowledge was in the file; its scope was too narrow.
 
 **The part that explains why it survived review: the SMALL packet is the dangerous one.** After `dataSender_service()` returns, the loop has exited with *either* the result complete *or* `txRoom() == 0` — so a big packet is refused by the room check and looks safe. But the UART keeps draining at ~46 B/ms, so by the time another producer runs a few dozen bytes are free. A **12-byte STATUS (`"Ready"`) fits. A 1689-byte live frame does not.** Every intuition that says "watch the big packets" points the wrong way here.
 
-Most reachable path: clip-status messages at [.ino:759-771](../guitar_rig_analyzer.ino#L759) are **outside** the live-display gate, so `presentation_status()` fires during a RESULT drain whenever the player is still making noise — precisely when a measurement has just completed. Every RESULT is exposed: minimum framed size is 8356 B against a 4096 B buffer, so every result takes ≥3 drain passes.
+Most reachable path: clip-status messages at [.ino:759-771](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L759) are **outside** the live-display gate, so `presentation_status()` fires during a RESULT drain whenever the player is still making noise — precisely when a measurement has just completed. Every RESULT is exposed: minimum framed size is 8356 B against a 4096 B buffer, so every result takes ≥3 drain passes.
 
 **🔺 The worst property is not the loss — it is that the loss is invisible from the Teensy.** `results_sent` increments regardless: it counts bytes accepted into the UART. So the firmware reports success for a result the Pi never received, and the symptom presents as a Pi-side CRC problem. **A defect that blames the other end is the expensive kind.** `results_sent`'s meaning is now documented at the field: there is no return path and no acknowledgement in this protocol, so it is a transmitter statistic and cannot be cited as delivery evidence. TODO-34 carries the same warning, because T1 is where someone would be tempted to use it.
 
@@ -3930,7 +3930,7 @@ Most reachable path: clip-status messages at [.ino:759-771](../guitar_rig_analyz
 
 > While a staged RESULT is draining, no independently framed best-effort packet may write bytes to the stream.
 
-Enforced in `trySendBestEffort()` — the single choke point that **all six** best-effort packet types pass through, LIVE_FRAME included via its own call at [:510](../data_sender.cpp#L510). The alternative was gating each producer, which would have worked until the next packet type was added by someone who did not know to do it. **An invariant that can be forgotten is not an invariant**, and this codebase had just demonstrated that with TODO-58's never-called publisher.
+Enforced in `trySendBestEffort()` — the single choke point that **all six** best-effort packet types pass through, LIVE_FRAME included via its own call at [:510](../firmware/guitar_rig_analyzer/data_sender.cpp#L510). The alternative was gating each producer, which would have worked until the next packet type was added by someone who did not know to do it. **An invariant that can be forgotten is not an invariant**, and this codebase had just demonstrated that with TODO-58's never-called publisher.
 
 **The caller audit ran before the guard was written, not after.** The instruction was explicit — do not assume a central guard is safe merely because it looks obviously right. All six callers are best-effort by documented contract, so no exception was found. One nuance is worth keeping: **ABORTED and VIEW justify their droppability with the claim TODO-57 proved false.** Their policy is best-effort; their safety net does not exist yet. Dropping them during a drain is still strictly better than corrupting the RESULT, which loses the result *and* the event — but it is a reason to keep TODO-57 next in line rather than a reason to relax.
 
@@ -3958,9 +3958,9 @@ Two negative controls, each reverted: removing the invariant fails two tests; ad
 
 **What the design pass was for, and why it ran before any code.** The rule for this slice was: inspect, propose the lifecycle, stop at the decision gate. That gate is what produced the two findings below. Had the model been written first, both would have been absorbed into Python as "the way it is" and become invisible — which is exactly the failure this project keeps catching one layer too late.
 
-**🔴 F1 / TODO-57 — a documented safety net is FALSE.** `presentation_updateLive()` is gated to `IDLE | ARMED` ([.ino:748-756](../guitar_rig_analyzer.ino#L748)): in CAPTURE, PROCESSING, RESULT, EXPORTING and **ABORTED**, no live frame is sent at all. So the `measurement_state` byte at LIVE_FRAME offset [0] is effectively a **two-value field**.
+**🔴 F1 / TODO-57 — a documented safety net is FALSE.** `presentation_updateLive()` is gated to `IDLE | ARMED` ([.ino:748-756](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L748)): in CAPTURE, PROCESSING, RESULT, EXPORTING and **ABORTED**, no live frame is sent at all. So the `measurement_state` byte at LIVE_FRAME offset [0] is effectively a **two-value field**.
 
-That matters because [data_sender.cpp:681](../data_sender.cpp#L681) states *"measurement_state rides in every live frame, so the Pi still learns the fact"* — and **TODO-34 cites exactly that line as the mitigation for a dropped ABORTED**. It does not hold. During ABORTED there are no live frames; if the best-effort ABORTED packet drops, the Pi never learns the abort happened. It observes live frames stop, then resume showing IDLE. **The most safety-relevant state in the machine has the weakest delivery guarantee on the wire, and the compensating control written into the source does not exist.**
+That matters because [data_sender.cpp:681](../firmware/guitar_rig_analyzer/data_sender.cpp#L681) states *"measurement_state rides in every live frame, so the Pi still learns the fact"* — and **TODO-34 cites exactly that line as the mitigation for a dropped ABORTED**. It does not hold. During ABORTED there are no live frames; if the best-effort ABORTED packet drops, the Pi never learns the abort happened. It observes live frames stop, then resume showing IDLE. **The most safety-relevant state in the machine has the weakest delivery guarantee on the wire, and the compensating control written into the source does not exist.**
 
 **🔴 F2 / TODO-57 — a reconnecting Pi cannot learn measurement state at all.** HELLO carries geometry, not state. Combined with F1, a Pi attaching during a sticky ABORTED receives HELLO and then silence, and cannot distinguish *"not IDLE/ARMED"* from *"link dead"* from *"Teensy wedged"*. **This is TODO-56's exact shape one layer up:** state announced once as an event with no way to re-obtain it. TODO-56 fixed it for geometry; measurement state still has it.
 
@@ -3970,9 +3970,9 @@ That matters because [data_sender.cpp:681](../data_sender.cpp#L681) states *"mea
 
 **Four rulings, and the one that was corrected at the gate.** I proposed that `VIEW(LIVE)` clear the abort latch. That was wrong, and the correction is worth recording because the reasoning generalises.
 
-`presentation_restoreLive()` is called from **two** places: after `measurementEngine_acknowledgeAbort()` ([.ino:590](../guitar_rig_analyzer.ino#L590)) *and* after `measurementEngine_returnToLive()` from a RESULT view ([:600](../guitar_rig_analyzer.ino#L600)). `presentation.h` documents it as *"returns the renderer from a result/abort view to the live view"* — a **view** fact. **"The Teensy asked for the live view" and "the measurement engine is no longer ABORTED" are different claims, and the protocol does not make the first imply the second.** The pairing in the `.ino` is an incidental call-site adjacency, not a protocol contract. Treating adjacency as contract is how a boundary erodes one convenient inference at a time.
+`presentation_restoreLive()` is called from **two** places: after `measurementEngine_acknowledgeAbort()` ([.ino:590](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L590)) *and* after `measurementEngine_returnToLive()` from a RESULT view ([:600](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L600)). `presentation.h` documents it as *"returns the renderer from a result/abort view to the live view"* — a **view** fact. **"The Teensy asked for the live view" and "the measurement engine is no longer ABORTED" are different claims, and the protocol does not make the first imply the second.** The pairing in the `.ino` is an incidental call-site adjacency, not a protocol contract. Treating adjacency as contract is how a boundary erodes one convenient inference at a time.
 
-What *does* clear the latch is an authoritative observation of `IDLE`. That is not the Pi deciding an abort was acknowledged: the firmware defines ABORTED as leaving **only** through `acknowledgeAbort() → IDLE` ([measurement_engine.h:167](../measurement_engine.h#L167)), so an authoritative IDLE **is** evidence of acknowledgement. The rule is implemented against *any* packet carrying a measurement state rather than against LIVE_FRAME, so TODO-57's eventual state packet plugs in with no change here.
+What *does* clear the latch is an authoritative observation of `IDLE`. That is not the Pi deciding an abort was acknowledged: the firmware defines ABORTED as leaving **only** through `acknowledgeAbort() → IDLE` ([measurement_engine.h:167](../firmware/guitar_rig_analyzer/measurement_engine.h#L167)), so an authoritative IDLE **is** evidence of acknowledgement. The rule is implemented against *any* packet carrying a measurement state rather than against LIVE_FRAME, so TODO-57's eventual state packet plugs in with no change here.
 
 **The four rulings as implemented:**
 
@@ -4011,7 +4011,7 @@ The ADR-001 boundary guard now also covers `state.py` — the module most likely
 
 **Decision, and why it was not the obvious one.** Two mechanisms could fix a HELLO that only exists at startup: periodic announcement, or an explicit Pi→Teensy request. The request option produces cleaner reconnect semantics *and* lays groundwork the touch UI will need anyway, so it was not dismissed — it was evidence-checked and deferred.
 
-What the evidence said: **there is no inbound path in this firmware at all.** No `Serial1.read()`, no `.available()`, nothing. And [presentation.h:44](../presentation.h#L44) explicitly refuses to host one — *"IF Pi → TEENSY INPUT IS EVER ADDED, IT DOES NOT COME THROUGH HERE"* — because control crosses a trust boundary presentation deliberately does not have. So Option B is not "add a handler"; it is "build the firmware's first externally-controlled input surface, with its own boundary, its own validation and its own ADR." Option A is ~15 lines inside a function that already runs every loop iteration and is already non-blocking by contract.
+What the evidence said: **there is no inbound path in this firmware at all.** No `Serial1.read()`, no `.available()`, nothing. And [presentation.h:44](../firmware/guitar_rig_analyzer/presentation.h#L44) explicitly refuses to host one — *"IF Pi → TEENSY INPUT IS EVER ADDED, IT DOES NOT COME THROUGH HERE"* — because control crosses a trust boundary presentation deliberately does not have. So Option B is not "add a handler"; it is "build the firmware's first externally-controlled input surface, with its own boundary, its own validation and its own ADR." Option A is ~15 lines inside a function that already runs every loop iteration and is already non-blocking by contract.
 
 **Two hazards found while costing Option B, worth keeping even though we deferred it.** `Serial1.begin()` enables the Teensy's receiver and **nothing ever drains it** — today those bytes accumulate in a ring buffer and are silently discarded, which is why nobody has noticed. And **Raspberry Pi OS ships a login console on that UART by default**; the runbook never said to disable it. Harmless while nothing reads RX; the moment a command parser exists, it would be reading kernel and getty output as input. That is now a **[STOP] in Phase 10 step 2**, to be configured while the consequence is still zero rather than diagnosed later as intermittent command injection. A console at the wrong baud also mimics a physical-layer fault, giving one symptom two plausible causes.
 
@@ -4030,7 +4030,7 @@ The obvious substitute does not work. `output_block_number` is **16 bits** and w
 
 **Selected: a monotonic `uint16_t` boot counter in flash-emulated EEPROM.** The only candidate that satisfies the contract in *every* reboot mode including a cold power cycle — and deterministic, which is what makes runbook step 10 a **test** rather than an observation: the value is predictable and can be read back against the `[DataSender] Session id N` line the Teensy now prints at boot.
 
-The placement objection resolved itself on inspection: `dataSender_init()` runs at [.ino:311](../guitar_rig_analyzer.ino#L311), **before** `audioCap_init()` at :323. No audio is running, so the firmware's only flash write has no acquisition timing to perturb.
+The placement objection resolved itself on inspection: `dataSender_init()` runs at [.ino:311](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L311), **before** `audioCap_init()` at :323. No audio is running, so the firmware's only flash write has no acquisition timing to perturb.
 
 **Limitations documented in the source rather than discovered later:** 16-bit, wraps after 65535 boots (harmless — the contract is "changed ⇒ stale", not "ordered"); **not unique across devices**; predictable by design; counts `_PI` boots only, so it is not an instrument-wide boot count; and a blank EEPROM's first boot reads `0xFFFF` and becomes **0**, which is a legitimate value a receiver must not read as "absent". A test pins that last one, because treating 0 as missing is the natural mistake.
 
@@ -4040,7 +4040,7 @@ The placement objection resolved itself on inspection: `dataSender_init()` runs 
 
 **Separate HELLO counters, and why that is not bookkeeping fussiness.** Re-announcement is *expected* to be dropped under sustained backpressure — that is the non-blocking policy working. T1 run 3 suspends the reader deliberately to keep the UART full, so folding HELLO drops into `events_dropped` would add one per second for the whole window and destroy the meaning of a figure the acceptance matrix already depends on. `hello_sent` / `hello_dropped` are therefore their own fields. **Consequence recorded against TODO-34: the T1 report's content has changed, so all four runs must be captured against this build and no earlier report may serve as a control.** Run 1 is unaffected — `data_sender.cpp` is compiled out for `_NONE`.
 
-**⚠️ A method defect found while trying to prove the control run was untouched.** I attempted to show `_NONE` is binary-identical before and after the change by comparing hex md5. The hashes differed. The correct control — **building HEAD twice** — also produced two different hashes, because [.ino:215](../guitar_rig_analyzer.ino#L215) stamps `__DATE__`/`__TIME__` into the firmware. That is TODO-52/53's build-identity feature working as designed, and it means **the build is not reproducible and hash comparison cannot answer questions about source equivalence.**
+**⚠️ A method defect found while trying to prove the control run was untouched.** I attempted to show `_NONE` is binary-identical before and after the change by comparing hex md5. The hashes differed. The correct control — **building HEAD twice** — also produced two different hashes, because [.ino:215](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L215) stamps `__DATE__`/`__TIME__` into the firmware. That is TODO-52/53's build-identity feature working as designed, and it means **the build is not reproducible and hash comparison cannot answer questions about source equivalence.**
 
 What was actually established for `_NONE`: section sizes are **byte-identical** (`code:152448 data:72200 headers:8820`), `data_sender.cpp` is entirely `#if`'d out for that target, and the `config.h` addition is a `#define` emitting no code. **Carry this forward: "rebuild the commit and check the md5 matches" is not a valid identity procedure.** The md5 recorded for `44c4680` identifies the flashed *artifact* — which is still sound, because it was compared against the artifact that was flashed, not against a rebuild.
 
@@ -4064,7 +4064,7 @@ What was actually established for `_NONE`: section sizes are **byte-identical** 
 
 **🔴 DEFECT 2 — HELLO is sent once, best-effort, and never retransmitted. Opened as TODO-56.** Found by asking a parser-author's question that had not been asked before: *where does the receiver get the array length for RESULT?*
 
-`dataSender_init()` sends HELLO exactly once ([data_sender.cpp:263](../data_sender.cpp#L263)), through `timedBestEffort()` — which **drops the packet if the TX buffer is full** and increments a counter. There is no retransmission, no periodic re-announce, and no request path: `Serial1` RX is reserved but unused, so the Pi cannot ask.
+`dataSender_init()` sends HELLO exactly once ([data_sender.cpp:263](../firmware/guitar_rig_analyzer/data_sender.cpp#L263)), through `timedBestEffort()` — which **drops the packet if the TX buffer is full** and increments a counter. There is no retransmission, no periodic re-announce, and no request path: `Serial1` RX is reserved but unused, so the Pi cannot ask.
 
 That matters because **HELLO is the only carrier of `fft_bins`, and a RESULT's four `float[fft_bins]` arrays cannot be located without it.** This is not a parser limitation — it is a property of the wire format. The `insight_count` that would let a receiver solve for the array length sits *after* the arrays, so the geometry is genuinely unrecoverable from the packet alone. LIVE_FRAME is self-describing from its payload length; RESULT is not.
 
@@ -4698,7 +4698,7 @@ traffic, no external sources consulted. The board still runs `44c4680`.
 
 ### Observed — `OBS (code)`, read from the tree at `e88f6a4`
 
-- Test 4 applies four criteria ([`validation.cpp:1097–1237`](../validation.cpp#L1097-L1237)): **delta at 2·fc**
+- Test 4 applies four criteria ([`validation.cpp:1097–1237`](../firmware/guitar_rig_analyzer/validation.cpp#L1097-L1237)): **delta at 2·fc**
   versus the 200 Hz–fc passband mean must be `< -4.0 dB`; **slope** over [fc, 10 kHz] must be within
   `2.0 dB/oct` of an expected value; **confidence**; and **≤ 5 monotonicity bumps** over 0.5 dB
   (`validation.h:191–194`).
@@ -6501,7 +6501,7 @@ The same geometric confusion runs back into **2026-09-15 (4)**, which described 
 
 ### Firmware
 
-`[PHASE6-TEMP]` `p`/`P` handler and its help line removed. It was never committed, so the tree matches `HEAD` for that hunk. `grep PHASE6-TEMP` over `*.ino *.cpp *.h` is empty. The stale [.ino:314](../guitar_rig_analyzer.ino#L314) "Phase 6 is not built … electrically inert" comment is corrected, closing that TODO-45 sub-item. **Compile verified:** `arduino-cli compile --fqbn teensy:avr:teensy41 .` gives FLASH code 156 608 B (−128 B vs the handler build), RAM1 vars 218 080 B / 142 368 B free, RAM2 62 528 B. **Not yet flashed.** The Teensy still runs the build with `p`.
+`[PHASE6-TEMP]` `p`/`P` handler and its help line removed. It was never committed, so the tree matches `HEAD` for that hunk. `grep PHASE6-TEMP` over `*.ino *.cpp *.h` is empty. The stale [.ino:314](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L314) "Phase 6 is not built … electrically inert" comment is corrected, closing that TODO-45 sub-item. **Compile verified:** `arduino-cli compile --fqbn teensy:avr:teensy41 .` gives FLASH code 156 608 B (−128 B vs the handler build), RAM1 vars 218 080 B / 142 368 B free, RAM2 62 528 B. **Not yet flashed.** The Teensy still runs the build with `p`.
 
 **Agreed with the bench chat's reason for removing it now, plus one more.** Once RELAY_SEND's contacts enter the signal path in Phase 7, `signal_router.cpp` owns pin 14 (L282/375/384). A second writer toggling the same pin from serial would desynchronise the router's idea of relay state from the hardware.
 
@@ -6678,7 +6678,7 @@ The builder handed the serial port to this session; the Teensy is driven directl
 
 ## 2026-09-15 (3) — All pre-trigger checks pass, but the `p` command did not exist in the firmware. Added; Phase 6 is now genuinely ready to actuate
 
-**The runbook's Phase 6 step 11 was never carried out.** The serial dispatch in [guitar_rig_analyzer.ino:395](../guitar_rig_analyzer.ino#L395) handled `v 1 2 3 4 r m T t u i x s b c` and **no `p`**. Typing `p` would have printed `Unknown command` and the relay would have sat silent — a null result with no hardware cause, on a driver that had just passed six consecutive pre-trigger checks. That is the worst possible moment to introduce a phantom fault, and it was one keystroke away.
+**The runbook's Phase 6 step 11 was never carried out.** The serial dispatch in [guitar_rig_analyzer.ino:395](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L395) handled `v 1 2 3 4 r m T t u i x s b c` and **no `p`**. Typing `p` would have printed `Unknown command` and the relay would have sat silent — a null result with no hardware cause, on a driver that had just passed six consecutive pre-trigger checks. That is the worst possible moment to introduce a phantom fault, and it was one keystroke away.
 
 ### Pre-trigger checks — all pass
 
@@ -6695,7 +6695,7 @@ The builder handed the serial port to this session; the Teensy is driven directl
 
 ### The 0.5 mV reading is trustworthy, and that needed checking
 
-A driven-LOW output and an unconfigured floating input can both read ~0 mV on a high-impedance meter — and with a 10 kΩ base pulldown to GND in the circuit, a floating pin 14 would read near 0 V too. So the reading only means what we want it to mean if pin 14 is actually configured. **It is:** [guitar_rig_analyzer.ino:320](../guitar_rig_analyzer.ino#L320) calls `signalRouter_init()` in the live path, which sets both relay pins `OUTPUT` and drives them `LOW` ([signal_router.cpp:202-204](../signal_router.cpp#L202)). Worth noting the comment at [.ino:314](../guitar_rig_analyzer.ino#L314) states this relay-GPIO activity is "electrically inert" because "Phase 6 is not built" — **that premise expired the moment the driver went onto the board.** It should be corrected when the temporary command is removed.
+A driven-LOW output and an unconfigured floating input can both read ~0 mV on a high-impedance meter — and with a 10 kΩ base pulldown to GND in the circuit, a floating pin 14 would read near 0 V too. So the reading only means what we want it to mean if pin 14 is actually configured. **It is:** [guitar_rig_analyzer.ino:320](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L320) calls `signalRouter_init()` in the live path, which sets both relay pins `OUTPUT` and drives them `LOW` ([signal_router.cpp:202-204](../firmware/guitar_rig_analyzer/signal_router.cpp#L202)). Worth noting the comment at [.ino:314](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L314) states this relay-GPIO activity is "electrically inert" because "Phase 6 is not built" — **that premise expired the moment the driver went onto the board.** It should be corrected when the temporary command is removed.
 
 ### Change made
 
@@ -6718,7 +6718,7 @@ So if `p` prints `RELAY_SEND -> HIGH (energised)` and nothing clicks, the driver
 
 **V3 was already closed and this entry said otherwise.** Above, the base path is listed as "never been proven continuous since it moved to column 53." **That is wrong** — the builder had already measured **col 53 ↔ col 51 = 0.993 kΩ** after the relocation, which is 0.7 % off a 1 kΩ nominal and well inside a 1 % part. **The original unseated-leg failure mode is closed on the new node.** Recorded here rather than silently edited above, per this file's own rule. The lesson is narrow and worth keeping: the reconciliation carried an open item forward because *this session* had not seen the measurement, not because it had not been taken — bench state can move ahead of the record between turns, and "I have no evidence of X" must not be written as "X is unverified."
 
-**Compile verified.** `arduino-cli compile --fqbn teensy:avr:teensy41 .` succeeds with the `[PHASE6-TEMP]` handler in place — FLASH code 156 736 B, RAM1 variables 218 080 B with 142 368 B free for locals, RAM2 62 528 B. No errors and no new warnings; `RELAY_SEND_PIN` resolves through `config.h` at [.ino:102](../guitar_rig_analyzer.ino#L102). This satisfies the same criterion TODO-1 uses — a real build attempt, not code presence.
+**Compile verified.** `arduino-cli compile --fqbn teensy:avr:teensy41 .` succeeds with the `[PHASE6-TEMP]` handler in place — FLASH code 156 736 B, RAM1 variables 218 080 B with 142 368 B free for locals, RAM2 62 528 B. No errors and no new warnings; `RELAY_SEND_PIN` resolves through `config.h` at [.ino:102](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L102). This satisfies the same criterion TODO-1 uses — a real build attempt, not code presence.
 
 **Next:** flash, then `p`. Expect the `[BringUp]` line and a click; verify against the end-of-phase table — collector 0.1–0.3 V, COM_1↔NO_1 closed, COM_1↔NC_1 open, and the reverse on the next press.
 
@@ -6732,7 +6732,7 @@ So if `p` prints `RELAY_SEND -> HIGH (energised)` and nothing clicks, the driver
 
 | Node | Reading | What it establishes |
 |---|---|---|
-| Teensy pin 14 / base-drive node | **0.5 mV** | Pin 14 boots LOW per [signal_router.cpp:202-204](../signal_router.cpp#L202); nothing drives the base node |
+| Teensy pin 14 / base-drive node | **0.5 mV** | Pin 14 boots LOW per [signal_router.cpp:202-204](../firmware/guitar_rig_analyzer/signal_router.cpp#L202); nothing drives the base node |
 | Collector, **column 49** | **4.99 V** | 49 is the node tied to relay coil−, pulled to the rail through the coil, BJT off |
 | Coil +, **`55f`** | **4.99 V** | 0 V across the coil — correctly de-energised |
 
@@ -6810,9 +6810,9 @@ Step 3 alone is merely wrong — it puts the BJT base resistor on the wrong node
 
 This is why the halt is worth the interruption rather than being left for the next session:
 
-- [`config.h:243`](../config.h#L243) — `RELAY_SEND_PIN 14`
-- [`signal_router.cpp:202-204`](../signal_router.cpp#L202) — `signalRouter_init()` sets pin 14 `OUTPUT` and immediately `digitalWrite(..., LOW)`
-- [`signal_router.cpp:375`](../signal_router.cpp#L375) — drives it `HIGH` on the `p` relay command
+- [`config.h:243`](../firmware/guitar_rig_analyzer/config.h#L243) — `RELAY_SEND_PIN 14`
+- [`signal_router.cpp:202-204`](../firmware/guitar_rig_analyzer/signal_router.cpp#L202) — `signalRouter_init()` sets pin 14 `OUTPUT` and immediately `digitalWrite(..., LOW)`
+- [`signal_router.cpp:375`](../firmware/guitar_rig_analyzer/signal_router.cpp#L375) — drives it `HIGH` on the `p` relay command
 
 So with that jumper fitted, the *first power-up* clamps VGND to 0 V and dumps C8's stored charge (2.5 V across 10 µF) into pin 14, current-limited by nothing but the pin's own impedance. Steady state is survivable — R4 sources only 5 V / 10 kΩ = 0.5 mA — but the capacitor inrush is not something to hand a GPIO deliberately.
 
@@ -7212,7 +7212,7 @@ TODO-41B and journal 2026-09-13 (1)/(3) record the stimulus as **0.141 V<sub>rms
 
 ### Nothing else in the path scales the signal
 
-- Firmware: `s_mixer_src.gain(0, 1.0f)`, all other slots 0.0f ([audio_capture.cpp:296](audio_capture.cpp#L296)). Unity. The peak detector hangs directly off that mixer output.
+- Firmware: `s_mixer_src.gain(0, 1.0f)`, all other slots 0.0f ([audio_capture.cpp:296](../firmware/guitar_rig_analyzer/audio_capture.cpp#L296)). Unity. The peak detector hangs directly off that mixer output.
 - Codec digital path: `CHIP_SSS_CTRL = 0x0010` — ADC→I2S direct, the DAP is powered but **not in the routing path**. `CHIP_I2S_CTRL = 0x0030` — 16-bit, 64×Fs, I2S format. `CHIP_DAC_VOL` is DAC-side only and cannot touch the ADC.
 - Every register readback matches what the library wrote, so the I²C write path is landing (see 2026-09-13 (4) and commit `d63a753`).
 
@@ -7888,7 +7888,7 @@ A second rule mattered as much: **documentation completeness is never a reason t
 
 **A1 — four capacitor values were asserted but never read.** C3/C4/C5/C7 carried "0.1 µF" from the runbook's parts list. They had only ever been described as *"yellow things"* — **the same description given for C1, which turned out to be `BC103` = 10 nF.** The single data point available contradicted the assumption applied to the other four. `PHYS` had covered their presence and position; it never covered their value. Conley has since confirmed 0.1 µF at the bench, so they are restored — but tagged `RPT` (reported), not `PHYS`, because no marking was read back. **One thread stays open:** the confirmation said *"all three"* while four are listed; recorded, not assumed away.
 
-**A2 — RETURN_NODE was missing from the schematic entirely.** `RETURN_NODE_PHYSICAL_CH 1` ([config.h:174](../config.h#L174)) binds it to I²S channel 1 = U3 **LINE IN R**, which **has no conductor fitted.** The drawing simply omitted it. **This is worse than an ordinary omission, and the reason is the important part: the firmware reports a level for that channel, and −56 dBFS is the crosstalk floor bleeding from LINE IN L — not a measurement.** An undocumented open input that still prints a plausible number is the same class of trap as TODO-29's clamped TF bins, and it nearly reached a portfolio drawing. LINE IN R is now drawn with an explicit no-connect cross and annotated on the face of the sheet.
+**A2 — RETURN_NODE was missing from the schematic entirely.** `RETURN_NODE_PHYSICAL_CH 1` ([config.h:174](../firmware/guitar_rig_analyzer/config.h#L174)) binds it to I²S channel 1 = U3 **LINE IN R**, which **has no conductor fitted.** The drawing simply omitted it. **This is worse than an ordinary omission, and the reason is the important part: the firmware reports a level for that channel, and −56 dBFS is the crosstalk floor bleeding from LINE IN L — not a measurement.** An undocumented open input that still prints a plausible number is the same class of trap as TODO-29's clamped TF bins, and it nearly reached a portfolio drawing. LINE IN R is now drawn with an explicit no-connect cross and annotated on the face of the sheet.
 
 **A3 — VGND's 2.50 V was stated as fact.** It is *calculated* from R3/R4 being a matched pair. The only measurement, 2.480 V (2026-09-05 (1)), predates the OPA_BIAS rework and was taken at the old column-15 divider. Now labelled "calculated".
 
@@ -7909,7 +7909,7 @@ Entry (6)'s lesson was that the fault lived in the medium between the endpoints.
 Run clocks → 5 V function → part identity, deliberately in that order so the
 best-evidenced claims set a baseline before hardware-identity questions.
 
-**✅ D1 — the clocks are the strongest evidence in the whole document, and one was under-stated.** All three derive from `SAMPLE_RATE 44100` ([config.h:208](../config.h#L208)) and were independently measured on a RIGOL DHO804 in 2026-09-06 (1): LRCLK 44.108 kHz against 44.100 derived (**0.018 %**), BCLK ~2.82 MHz against 2.8224, MCLK ~11.29 MHz against 11.2896. **Defect: LRCLK carried no frequency on the drawing** while BCLK and MCLK did, making the frame clock look less established than it is. All three now show value, ratio and provenance.
+**✅ D1 — the clocks are the strongest evidence in the whole document, and one was under-stated.** All three derive from `SAMPLE_RATE 44100` ([config.h:208](../firmware/guitar_rig_analyzer/config.h#L208)) and were independently measured on a RIGOL DHO804 in 2026-09-06 (1): LRCLK 44.108 kHz against 44.100 derived (**0.018 %**), BCLK ~2.82 MHz against 2.8224, MCLK ~11.29 MHz against 11.2896. **Defect: LRCLK carried no frequency on the drawing** while BCLK and MCLK did, making the frame clock look less established than it is. All three now show value, ratio and provenance.
 
 **🟡 D2 — "5V pass-through, unused by codec" was half-asserted.** The wire is real and `PHYS`; the *"unused"* claim has no primary source. journal:1077's "the shield runs from 3.3 V; it does not need 5 V" is a project assertion, not a datasheet citation, and says nothing about other Rev D circuitry. Now marked `NYV`. Harmless either way — but a reconstructor should not be told a pin is unused on this document's authority.
 
@@ -8024,7 +8024,7 @@ This is the same class of error the project has now hit repeatedly: **a document
 | Printed `500Hz=` | −23.3 to −24.0 dB |
 | Printed `120Hz=` | −21.1 to −24.0 dB |
 
-**−24.0 dB is `TF_DB_MIN - 6.0f` exactly** ([config.h:391](config.h#L391), [audio_engine.cpp:283](audio_engine.cpp#L283) pre-change). The printed values sit **22–26 dB above the truth**, and the 1 kHz bin is pinned at the rail 100 % of the time.
+**−24.0 dB is `TF_DB_MIN - 6.0f` exactly** ([config.h:391](../firmware/guitar_rig_analyzer/config.h#L391), [audio_engine.cpp:283](../firmware/guitar_rig_analyzer/audio_engine.cpp#L283) pre-change). The printed values sit **22–26 dB above the truth**, and the 1 kHz bin is pinned at the rail 100 % of the time.
 
 **The detail that makes this worse than a plain error:** 5 kHz alternated between `---` and ≈−23 dB across windows. `---` is the honest output (bin below `TF_SOURCE_GATE` → NAN). The ≈−23 dB is the railed one. **The same diagnostic printed both an honest and a dishonest rendering of the same physical condition, seconds apart, with nothing to distinguish them.**
 
@@ -8034,7 +8034,7 @@ This is the same class of error the project has now hit repeatedly: **a document
 
 So the fix is **purely additive**: record the clamp, and make the renderer say so.
 
-- `AudioFrame` gains `tf_clamped_bits[FFT_BINS/32]` and `tf_clamped_count` ([audio_engine.h:162](audio_engine.h#L162)).
+- `AudioFrame` gains `tf_clamped_bits[FFT_BINS/32]` and `tf_clamped_count` ([audio_engine.h:162](../firmware/guitar_rig_analyzer/audio_engine.h#L162)).
 - `audioEngine_update()` sets bit *k* when bin *k*'s raw TF falls outside the window, clearing the mask each block so a stale bit can never mislabel a good measurement.
 - `audioEngine_tfBinClamped(frame, bin)` is the read accessor; the mask is not to be indexed directly.
 - The serial diagnostic prints `1kHz=RAIL[-24.0dB]` instead of `1kHz=-24.0dB`, plus a new `[Main] TF clamped bins: N of 512` line — because the spot-check samples five bins and the whole curve can be railed.
@@ -8058,7 +8058,7 @@ Clean compile. The two warnings emitted (`payload_size` unused in `data_sender.c
 ### ⛔ Not done, deliberately
 
 - **Not uploaded.** The board is still running `e6daac8`. The bench is untouched and stays in the verified baseline until Conley has photographed it.
-- **`display_engine.cpp` still renders railed bins as curve points** ([display_engine.cpp:347](display_engine.cpp#L347) reads `tf_db[bin]` directly). The accessor exists for it; wiring it in is a separate change against a separate consumer. Recorded on TODO-29.
+- **`display_engine.cpp` still renders railed bins as curve points** ([display_engine.cpp:347](../firmware/guitar_rig_analyzer/display_engine.cpp#L347) reads `tf_db[bin]` directly). The accessor exists for it; wiring it in is a separate change against a separate consumer. Recorded on TODO-29.
 - **TODO-18, TODO-27 and TODO-30 deliberately NOT bundled.** One defect, one change, one verification trail — Conley's call, and the right one given how much of this project's lost time came from confounded multi-variable changes.
 
 **Note for whoever uploads this:** most source files are mode 400. `audio_engine.h` and `audio_engine.cpp` were temporarily set u+w to edit and restored to 400 afterwards; `guitar_rig_analyzer.ino` is back at 600. Verify with `stat -f '%OLp %N' *.cpp *.h *.ino` if anything looks off.
@@ -8090,7 +8090,7 @@ Serial capture this session, 5 consecutive 5 s diagnostic windows, uptime 365–
 | 380 s | **−8.9 dBFS** | −57.1 dBFS | 46.3 | 14 / 20 |
 | 385 s | **−9.0 dBFS** | −56.3 dBFS | 46.7 | 12 / 20 |
 
-**The arithmetic closes.** `SGTL5000_LINE_IN_LEVEL = 5` ([config.h:138](config.h#L138)) ⇒ 1.33 V<sub>pp</sub> full scale = 0.665 V<sub>pk</sub>. A 0.143 V<sub>rms</sub> sine is 0.202 V<sub>pk</sub> ⇒ 0.202/0.665 = 0.304 ⇒ **−10.3 dBFS predicted**. Measured **−9.0 dBFS**, a **1.3 dB** agreement. Back-solving, the codec sees 0.167 V<sub>rms</sub> where the DMM read 0.143 — 17 % high, comfortably inside handheld-DMM AC accuracy at 1 kHz combined with the PGA's ~1.5 dB step granularity and the codec's full-scale tolerance. **Nothing is left unexplained.**
+**The arithmetic closes.** `SGTL5000_LINE_IN_LEVEL = 5` ([config.h:138](../firmware/guitar_rig_analyzer/config.h#L138)) ⇒ 1.33 V<sub>pp</sub> full scale = 0.665 V<sub>pk</sub>. A 0.143 V<sub>rms</sub> sine is 0.202 V<sub>pk</sub> ⇒ 0.202/0.665 = 0.304 ⇒ **−10.3 dBFS predicted**. Measured **−9.0 dBFS**, a **1.3 dB** agreement. Back-solving, the codec sees 0.167 V<sub>rms</sub> where the DMM read 0.143 — 17 % high, comfortably inside handheld-DMM AC accuracy at 1 kHz combined with the PGA's ~1.5 dB step granularity and the codec's full-scale tolerance. **Nothing is left unexplained.**
 
 **The old −39.1 dBFS figure is retired, not explained.** It was recorded 2026-09-06 (1), before the interconnect fix and with the headphone-jack misconnection in place. It should never be used as a comparison point again.
 
@@ -8100,16 +8100,16 @@ Serial capture this session, 5 consecutive 5 s diagnostic windows, uptime 365–
 
 ### ⚠️ Corrections to the bench session's reasoning
 
-1. **"RETURN_NODE / LINE IN L" conflates two different nodes.** LINE IN **L** is I2S channel 0, which is bound to **SOURCE_NODE** — `SOURCE_NODE_PHYSICAL_CH 0` ([config.h:173](config.h#L173)), and the binding is spelled out at [config.h:158](config.h#L158): "SOURCE_NODE → SGTL5000 Line In LEFT". RETURN_NODE is channel 1 = LINE IN **R**, which has nothing wired to it — it is the −57 dBFS crosstalk channel. Reading RETURN_NODE as the result of this test would have reported the noise floor as the answer.
+1. **"RETURN_NODE / LINE IN L" conflates two different nodes.** LINE IN **L** is I2S channel 0, which is bound to **SOURCE_NODE** — `SOURCE_NODE_PHYSICAL_CH 0` ([config.h:173](../firmware/guitar_rig_analyzer/config.h#L173)), and the binding is spelled out at [config.h:158](../firmware/guitar_rig_analyzer/config.h#L158): "SOURCE_NODE → SGTL5000 Line In LEFT". RETURN_NODE is channel 1 = LINE IN **R**, which has nothing wired to it — it is the −57 dBFS crosstalk channel. Reading RETURN_NODE as the result of this test would have reported the noise floor as the answer.
 2. **"The analog attenuation mystery is resolved" was over-claimed at the moment it was said.** On the evidence then in hand, 0.027 V<sub>rms</sub> predicts −24.8 dBFS while the recorded digital level was −39.1 dBFS — so the headphone-jack finding left ~14 dB unaccounted for and could not have been the whole story. It is moot *now* only because both of those numbers turned out to be stale. The inference was not valid at the time it was drawn; the conclusion happens to survive for a different reason.
 3. **The two 0.143 V readings are not independent evidence.** 48e and the LINE IN L pad are the two ends of the jumper that had just been plugged in. Identical readings prove the jumper conducts — a continuity check, not confirmation that "the signal makes it all the way."
 4. **The 54–66 kΩ / 603 kΩ resistance hunt on row 48 was never resolved, and no longer needs to be.** It was chasing a phantom: the attenuation was upstream, in the jack choice, not a stray resistive path into row 48. Left unexplained deliberately — do not spend more bench time on it.
 
 ### 🔺 New finding: the TF spot-check diagnostic is reading a clamp rail, not a measurement
 
-Every window reports `1kHz=-24.0dB` exactly, with 120 Hz / 500 Hz / 5 kHz sitting at −21 to −24 dB. **−24.0 dB is not a measurement — it is the clamp.** [audio_engine.cpp:283](audio_engine.cpp#L283) does `constrain(tf_raw, TF_DB_MIN - 6.0f, TF_DB_MAX + 6.0f)` with `TF_DB_MIN = -18.0f` ([config.h:391](config.h#L391)), i.e. a hard floor at exactly −24.0 dB. The true transfer function right now is SOURCE − RETURN ≈ **−47 dB** (nothing is connected to RETURN), which is 23 dB below the floor, so every energised bin rails and the EMA converges onto the rail.
+Every window reports `1kHz=-24.0dB` exactly, with 120 Hz / 500 Hz / 5 kHz sitting at −21 to −24 dB. **−24.0 dB is not a measurement — it is the clamp.** [audio_engine.cpp:283](../firmware/guitar_rig_analyzer/audio_engine.cpp#L283) does `constrain(tf_raw, TF_DB_MIN - 6.0f, TF_DB_MAX + 6.0f)` with `TF_DB_MIN = -18.0f` ([config.h:391](../firmware/guitar_rig_analyzer/config.h#L391)), i.e. a hard floor at exactly −24.0 dB. The true transfer function right now is SOURCE − RETURN ≈ **−47 dB** (nothing is connected to RETURN), which is 23 dB below the floor, so every energised bin rails and the EMA converges onto the rail.
 
-**Validation is unaffected** — `validation.cpp` computes TF from raw FFT means with the EMA bypassed ([validation.cpp:47](validation.cpp#L47)), so the 40 dB gate gap is measured on unclamped data. **The live path and the display are affected**, and the diagnostic prints a plausible-looking number with no indication that it is pinned. That is the same class of false signal as TODO-27's phantom −46.6 ms delta. Logged as TODO-29.
+**Validation is unaffected** — `validation.cpp` computes TF from raw FFT means with the EMA bypassed ([validation.cpp:47](../firmware/guitar_rig_analyzer/validation.cpp#L47)), so the 40 dB gate gap is measured on unclamped data. **The live path and the display are affected**, and the diagnostic prints a plausible-looking number with no indication that it is pinned. That is the same class of false signal as TODO-27's phantom −46.6 ms delta. Logged as TODO-29.
 
 **Where this leaves the project:** Phase 4's SOURCE_NODE criterion is met on every axis — signal present, digitally clean, and at the level the analog measurement predicts. **Next:** strip the temporary RAWDUMP / AudioMemory diagnostics (TODO-30), settle TODO-29, then Phase 5.
 

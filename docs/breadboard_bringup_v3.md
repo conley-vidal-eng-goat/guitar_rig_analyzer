@@ -879,8 +879,8 @@ Serial.println("[BringUp] Phase 2 smoke test done");
 **8. Build and flash.**
 
 ```bash
-arduino-cli compile --fqbn teensy:avr:teensy41 .
-arduino-cli upload  --fqbn teensy:avr:teensy41 .
+arduino-cli compile --fqbn teensy:avr:teensy41 firmware/guitar_rig_analyzer
+arduino-cli upload  --fqbn teensy:avr:teensy41 firmware/guitar_rig_analyzer
 ```
 
 **9. Open the Serial monitor at 115200 baud and watch the LEDs.**

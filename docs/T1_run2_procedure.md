@@ -131,7 +131,7 @@ reader on `/dev/ttyAMA0`, no `xxd`.
 
 ## 4. Teensy USB commands — verified against source
 
-Both verified in [guitar_rig_analyzer.ino:591-604](../guitar_rig_analyzer.ino#L591):
+Both verified in [guitar_rig_analyzer.ino:591-604](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L591):
 
 | Send | Source effect | Expected response |
 |---|---|---|
@@ -144,7 +144,7 @@ uppercase `T` reports. Getting them the wrong way round silently restarts the
 window instead of reporting it.
 
 **The handler reads ONE character and flushes the rest of the line**
-([.ino:494-496](../guitar_rig_analyzer.ino#L494)): `char cmd = Serial.read(); while
+([.ino:494-496](../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L494)): `char cmd = Serial.read(); while
 (Serial.available()) Serial.read();`. So the command is the **first character you
 type**, with or without a line ending, and a trailing newline is discarded
 harmlessly.

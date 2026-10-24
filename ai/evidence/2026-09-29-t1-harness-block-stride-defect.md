@@ -36,13 +36,13 @@ Exact to four decimal places. The counter the detector reads ticks **once per
 
 Three facts, each verified in the tree:
 
-1. **[timing_probe.cpp](../timing_probe.cpp) `timingProbe_noteBlock()`** tests
+1. **[timing_probe.cpp](../../firmware/guitar_rig_analyzer/timing_probe.cpp) `timingProbe_noteBlock()`** tests
    `gap > 1` and charges `gap - 1` skips, on the stated assumption that *"the
    block counter is the system's canonical monotonic timebase, so a gap > 1
    means an analysis block was produced that the main loop never processed."*
-2. **[audio_engine.cpp:338](../audio_engine.cpp#L338)** —
+2. **[audio_engine.cpp:338](../../firmware/guitar_rig_analyzer/audio_engine.cpp#L338)** —
    `frame->output_block_number = block.audio_block_counter;`
-3. **[audio_capture.h:103](../audio_capture.h#L103)** — `audio_block_counter` is
+3. **[audio_capture.h:103](../../firmware/guitar_rig_analyzer/audio_capture.h#L103)** — `audio_block_counter` is
    *"the master timebase. Increments once per"* 128-sample audio block.
 
 So the field named `output_block_number` carries the **audio-block** counter.
@@ -55,15 +55,15 @@ over.
 
 `audio_capture.cpp` holds a **second**, different counter:
 
-- **[audio_capture.cpp:226](../audio_capture.cpp#L226)** `s_output_block_number`,
+- **[audio_capture.cpp:226](../../firmware/guitar_rig_analyzer/audio_capture.cpp#L226)** `s_output_block_number`,
   annotated *"a separate display-only counter that increments once"* per
   analysis block, and at
-  **[:791](../audio_capture.cpp#L791)** *"display-only counter; **NOT** the
+  **[:791](../../firmware/guitar_rig_analyzer/audio_capture.cpp#L791)** *"display-only counter; **NOT** the
   timing primitive."*
 
 That counter — the one whose stride really is 1 per analysis block — is the one
 the detector needs, and it is **not** what gets copied into the frame.
-**[audio_engine.h:195](../audio_engine.h#L195)** documents the field as
+**[audio_engine.h:195](../../firmware/guitar_rig_analyzer/audio_engine.h#L195)** documents the field as
 *"Increments each time capture() returns true"*, which is **false** for the
 value actually assigned. A wrong comment fed a wrong instrument.
 
@@ -99,7 +99,7 @@ So, stated precisely:
   `loop_us_*` and `audio_blocks_high_water` are independent of the defect. Only
   the skip family is affected.
 
-**🔑 The project already knew the tick rate.** [`pi/tools/replay.py`](../pi/tools/replay.py)
+**🔑 The project already knew the tick rate.** [`pi/tools/replay.py`](../../pi/tools/replay.py)
 documents this same counter as *"AUDIO_BLOCK_SAMPLES/SAMPLE_RATE per tick …
 measured against this project's own 30 s hardware fixture as 2.9027 ms/tick
 versus 2.9025 ms theoretical."* The **Pi-side** tooling had the stride right all
@@ -123,12 +123,12 @@ The fix itself is small and there are two honest options:
 - **(b) Feed the detector the analysis-block counter.** Put `s_output_block_number`
   on the frame — or add a field — so the stride genuinely is 1. Cleaner
   semantically, but it changes `AudioFrame`, and `output_block_number` is also
-  transmitted on the wire ([data_sender.cpp:627](../data_sender.cpp#L627),
+  transmitted on the wire ([data_sender.cpp:627](../../firmware/guitar_rig_analyzer/data_sender.cpp#L627),
   `data_sender.h` bytes [2-3]), so the Pi's interpretation would change too.
   **Protocol consequence — do not choose (b) without checking it.**
 
 **Either way, fix the false comment at
-[audio_engine.h:195](../audio_engine.h#L195) in the same pass,** and rename or
+[audio_engine.h:195](../../firmware/guitar_rig_analyzer/audio_engine.h#L195) in the same pass,** and rename or
 re-document the field so the next reader cannot repeat the mistake.
 
 **Also owed:** a re-run of Run 2 afterwards. Its window was 137.785 s rather

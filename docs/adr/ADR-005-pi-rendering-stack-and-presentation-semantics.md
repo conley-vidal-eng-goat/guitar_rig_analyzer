@@ -208,13 +208,13 @@ the repo on ADR-004 policy and *ahead* of it on injection lifecycle) specifies a
 `measurementEngine_notifyRouteChanged()`, because `audioCap_setInjectionMode(false)`
 is silent by design and raises no `ROUTE_CHANGED`.
 
-It exists nowhere in this codebase. [`signal_router.cpp:295`](../../signal_router.cpp#L295)
+It exists nowhere in this codebase. [`signal_router.cpp:295`](../../firmware/guitar_rig_analyzer/signal_router.cpp#L295)
 disables injection on Rig Send removal and returns only `JACK_CHANGED`;
-[`guitar_rig_analyzer.ino:450`](../../guitar_rig_analyzer.ino#L450) answers
+[`guitar_rig_analyzer.ino:450`](../../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L450) answers
 `JACK_CHANGED` with `presentation_routerStatus()` and nothing else.
 
 **It cannot fire today.** `signalRouter_setInjectionEnabled()` has no caller, and
-[`guitar_rig_analyzer.ino:386`](../../guitar_rig_analyzer.ino#L386) states that
+[`guitar_rig_analyzer.ino:386`](../../firmware/guitar_rig_analyzer/guitar_rig_analyzer.ino#L386) states that
 measurement_engine does not consult `signalRouter_canInject()`, so `s_injection_active`
 is never true. This is a **prerequisite for enabling internal-stimulus measurement**,
 not a current defect and not a UI blocker. Tracked as TODO-66. **It does not enter
