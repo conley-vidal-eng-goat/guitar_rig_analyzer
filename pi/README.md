@@ -1,33 +1,44 @@
-# Pi-side receiver — Guitar Rig Analyzer link (protocol v2)
+# `pi/`: the Raspberry Pi side
 
-Raspberry Pi 5 half of the Teensy→Pi presentation link. Authority:
-[ADR-001](../docs/adr/ADR-001-display-architecture.md) · TODO-34 / TODO-36 ·
-[protocol audit](../docs/pi_link_protocol_audit.md) ·
-[runbook Phase 10](../docs/breadboard_bringup_v3.md).
+The Raspberry Pi 5 receives the Teensy's binary UART stream, decodes it, and
+draws it on the 7" Touch Display 2 as a full-screen browser kiosk. See
+[ADR-001](../docs/adr/ADR-001-display-architecture.md),
+[ADR-005](../docs/adr/ADR-005-pi-rendering-stack-and-presentation-semantics.md)
+and the [protocol audit](../docs/pi_link_protocol_audit.md).
 
-## What exists today
-
-Bytes in, typed Teensy-authored records out. Nothing else — no serial I/O,
-no UI, no framework.
+## Layout
 
 ```
-analyzer_link/
-  crc.py        CRC-16/CCITT-FALSE, mirroring crc16_block() in data_sender.cpp
-  protocol.py   constants, enums, Geometry — a MIRROR of the firmware headers
-  framing.py    FrameScanner: sync, resync, CRC verification, bounded lengths
-  packets.py    decoders for 0x01–0x07 + UnknownPacket, and the clamp contract
-  state.py      ReceiverState: packets -> renderable instrument state
-tests/
-  vectors.py    synthetic protocol v2 packet builder (the test stimulus)
-  test_crc.py
-  test_framing.py
-  test_packets.py
-  test_state.py
-  test_firmware_header_sync.py   drift guard — parses the real Teensy headers
+analyzer_link/          the wire protocol
+  crc.py                CRC-16/CCITT-FALSE, matching crc16_block() in data_sender.cpp
+  protocol.py           constants and enums mirrored from the firmware headers
+  framing.py            sync, resync, CRC check, bounded lengths
+  packets.py            decoders for every packet type, plus UnknownPacket
+  state.py              packets -> instrument state
+  presentation_semantics.py
+                        the one classification layer every renderer uses
+web/                    production renderer
+  server.py             reads the UART (or a capture file), serves /api/frame
+  payload.py            builds the classified frame the browser draws
+  lab.py                LAB-view diagnostics computed from Teensy values
+  static/               the browser client: LIVE, TONE, LAB and INFO views
+analyzer_ui/            the older Tkinter renderer, kept as a test reference
+tools/                  capture.sh, replay.py, byte_audit.py, t1_diff.py
+tests/                  563 tests
+deploy/                 kiosk autostart files and install steps
+run_web.sh              start the kiosk web UI
+run_kiosk_boot.sh       what the Pi runs at boot
+run_ui.sh               start the Tkinter UI
+run_tests.sh            run the test suite
 ```
 
-Run: `sh pi/run_tests.sh` — Python 3 standard library only. No pytest, no
-numpy, no network, no cloud service.
+Python 3 standard library only: no pytest, no numpy, no network. Run the tests
+with `sh pi/run_tests.sh`. To run the UI against a recorded capture instead of
+the live UART:
+
+```sh
+cd pi && python3 -m web.server --fixture ../ai/evidence/phase10-result-1khz.bin
+```
 
 ## The invariant this code exists to protect
 
@@ -67,30 +78,26 @@ On 2026-09-07 a consumer that ignored clamp state reported `1kHz=-24.0dB` in
 33 of 33 consecutive windows as though the rail were data. Protocol v2 exists
 largely to stop the Pi repeating that (audit finding L1).
 
-## Evidence status — read before citing any of this
+## Evidence status
 
-| Claim | Tier |
+| Claim | How it's known |
 |---|---|
-| Parser is self-consistent with `data_sender.h`; CRC, framing, resync, bounded lengths and unknown-type tolerance behave correctly | `OBS` — 70 tests, offline |
-| Mirrored constants and enums match the firmware headers | `OBS` — drift guard parses the headers |
-| Parser agrees with the **compiled firmware on the wire** | **NOT ESTABLISHED** |
-| Any Phase 10 runbook step | **NOT PASSED** |
+| CRC, framing, resync, length limits and unknown-type handling behave correctly | Offline tests |
+| Mirrored constants and enums match the firmware headers | Drift-guard test parses the real headers |
+| Decoder agrees with the compiled firmware on the wire | Real captures off the UART, including a full 8,908-byte RESULT ([record](../ai/evidence/2026-09-27-phase10-result-transport.md)) |
+| Kiosk renders live Teensy data on the panel, boots unattended, survives a Teensy power cycle | Panel captures in [`ai/evidence/`](../ai/evidence/) dated 2026-10-12 to 2026-10-18 |
 
-The test vectors are synthesized from this repository's reading of
-`data_sender.h`. Encoder and decoder share one author and one interpretation,
-so a misreading would be reproduced on both sides and every test would still
-pass. **Firmware agreement requires a captured real Teensy byte stream**
-(runbook Phase 10 step 4 onward, hardware required). Until that capture
-exists, no Phase 10 step may be recorded as passed on the strength of this
-directory.
+Test vectors are built from this repository's own reading of `data_sender.h`,
+so on their own they can't catch a misreading shared by encoder and decoder.
+That's what the real captures are for: an em-dash decoding bug was only found
+that way.
 
-## Not yet built
+## Not built
 
-- Serial transport (`/dev/serial0`) and capture/replay tooling
-- Renderer / UI — **blocked on T1** per TODO-36, and the framework choice needs
-  its own ADR rather than being buried in a code change
-- Pi→Teensy command path — **does not come through the presentation boundary**
-  ([presentation.h](../firmware/guitar_rig_analyzer/presentation.h)); it is CONTROL, with its own validation
+- **Pi→Teensy control.** The wire isn't connected, and the Pi opens the port
+  read-only. Control won't go through the presentation boundary
+  ([presentation.h](../firmware/guitar_rig_analyzer/presentation.h)); it needs
+  its own validation.
 
 ## HELLO lifecycle (TODO-56)
 
