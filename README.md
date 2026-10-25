@@ -30,15 +30,12 @@ capture what comes back, and show what changed at each frequency.
 
 ## What works
 
-- **Real rig, real guitar.** A guitar played through the Headrush shows up on
-  the panel as two signals, input and return, with the rig's gain computed and
-  the return level-matched on top
+- **A real guitar through a real rig (2026-10-18).** A guitar played through
+  the Headrush shows up on the panel as two signals, input and return, with the
+  rig's gain computed and the return level-matched on top
   ([evidence](ai/evidence/2026-10-18-pi-tone-return-restored.md)). The LAB view
   shows spectral, EQ, dynamics and noise differences while a song plays through
   the rig.
-- **A/B comparison.** I ran the Headrush A/B test (change one setting, keep
-  everything else fixed) and the instrument showed the change. That run is in
-  the portfolio video. Its numbers aren't written up in this repo yet.
 - **The data link.** A full 8,908-byte measurement result crossed the UART and
   passed its CRC check with all four 512-bin arrays intact. Sustained throughput
   was 36,481 B/s with zero CRC failures, and 6.5 MB of real captured bytes
@@ -56,10 +53,16 @@ capture what comes back, and show what changed at each frequency.
 
 ## What isn't proven yet
 
+- **A controlled A/B comparison.** The procedure is written
+  ([docs/ab_headrush_procedure.md](docs/ab_headrush_procedure.md)): fixed pink
+  noise in, one Headrush setting changed, everything else held. Until a run is
+  documented here with its settings and results, the 2026-10-18 demo shows a
+  real rig signal on the panel, not a measured difference between two
+  settings.
 - **Accuracy.** The four known-signal checks (flat loopback, channel swap, known
   gain offset, known RC filter) haven't been passed, and the instrument isn't
-  calibrated. It reliably shows *changes* between two settings. It doesn't yet
-  prove that an absolute curve is correct.
+  calibrated. The 563 passing tests check software behavior, not measurement
+  accuracy. The next planned check is the known RC filter.
 - **Timing under load.** The requirement that sending data must never disturb
   audio capture is still open. The first run of the timing test found a bug in
   the *test*: a "44,490 skipped blocks" figure that came from mixing up two

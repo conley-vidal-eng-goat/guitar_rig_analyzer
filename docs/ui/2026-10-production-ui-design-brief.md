@@ -70,7 +70,7 @@ Create a modern, responsive, unmistakably musical scientific instrument that let
 
 The experience should feel like **professional laboratory instrumentation crossed with a premium creative music tool**. Scientific trust is a nonnegotiable part of the visual design.
 
-**Deadline context:** The MIT Maker Portfolio is due **November 1, 2026**. This is a real functioning instrument, not an unlimited redesign exercise. Prioritize a compelling, working, recorded physical-demo experience and stage experimental additions behind it. Reserve time for photos, a clear demonstration, technical explanation, and honest documentation of what is or is not working.
+**Deadline context:** The portfolio is due **November 1, 2026**. This is a real functioning instrument, not an unlimited redesign exercise. Prioritize a compelling, working, recorded physical-demo experience and stage experimental additions behind it. Reserve time for photos, a clear demonstration, technical explanation, and honest documentation of what is or is not working.
 
 ---
 

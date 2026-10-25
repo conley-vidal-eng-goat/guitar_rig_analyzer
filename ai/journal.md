@@ -4187,7 +4187,7 @@ not part of the permanent analyzer signal path.** Therefore:
   **Construction complete ≠ signed off ≠ validated.** Those three are now tracked separately and must
   not be collapsed.
 
-### `DECISION` — critical path re-prioritised for the 2026-11-01 Maker Portfolio deadline
+### `DECISION` — critical path re-prioritised for the 2026-11-01 portfolio deadline
 
 **The temporary calibration fixture must not sit on the critical path to the instrument.** New order:
 
@@ -9253,7 +9253,7 @@ That is **~4× wider than entry (3) claimed**, and it makes the stopgap comforta
 
 > **⛔ NUMBERS SUPERSEDED BY 2026-09-05 (4) — READ THAT FIRST.** This entry's "output swings to within 1.2 V of each rail" is **wrong** — it came from a search-result summary, not TI. The datasheet says 0.2 V (10 kΩ) / 0.35 V (2 kΩ). Consequently this entry's 0.3 V window and its 1.34 V bias recommendation are both void; the correct target is ~0.88–1.0 V. The **pin 5 finding below is correct and stands.** Retained unedited per the never-delete rule.
 
-**Why this entry exists:** Conley decided to proceed with the Option 3 stopgap to get a working prototype for the MIT Maker Portfolio while the PCB architecture (TODO-21) is settled in parallel. That is **compliant with the decision gate in entry (2)** — the gate explicitly permits "an explicitly documented temporary bring-up configuration," and this entry is that documentation. This entry records the actual design calculation, which turned up two problems with the plan as proposed.
+**Why this entry exists:** Conley decided to proceed with the Option 3 stopgap to get a working prototype for the portfolio while the PCB architecture (TODO-21) is settled in parallel. That is **compliant with the decision gate in entry (2)** — the gate explicitly permits "an explicitly documented temporary bring-up configuration," and this entry is that documentation. This entry records the actual design calculation, which turned up two problems with the plan as proposed.
 
 **Finding 1 — 1.0 V is below the op-amp's own output floor. Do not bias there.** TI specifies the OPA1642's output as swinging **to within 1.2 V of each rail** (at R<sub>L</sub> = 2 kΩ to midsupply). On a 5 V rail that puts the output floor at **1.2 V**. A unity-gain follower's output must sit at its input bias, so **a 1.0 V bias asks the output to sit somewhere it cannot go.** The proposed 1.0 V target is not viable as stated.
 
