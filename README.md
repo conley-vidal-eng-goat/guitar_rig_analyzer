@@ -10,6 +10,13 @@ A **Teensy 4.1** captures the audio and does all of the measurement math. A
 design follows: the Teensy decides what is true, and the Pi only displays it.
 The Pi never computes a measurement value or decides whether one is valid.
 
+![The assembled analyzer: Teensy 4.1 and Audio Shield in a screw-terminal carrier beside the breadboard front end, with the labeled input, send, return and output jacks](ai/evidence/2026-10-26-assembled-analyzer-top.jpg)
+
+*The assembled analyzer. Teensy 4.1 and Audio Shield on the right, op-amp
+buffers and relays on the breadboard, and the labeled jacks: J4 guitar in, J5
+rig send, J6 rig return, J8 amp out, plus the XLR return.
+[What's in the photo](ai/evidence/2026-10-26-assembled-analyzer.md).*
+
 | Guitar in, rig return out (TONE view) | The first live measurement on the panel |
 |---|---|
 | ![TONE view: input above the ring, level-matched return below it](ai/evidence/2026-10-18-pi-tone-return-restored.png) | ![LIVE view rendering the transfer function from the real UART](ai/evidence/2026-09-30-pi-ui-live-energised.png) |
@@ -134,10 +141,11 @@ procedure. The as-built netlist and schematics are in
 [docs/asbuilt/](docs/asbuilt/); the schematics are generated from the netlist by
 [tools/gen_schematic.py](tools/gen_schematic.py).
 
-![Phase 6 relay with its flyback diode seated](ai/evidence/2026-09-16-phase6-flyback-diode-seated.jpg)
+<img src="ai/evidence/2026-10-26-assembled-analyzer-angle.jpg" alt="The analyzer from a low angle, with the Raspberry Pi and a multimeter on the bench behind it" width="540">
 
-*Phase 6, after fixing the relay coil polarity.
-[Notes on this photo](ai/evidence/2026-09-16-phase6-flyback-diode-seated.md).*
+*The finished build from a low angle. Earlier build photos, like
+[Phase 6's relay and flyback diode](ai/evidence/2026-09-16-phase6-flyback-diode-seated.md),
+are in [ai/evidence/](ai/evidence/).*
 
 ---
 
