@@ -12,7 +12,7 @@ The Pi never computes a measurement value or decides whether one is valid.
 
 ![The assembled analyzer: Teensy 4.1 and Audio Shield in a screw-terminal carrier beside the breadboard front end, with the labeled input, send, return and output jacks](ai/evidence/2026-10-26-assembled-analyzer-top.jpg)
 
-*The assembled analyzer. Teensy 4.1 and Audio Shield on the right, op-amp
+*The assembled analyzer. Teensy 4.1 and Audio Shield on the left, op-amp
 buffers and relays on the breadboard, and the labeled jacks: J4 guitar in, J5
 rig send, J6 rig return, J8 amp out, plus the XLR return.
 [What's in the photo](ai/evidence/2026-10-26-assembled-analyzer.md).*

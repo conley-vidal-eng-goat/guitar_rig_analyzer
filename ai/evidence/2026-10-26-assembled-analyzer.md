@@ -12,16 +12,16 @@ resized to 1800 px and all metadata was removed.
 
 | Item | Where |
 |---|---|
-| Teensy 4.1 with the Audio Shield Rev D (SGTL5000), in the green Dinkle screw-terminal carrier (U2/U3) | right of the breadboard |
+| Teensy 4.1 with the Audio Shield Rev D (SGTL5000), in the green Dinkle screw-terminal carrier (U2/U3) | left of the breadboard |
 | OPA1642 input buffer (U1) and the amp-out buffer (U4), each on a Proto-Advantage PA0001 SOIC-8 adapter | middle of the breadboard |
 | Relay driver transistors on SIPH06-1 SOT-23 adapters, and the two blue TQ2-5V relays | near each end of the breadboard |
-| **J4-IN**: guitar input | left, green cable in the top-down photo |
-| **J5-RS**: rig send | bottom left, purple cable |
-| **J6-RR**: rig return (TS) | top right |
+| **J4-IN**: guitar input | right, green cable in the top-down photo |
+| **J5-RS**: rig send | top right, purple cable |
+| **J6-RR**: rig return (TS) | bottom left |
 | **J8-OUT**: amp out, through the second buffer | labelled between J4 and the XLR |
 | XLR return (J7) | black connector beside J8 |
 
-The Raspberry Pi 5 is mostly out of frame: its box is at the bottom right of the
+The Raspberry Pi 5 is mostly out of frame: its box is at the top left of the
 top-down photo, and its edge and display ribbon are at the top left of the angled
 one. The touchscreen isn't in either photo; panel captures are elsewhere in this
 folder.
