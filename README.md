@@ -246,6 +246,15 @@ Architecture decisions are in [docs/adr/](docs/adr/), and the full build
 procedure, including fixes for eleven mistakes found while building, is in
 [docs/breadboard_bringup_v3.md](docs/breadboard_bringup_v3.md).
 
+## License
+
+MIT; see [LICENSE](LICENSE). Two exceptions: the images in
+[docs/ui/references/](docs/ui/references/) are third-party design references
+(screenshots of other software and of online videos, and AI-generated renders),
+kept for the record and not covered by this license, and
+[three.js](pi/web/static/vendor/three.module.js) keeps its own MIT license
+([three.LICENSE](pi/web/static/vendor/three.LICENSE)).
+
 ---
 
 **Conley Vidal**
