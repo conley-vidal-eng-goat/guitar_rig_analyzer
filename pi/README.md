@@ -23,8 +23,9 @@ web/                    production renderer
   lab.py                LAB-view diagnostics computed from Teensy values
   static/               the browser client: LIVE, TONE, LAB and INFO views
 analyzer_ui/            the older Tkinter renderer, kept as a test reference
-tools/                  capture.sh, replay.py, byte_audit.py, t1_diff.py
-tests/                  563 tests
+tools/                  capture.sh, replay.py, byte_audit.py, t1_diff.py,
+                        ab_capture.sh + ab_compare.py (rig A/B), pink_noise.py
+tests/                  571 tests
 deploy/                 kiosk autostart files and install steps
 run_web.sh              start the kiosk web UI
 run_kiosk_boot.sh       what the Pi runs at boot

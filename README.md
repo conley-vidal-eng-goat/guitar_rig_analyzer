@@ -68,7 +68,7 @@ capture what comes back, and show what changed at each frequency.
   settings.
 - **Accuracy.** The four known-signal checks (flat loopback, channel swap, known
   gain offset, known RC filter) haven't been passed, and the instrument isn't
-  calibrated. The 563 passing tests check software behavior, not measurement
+  calibrated. The 571 passing tests check software behavior, not measurement
   accuracy. The next planned check is the known RC filter.
 - **Timing under load.** The requirement that sending data must never disturb
   audio capture is still open. The first run of the timing test found a bug in
@@ -174,7 +174,7 @@ pi/                             Raspberry Pi 5 software (Python + JS)
   analyzer_link/                wire protocol: CRC, framing, packets, state
   web/                          kiosk server and browser UI (production)
   analyzer_ui/                  older Tkinter UI, kept as a test reference
-  tests/                        563 tests, Python standard library only
+  tests/                        571 tests, Python standard library only
   tools/                        capture, replay and byte-audit tools
 
 docs/                           architecture decisions, build procedure,
@@ -208,7 +208,7 @@ Deployment to the Pi is in [pi/deploy/README.md](pi/deploy/README.md).
 
 ## Testing
 
-`sh pi/run_tests.sh` runs 563 tests, and they pass. Two are worth pointing
+`sh pi/run_tests.sh` runs 571 tests, and they pass. Two are worth pointing
 out. One parses the real Teensy headers and fails if the Pi's decoder drifts
 from the firmware's wire format. Another fails if the browser UI ever touches
 the microphone or Web Audio APIs (`getUserMedia`, `AudioContext`), which keeps
