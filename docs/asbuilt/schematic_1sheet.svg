@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2320" height="2580" viewBox="0 0 2320 2580">
+<svg xmlns="http://www.w3.org/2000/svg" width="2320" height="3260" viewBox="0 0 2320 3260">
 <style>
     .w{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .sym{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round}
     .jn{fill:#111}
     .box{stroke:#111;stroke-width:1.7;fill:#fff}
     .dash{stroke:#b0b0b0;stroke-width:1.3;fill:none;stroke-dasharray:7 6}
+    .ext{stroke:#8a8a8a;stroke-width:1.4;fill:#f4f4f2;stroke-dasharray:7 6}
     .tag{stroke:#111;stroke-width:1.2;fill:#eef1f4}
     .lbl{font:600 13.5px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111}
     .val{font:12px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#333}
@@ -13,8 +14,8 @@
     .ttl{font:700 15px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111;letter-spacing:.07em}
     .pin{font:10.5px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#666}
     .gh{font:12px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#9a9a9a}</style>
-<rect width="2320" height="2580" fill="#ffffff"/>
-<rect class="box" x="18" y="18" width="2284" height="2544" fill="none"/>
+<rect width="2320" height="3260" fill="#ffffff"/>
+<rect class="box" x="18" y="18" width="2284" height="3224" fill="none"/>
 <rect class="dash" x="60" y="80" width="930" height="372" rx="6"/>
 <text class="ttl" x="64" y="71" text-anchor="start">A — POWER ENTRY, VGND &amp; OPA_BIAS REFERENCES</text>
 <path class="sym" transform="translate(170,160)" d="M0 0 V-14 M-15 -14 H15"/>
@@ -93,8 +94,9 @@
 <polygon class="tag" points="852.0,280.0 863.0,268.0 932.4,268.0 932.4,292.0 863.0,292.0"/>
 <text class="net" x="869" y="284" text-anchor="start">OPA_BIAS</text>
 <text class="note" x="770" y="406" text-anchor="middle">0.877 V calc / 0.874 V meas — Rth 8.25 kΩ</text>
+<text class="note" x="770" y="423" text-anchor="middle">Biases U1 and, since 2026-09-30, U4.</text>
 <rect class="dash" x="60" y="590" width="1160" height="500" rx="6"/>
-<text class="ttl" x="64" y="581" text-anchor="start">B — OPA1642 HIGH-IMPEDANCE BUFFER (SOURCE PATH)</text>
+<text class="ttl" x="64" y="581" text-anchor="start">B — U1 · OPA1642 HIGH-IMPEDANCE BUFFER (SOURCE PATH)</text>
 <rect class="box" x="110" y="680" width="92" height="118" rx="0"/>
 <text class="lbl" x="156.0" y="702" text-anchor="middle">J4</text>
 <text class="val" x="156.0" y="718" text-anchor="middle">1/4in IN</text>
@@ -190,12 +192,14 @@
 <text class="note" x="110" y="1036" text-anchor="start">specified 100 kΩ in series to pin 5.</text>
 <text class="note" x="110" y="1052" text-anchor="start">As built it is a direct tie. Benign —</text>
 <text class="note" x="110" y="1068" text-anchor="start">JFET input draws pA.</text>
+<text class="note" x="674" y="1020" text-anchor="start">U4 pin 5 shares this node (col 38 F–J), through the single</text>
+<text class="note" x="674" y="1036" text-anchor="start">jumper 38j → 41c. If it lifts, both channel Bs lose bias.</text>
 <rect class="dash" x="1270" y="80" width="990" height="910" rx="6"/>
-<text class="ttl" x="1274" y="71" text-anchor="start">C — TEENSY ↔ AUDIO SHIELD INTERFACE  (FROZEN GEOMETRY — DO NOT DISTURB)</text>
+<text class="ttl" x="1274" y="71" text-anchor="start">C — TEENSY ↔ AUDIO SHIELD INTERFACE  (NATIVE STACK)</text>
 <rect class="box" x="1330" y="165" width="215" height="405" rx="0"/>
 <text class="lbl" x="1437.5" y="191" text-anchor="middle">U2</text>
 <text class="val" x="1437.5" y="209" text-anchor="middle">Teensy 4.1</text>
-<text class="note" x="1437.5" y="225" text-anchor="middle">Dinkle screw carrier</text>
+<text class="note" x="1437.5" y="225" text-anchor="middle">in Dinkle screw carrier</text>
 <rect class="box" x="1990" y="165" width="235" height="515" rx="0"/>
 <text class="lbl" x="2107.5" y="191" text-anchor="middle">U3</text>
 <text class="val" x="2107.5" y="209" text-anchor="middle">Audio Shield Rev D</text>
@@ -204,91 +208,92 @@
 <text class="pin" x="1996" y="206" text-anchor="start">5V</text>
 <polyline class="w" points="1545,202 1990,202"/>
 <text class="net" x="1700" y="194" text-anchor="end">+5V</text>
-<text class="note" x="1710" y="194" text-anchor="start">·  green  —  5V pass-through — shield function NYV</text>
+<text class="note" x="1710" y="194" text-anchor="start">header — shield's use of it NYV</text>
 <text class="pin" x="1539" y="240" text-anchor="end">GND</text>
 <text class="pin" x="1996" y="240" text-anchor="start">GND</text>
 <polyline class="w" points="1545,236 1990,236"/>
 <text class="net" x="1700" y="228" text-anchor="end">GND</text>
-<text class="note" x="1710" y="228" text-anchor="start">·  purple  —  shield ground return</text>
+<text class="note" x="1710" y="228" text-anchor="start">header — bonds shield and board grounds</text>
 <text class="pin" x="1539" y="274" text-anchor="end">3V3</text>
-<text class="pin" x="1996" y="274" text-anchor="start">3.3V</text>
+<text class="pin" x="1996" y="274" text-anchor="start">3V3</text>
 <polyline class="w" points="1545,270 1990,270"/>
 <text class="net" x="1700" y="262" text-anchor="end">+3V3</text>
-<text class="note" x="1710" y="262" text-anchor="start">·  brown  —  SGTL5000 supply</text>
+<text class="note" x="1710" y="262" text-anchor="start">header — SGTL5000 supply</text>
 <text class="pin" x="1539" y="328" text-anchor="end">7</text>
 <text class="pin" x="1996" y="328" text-anchor="start">7</text>
 <polyline class="w" points="1545,324 1990,324"/>
 <text class="net" x="1700" y="316" text-anchor="end">I2S_DIN</text>
-<text class="note" x="1710" y="316" text-anchor="start">·  yellow  —  Teensy SAI1_TX_DATA0 → codec</text>
+<text class="note" x="1710" y="316" text-anchor="start">Teensy SAI1_TX_DATA0 → codec</text>
 <polygon class="jn" points="1955.0,318.5 1967.0,324.0 1955.0,329.5"/>
 <text class="pin" x="1539" y="362" text-anchor="end">8</text>
 <text class="pin" x="1996" y="362" text-anchor="start">8</text>
 <polyline class="w" points="1545,358 1990,358"/>
 <text class="net" x="1700" y="350" text-anchor="end">I2S_DOUT</text>
-<text class="note" x="1710" y="350" text-anchor="start">·  orange  —  codec → Teensy SAI1_RX_DATA0</text>
+<text class="note" x="1710" y="350" text-anchor="start">codec → Teensy SAI1_RX_DATA0</text>
 <polygon class="jn" points="1955.0,352.5 1943.0,358.0 1955.0,363.5"/>
 <text class="pin" x="1539" y="396" text-anchor="end">18</text>
 <text class="pin" x="1996" y="396" text-anchor="start">18</text>
 <polyline class="w" points="1545,392 1990,392"/>
 <text class="net" x="1700" y="384" text-anchor="end">I2C_SDA</text>
-<text class="note" x="1710" y="384" text-anchor="start">·  black  —  codec control</text>
+<text class="note" x="1710" y="384" text-anchor="start">codec control</text>
 <polygon class="jn" points="1955.0,386.5 1967.0,392.0 1955.0,397.5"/>
 <polygon class="jn" points="1585.0,386.5 1573.0,392.0 1585.0,397.5"/>
 <text class="pin" x="1539" y="430" text-anchor="end">19</text>
 <text class="pin" x="1996" y="430" text-anchor="start">19</text>
 <polyline class="w" points="1545,426 1990,426"/>
 <text class="net" x="1700" y="418" text-anchor="end">I2C_SCL</text>
-<text class="note" x="1710" y="418" text-anchor="start">·  orange  —  codec control</text>
+<text class="note" x="1710" y="418" text-anchor="start">codec control</text>
 <polygon class="jn" points="1955.0,420.5 1967.0,426.0 1955.0,431.5"/>
 <text class="pin" x="1539" y="464" text-anchor="end">20</text>
 <text class="pin" x="1996" y="464" text-anchor="start">20</text>
 <polyline class="w" points="1545,460 1990,460"/>
 <text class="net" x="1700" y="452" text-anchor="end">I2S_LRCLK</text>
-<text class="note" x="1710" y="452" text-anchor="start">·  red  —  frame clock · 44.1 kHz · 1×Fs</text>
+<text class="note" x="1710" y="452" text-anchor="start">frame clock · 44.1 kHz · 1×Fs</text>
 <polygon class="jn" points="1955.0,454.5 1967.0,460.0 1955.0,465.5"/>
 <text class="pin" x="1539" y="498" text-anchor="end">21</text>
 <text class="pin" x="1996" y="498" text-anchor="start">21</text>
 <polyline class="w" points="1545,494 1990,494"/>
 <text class="net" x="1700" y="486" text-anchor="end">I2S_BCLK</text>
-<text class="note" x="1710" y="486" text-anchor="start">·  white  —  bit clock · 2.8224 MHz · 64×Fs</text>
+<text class="note" x="1710" y="486" text-anchor="start">bit clock · 2.8224 MHz · 64×Fs</text>
 <polygon class="jn" points="1955.0,488.5 1967.0,494.0 1955.0,499.5"/>
 <text class="pin" x="1539" y="532" text-anchor="end">23</text>
 <text class="pin" x="1996" y="532" text-anchor="start">23</text>
 <polyline class="w" points="1545,528 1990,528"/>
 <text class="net" x="1700" y="520" text-anchor="end">I2S_MCLK</text>
-<text class="note" x="1710" y="520" text-anchor="start">·  gray  —  master clock · 11.2896 MHz · 256×Fs</text>
+<text class="note" x="1710" y="520" text-anchor="start">master clock · 11.2896 MHz · 256×Fs</text>
 <polygon class="jn" points="1955.0,522.5 1967.0,528.0 1955.0,533.5"/>
 <polyline class="w" points="1990,590 1900,590"/>
 <polygon class="tag" points="1900.0,590.0 1889.0,578.0 1797.7,578.0 1797.7,602.0 1889.0,602.0"/>
 <text class="net" x="1883" y="594" text-anchor="end">SOURCE_NODE</text>
 <text class="pin" x="1996" y="594" text-anchor="start">LINE IN L</text>
-<text class="note" x="1900" y="616" text-anchor="end">red jumper: breadboard 48e → U3 LINE-IN-L pad</text>
+<text class="note" x="1900" y="616" text-anchor="end">jumper: breadboard 48e → U3 LINE-IN-L pad</text>
 <polyline class="w" points="1990,655 1900,655"/>
 <polygon class="tag" points="1900.0,655.0 1889.0,643.0 1797.7,643.0 1797.7,667.0 1889.0,667.0"/>
 <text class="net" x="1883" y="659" text-anchor="end">RETURN_NODE</text>
 <text class="pin" x="1996" y="659" text-anchor="start">LINE IN R</text>
 <text class="note" x="1900" y="677" text-anchor="end">fed from RELAY_RETURN COM (16a), block F — TS or XLR return</text>
-<text class="note" x="1900" y="695" text-anchor="end">⚠ supersedes the 2026-09-07 capture, when this input had no conductor</text>
+<text class="note" x="1900" y="695" text-anchor="end">⚠ joint resoldered and new jumper fitted 2026-10-18 (RPT)</text>
 <rect class="dash" x="1330" y="710" width="640" height="142" rx="4"/>
 <text class="lbl" x="1342" y="730" text-anchor="start">PROVENANCE &amp; CONVENTIONS</text>
 <text class="note" x="1342" y="751" text-anchor="start">Net names are CODEC-REFERENCED:  I2S_DIN = codec data IN (Teensy 7, SAI1_TX_DATA0);</text>
-<text class="note" x="1342" y="767" text-anchor="start">I2S_DOUT = codec data OUT (Teensy 8, SAI1_RX_DATA0).   Ref: config.h:81-85</text>
-<text class="note" x="1342" y="790" text-anchor="start">Clocks derived from SAMPLE_RATE 44100 (config.h:208); all three scope-confirmed:</text>
+<text class="note" x="1342" y="767" text-anchor="start">I2S_DOUT = codec data OUT (Teensy 8, SAI1_RX_DATA0).   See netlist.md §4.</text>
+<text class="note" x="1342" y="790" text-anchor="start">Clocks derive from SAMPLE_RATE 44100. Scope-confirmed on the REPLACED boards:</text>
 <text class="note" x="1342" y="806" text-anchor="start">LRCLK 44.108 kHz · BCLK ~2.82 MHz · MCLK ~11.29 MHz  (journal 2026-09-06 (1))</text>
-<text class="note" x="1342" y="829" text-anchor="start">U3 "Rev D" read from silkscreen. SGTL5000 identified functionally over I²C, not</text>
-<text class="note" x="1342" y="845" text-anchor="start">from its package marking. The shield's use of the 5V pad is UNVERIFIED.</text>
-<text class="lbl" x="1330" y="884" text-anchor="start">GEOMETRY IS LOAD-BEARING — this is the fix, not a detail:</text>
-<text class="note" x="1330" y="904" text-anchor="start">•  Jumper length ≈ 25–30 mm (was 100–200 mm flying leads)</text>
-<text class="note" x="1330" y="922" text-anchor="start">•  U3 sits ≈ 25 mm above U2, bundle held tight, 1:1 screw → pad</text>
-<text class="note" x="1330" y="940" text-anchor="start">•  Result: 360/360 clean windows, 0 corrupted of 11,520 samples/node</text>
+<text class="note" x="1342" y="829" text-anchor="start">SGTL5000 identified functionally over I²C, not from its package marking.</text>
+<text class="note" x="1342" y="845" text-anchor="start">The shield's use of the 5V pad is UNVERIFIED. Pin 15 stubs to the unpopulated VOL pad.</text>
+<text class="lbl" x="1330" y="884" text-anchor="start">THE HEADER STACK IS THE INTERCONNECT, SINCE 2026-09-13:</text>
+<text class="note" x="1330" y="904" text-anchor="start">•  Shield → Teensy → carrier, soldered. New boards. No flying leads.</text>
+<text class="note" x="1330" y="922" text-anchor="start">•  Result: 324/324 clean windows, 0 outliers, 26.9 min (TODO-41B)</text>
+<text class="note" x="1330" y="940" text-anchor="start">•  Idle: SOURCE −65.39, RETURN −65.26 dBFS, LINE-IN-L open</text>
 <text class="note" x="1330" y="958" text-anchor="start">•  U2 is I²S MASTER — it generates MCLK / BCLK / LRCLK</text>
-<text class="note" x="1860" y="904" text-anchor="start">⚠  TWO ORANGE WIRES: pin 8 (I2S_DOUT) and pin 19 (I2C_SCL).</text>
-<text class="note" x="1860" y="922" text-anchor="start">   DOUT is the conductor that caused the corruption fault.</text>
-<text class="note" x="1860" y="940" text-anchor="start">   Do not re-seat this bundle from memory. Risk R3.</text>
-<rect class="dash" x="1270" y="1020" width="990" height="300" rx="6"/>
+<text class="note" x="1860" y="904" text-anchor="start">⚠  BOARDS AND TOPOLOGY CHANGED TOGETHER.</text>
+<text class="note" x="1860" y="922" text-anchor="start">   "The stack fixed it" is NOT established. What is</text>
+<text class="note" x="1860" y="940" text-anchor="start">   established: this assembly does not reproduce the fault.</text>
+<text class="note" x="1860" y="958" text-anchor="start">   The 10-wire capture of 2026-09-07 is netlist.md §4.</text>
+<rect class="dash" x="1270" y="1020" width="990" height="270" rx="6"/>
 <text class="ttl" x="1274" y="1011" text-anchor="start">D — RESERVED, AND HARDWARE DELIBERATELY NOT BUILT</text>
-<text class="note" x="1300" y="1056" text-anchor="start">Phases 6, 7 and 8 have been BUILT — see blocks E and F. What is left here is not "pending": the four jack-detect</text>
-<text class="note" x="1300" y="1072" text-anchor="start">inputs are decided against (ADR-003, ADR-004) and nothing lands on those pins. Firmware defines them at config.h:77-101.</text>
+<text class="note" x="1300" y="1056" text-anchor="start">Everything else is BUILT — see blocks E to H. What is left here is not "pending": the four jack-detect inputs are</text>
+<text class="note" x="1300" y="1072" text-anchor="start">decided against (ADR-003, ADR-004) and nothing lands on those pins. The firmware still defines them in config.h.</text>
 <text class="pin" x="1300" y="1106" text-anchor="start">NET / FUNCTION</text>
 <text class="pin" x="1600" y="1106" text-anchor="start">PIN</text>
 <text class="pin" x="1730" y="1106" text-anchor="start">PLANNED PART</text>
@@ -310,14 +315,39 @@
 <text class="gh" x="1600" y="1200" text-anchor="start">Teensy 24</text>
 <text class="gh" x="1730" y="1200" text-anchor="start">D2F-01L omitted by decision</text>
 <text class="gh" x="2060" y="1200" text-anchor="start">NOT BUILT · ADR-004</text>
-<text class="gh" x="1300" y="1222" text-anchor="start">PI_LINK_UART TX / RX</text>
-<text class="gh" x="1600" y="1222" text-anchor="start">Teensy 1 / 0</text>
-<text class="gh" x="1730" y="1222" text-anchor="start">Pi 5 display link (Serial1)</text>
-<text class="gh" x="2060" y="1222" text-anchor="start">Phase 10</text>
-<text class="gh" x="1300" y="1244" text-anchor="start">RA8875_CS / INT / RESET</text>
-<text class="gh" x="1600" y="1244" text-anchor="start">Teensy 10 / 9 / 5</text>
-<text class="gh" x="1730" y="1244" text-anchor="start">SPI display (debug only)</text>
-<text class="gh" x="2060" y="1244" text-anchor="start">deferred</text>
+<text class="gh" x="1300" y="1222" text-anchor="start">RA8875_CS / INT / RESET</text>
+<text class="gh" x="1600" y="1222" text-anchor="start">Teensy 10 / 9 / 5</text>
+<text class="gh" x="1730" y="1222" text-anchor="start">SPI display (debug only)</text>
+<text class="gh" x="2060" y="1222" text-anchor="start">blocked by stack</text>
+<rect class="dash" x="1270" y="1340" width="990" height="270" rx="6"/>
+<text class="ttl" x="1274" y="1331" text-anchor="start">H — RASPBERRY PI 5 LINK · PHASE 10 · RECEIVE-ONLY</text>
+<rect class="box" x="1330" y="1390" width="215" height="150" rx="0"/>
+<text class="lbl" x="1437.5" y="1416" text-anchor="middle">U2</text>
+<text class="val" x="1437.5" y="1434" text-anchor="middle">Teensy 4.1</text>
+<rect class="box" x="1990" y="1390" width="235" height="150" rx="0"/>
+<text class="lbl" x="2213" y="1432" text-anchor="end">Pi 5</text>
+<text class="val" x="2213" y="1450" text-anchor="end">Raspberry Pi 5</text>
+<text class="note" x="2213" y="1488" text-anchor="end">7in Touch Display 2</text>
+<polyline class="w" points="1545,1462 1990,1462"/>
+<polygon class="jn" points="1955.0,1456.5 1967.0,1462.0 1955.0,1467.5"/>
+<text class="pin" x="1539" y="1466" text-anchor="end">1 · TX1</text>
+<text class="pin" x="1996" y="1466" text-anchor="start">10 · GPIO15</text>
+<text class="net" x="1600" y="1454" text-anchor="start">PI_LINK_UART</text>
+<text class="note" x="1710" y="1454" text-anchor="start">460800 baud, /dev/ttyAMA0</text>
+<polyline class="w" points="1545,1506 1990,1506"/>
+<text class="pin" x="1539" y="1510" text-anchor="end">GND</text>
+<text class="pin" x="1996" y="1510" text-anchor="start">9 · GND</text>
+<text class="net" x="1600" y="1498" text-anchor="start">GND</text>
+<text class="note" x="1710" y="1498" text-anchor="start">the only power-domain connection</text>
+<polyline class="w" points="1545,1418 1590,1418"/>
+<path class="sym" transform="translate(1590,1418)" d="M-7 -7 L7 7 M-7 7 L7 -7"/>
+<text class="pin" x="1539" y="1422" text-anchor="end">0 · RX1</text>
+<polyline class="w" points="1990,1418 1945,1418"/>
+<path class="sym" transform="translate(1945,1418)" d="M-7 -7 L7 7 M-7 7 L7 -7"/>
+<text class="pin" x="1996" y="1422" text-anchor="start">8 · GPIO14</text>
+<text class="note" x="1767" y="1422" text-anchor="middle">deliberately unconnected</text>
+<text class="note" x="1330" y="1570" text-anchor="start">The Pi physically cannot send to the Teensy. No 3.3 V or 5 V rail is shared; each board keeps its</text>
+<text class="note" x="1330" y="1588" text-anchor="start">own supply. Reference capture: 36 481 B/s, zero CRC failures (journal 2026-10-13 (9)).</text>
 <rect class="dash" x="60" y="1260" width="1200" height="600" rx="6"/>
 <text class="ttl" x="64" y="1251" text-anchor="start">E — RELAY_SEND · K1 · PHASE 6 · breadboard cols 49–59</text>
 <polygon class="tag" points="220.0,1540.0 209.0,1528.0 132.3,1528.0 132.3,1552.0 209.0,1552.0"/>
@@ -401,6 +431,10 @@
 <text class="note" x="90" y="1784" text-anchor="start">Pole 2 (56f / 57f / 58f) is NOT wired and has never been tested — NYV.</text>
 <text class="note" x="90" y="1812" text-anchor="start">⚠ The coil is POLARIZED and was built backwards first: runbook step 7 inverts pins 1 and 10.</text>
 <text class="note" x="90" y="1830" text-anchor="start">Built that way the coil energises normally and the contacts never transfer.</text>
+<text class="note" x="710" y="1702" text-anchor="start">J5 tip lead reseated at 57b on 2026-10-11, the same</text>
+<text class="note" x="710" y="1720" text-anchor="start">strip as COM 57a, after it was found out of the board.</text>
+<text class="note" x="710" y="1748" text-anchor="start">Since the stack, Audio Shield GND and the breadboard</text>
+<text class="note" x="710" y="1766" text-anchor="start">rail are one net. Sleeve → rail 0.2 Ω (MEAS).</text>
 <rect class="dash" x="60" y="1930" width="1200" height="600" rx="6"/>
 <text class="ttl" x="64" y="1921" text-anchor="start">F — RELAY_RETURN · K2 · PHASE 7 · breadboard cols 8–18</text>
 <polygon class="tag" points="220.0,2210.0 209.0,2198.0 132.3,2198.0 132.3,2222.0 209.0,2222.0"/>
@@ -463,6 +497,7 @@
 <polygon class="tag" points="690.0,2300.0 679.0,2288.0 587.7,2288.0 587.7,2312.0 679.0,2312.0"/>
 <text class="net" x="673" y="2304" text-anchor="end">RETURN_NODE</text>
 <text class="note" x="690" y="2322" text-anchor="end">→ U3 LINE IN R  ·  I²S ch 1</text>
+<text class="note" x="690" y="2338" text-anchor="end">→ 16d → 28a → Amp Out, block G</text>
 <rect class="box" x="970" y="1980" width="150" height="86" rx="0"/>
 <text class="lbl" x="1045.0" y="2002" text-anchor="middle">J6</text>
 <text class="val" x="1045.0" y="2018" text-anchor="middle">RIG RTN TS</text>
@@ -471,8 +506,8 @@
 <polyline class="w" points="970,2048 956,2048"/>
 <text class="pin" x="976" y="2052" text-anchor="start">S</text>
 <polyline class="w" points="910,2082 930,2082 930,2022 956,2022"/>
-<polyline class="w" points="956,2048 942,2048 942,2074"/>
-<path class="sym" transform="translate(942,2074)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<polyline class="w" points="956,2048 948,2048 948,2060"/>
+<path class="sym" transform="translate(948,2060)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
 <rect class="box" x="970" y="2096" width="150" height="116" rx="0"/>
 <text class="lbl" x="1045.0" y="2118" text-anchor="middle">J7</text>
 <text class="val" x="1045.0" y="2134" text-anchor="middle">XLR RETURN</text>
@@ -489,9 +524,9 @@
 <path class="sym" transform="translate(936,2228)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
 <text class="note" x="90" y="2372" text-anchor="start">pin 15 LOW  = TS return  → LINE IN R   (default, and the boot state)</text>
 <text class="note" x="90" y="2390" text-anchor="start">pin 15 HIGH = XLR return → LINE IN R</text>
-<text class="note" x="90" y="2418" text-anchor="start">J6 sleeve → GND, 0.9 Ω.  ⚠ J7 pins 1 AND 3 land on the BREADBOARD TOP_GND rail,</text>
-<text class="note" x="90" y="2436" text-anchor="start">not Audio Shield ground — and 33.1 dB was measured between those two reference</text>
-<text class="note" x="90" y="2454" text-anchor="start">points on the SOURCE path (risk R5). Signal quality only: do NOT rewire on it.</text>
+<text class="note" x="90" y="2418" text-anchor="start">J6 sleeve → GND, 0.9 Ω.  J7 pins 1 AND 3 land on the BREADBOARD TOP_GND rail (pin 1</text>
+<text class="note" x="90" y="2436" text-anchor="start">repaired 2026-10-11). The 33.1 dB between that rail and Audio Shield GND predates the</text>
+<text class="note" x="90" y="2454" text-anchor="start">stack, which bonds them. Risk R5 is historical and has not been re-measured.</text>
 <text class="note" x="90" y="2482" text-anchor="start">J7's detect microswitch (D2F-01L) is NOT BUILT — ADR-004.  Pole 2 (15f / 16f / 17f)</text>
 <text class="note" x="90" y="2500" text-anchor="start">not wired, and K2's own package marking has never been read back — both NYV.</text>
 <text class="note" x="710" y="2372" text-anchor="start">⚠ This driver once stalled in the active region</text>
@@ -499,31 +534,131 @@
 <text class="note" x="710" y="2408" text-anchor="start">during reseating. The bad connection was NEVER</text>
 <text class="note" x="710" y="2426" text-anchor="start">identified. If it returns, measure the R8 drop</text>
 <text class="note" x="710" y="2444" text-anchor="start">12a → 10a FIRST, before anything is touched.</text>
-<text class="ttl" x="1300" y="1450" text-anchor="start">VERIFICATION</text>
-<text class="note" x="1300" y="1478" text-anchor="start">TIERS ARE NOT INTERCHANGEABLE. A part's POSITION and its VALUE are separate claims and are tagged separately.</text>
-<text class="note" x="1300" y="1496" text-anchor="start">Strip/column assignments are PHYS. Hole-level row letters are RPT (builder-reported), including every coordinate in blocks E and F.</text>
-<text class="lbl" x="1300" y="1520" text-anchor="start">NYV BY DECISION — open on purpose, not by oversight:</text>
-<text class="note" x="1300" y="1540" text-anchor="start">•  TOP_RED continuity col 5 ↔ col 55 (GAP-5).  A Phase 7 rail check would close it, but top-vs-bottom was never confirmed.</text>
-<text class="note" x="1300" y="1558" text-anchor="start">•  Carrier 5V terminal provenance (X-5)  ·  C3/C4/C5/C7 values (A1)  ·  whether Rev D uses the 5V pad (D2).</text>
-<text class="note" x="1300" y="1576" text-anchor="start">•  K2's and J7's package markings — never read back.  Pole 2 of both relays — wired to nothing, never tested.</text>
-<text class="lbl" x="1300" y="1606" text-anchor="start">BLOCKS E AND F ARE TRANSCRIBED FROM THE BENCH RECORD, NOT FROM A FRESH INSPECTION.</text>
-<text class="note" x="1300" y="1626" text-anchor="start">Blocks A–C were captured against the board and photographs on 2026-09-07. E and F were assembled on 2026-09-22 from</text>
-<text class="note" x="1300" y="1644" text-anchor="start">ai/journal.md and ai/todo.md. Nothing was promoted in transcription; see netlist.md §14 for what is NOT evidence.</text>
-<text class="lbl" x="1300" y="1674" text-anchor="start">THIS DRAWING REFLECTS THE PHYSICAL BOARD, NOT docs/breadboard_bringup_v3.md.</text>
-<text class="note" x="1300" y="1694" text-anchor="start">The runbook carries documented defects in Phase 6 coil polarity, the transistor pin order and the Phase 7 column siting.</text>
-<text class="note" x="1300" y="1712" text-anchor="start">Where they conflict, the board governs. Construction complete ≠ signed off ≠ validated — Phase 9 has not been run.</text>
-<rect class="box" x="1670" y="2400" width="620" height="150" rx="0"/>
-<polyline class="w" points="1670,2446 2290,2446"/>
-<polyline class="w" points="1670,2500 2290,2500"/>
-<polyline class="w" points="2070,2500 2070,2550"/>
-<text class="ttl" x="1684" y="2430" text-anchor="start">GUITAR RIG ANALYZER</text>
-<text class="lbl" x="1684" y="2470" text-anchor="start">As-Built Breadboard - Through Phase 8</text>
-<text class="note" x="1684" y="2490" text-anchor="start">Single-sheet bench reconstruction reference</text>
-<text class="pin" x="1684" y="2522" text-anchor="start">SOURCE OF TRUTH</text>
-<text class="val" x="1684" y="2540" text-anchor="start">docs/asbuilt/netlist.md</text>
-<text class="pin" x="2084" y="2522" text-anchor="start">REV</text>
-<text class="val" x="2084" y="2540" text-anchor="start">2026-09-22</text>
-<text class="pin" x="2194" y="2522" text-anchor="start">SHEET</text>
-<text class="val" x="2194" y="2540" text-anchor="start">1 of 1</text>
-<text class="val" x="2276" y="2430" text-anchor="end">C. Vidal</text>
+<rect class="dash" x="60" y="2600" width="1200" height="600" rx="6"/>
+<text class="ttl" x="64" y="2591" text-anchor="start">G — AMP OUT · U4 · ANALOG BRANCH OF RETURN_NODE · cols 21–29</text>
+<polygon class="tag" points="240.0,2745.0 229.0,2733.0 137.7,2733.0 137.7,2757.0 229.0,2757.0"/>
+<text class="net" x="223" y="2749" text-anchor="end">RETURN_NODE</text>
+<text class="pin" x="240" y="2775" text-anchor="end">16d → 28a</text>
+<path class="sym" transform="translate(290,2745)" d="M-16 0 H-4 M-4 -11 V11 M4 -11 V11 M4 0 H16"/>
+<text class="lbl" x="290" y="2721" text-anchor="middle">C10</text>
+<text class="val" x="290" y="2777" text-anchor="middle">0.1µF</text>
+<polyline class="w" points="240,2745 274,2745"/>
+<polyline class="w" points="306,2745 380,2745"/>
+<circle class="jn" cx="380" cy="2745" r="3.4"/>
+<text class="pin" x="290" y="2796" text-anchor="middle">28b – 29b</text>
+<path class="sym" transform="translate(380,2820) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="366" y="2817" text-anchor="end">R10</text>
+<text class="val" x="366" y="2832" text-anchor="end">100k</text>
+<polyline class="w" points="380,2745 380,2792"/>
+<polyline class="w" points="380,2848 380,2888 440,2888"/>
+<polygon class="tag" points="440.0,2888.0 451.0,2876.0 520.4,2876.0 520.4,2900.0 451.0,2900.0"/>
+<text class="net" x="457" y="2892" text-anchor="start">OPA_BIAS</text>
+<text class="pin" x="440" y="2918" text-anchor="start">node identity RPT + DERIV</text>
+<polygon class="box" points="490,2703 490,2787 564,2745"/>
+<text class="lbl" x="502" y="2729" text-anchor="start">+</text>
+<text class="lbl" x="502" y="2771" text-anchor="start">−</text>
+<text class="lbl" x="510" y="2750" text-anchor="start">U4A</text>
+<text class="pin" x="485" y="2719" text-anchor="end">3</text>
+<text class="pin" x="485" y="2779" text-anchor="end">2</text>
+<text class="pin" x="570" y="2737" text-anchor="start">1</text>
+<polyline class="w" points="380,2745 440,2745 440,2725 490,2725"/>
+<polyline class="w" points="564,2745 618,2745"/>
+<circle class="jn" cx="618" cy="2745" r="3.4"/>
+<polyline class="w" points="618,2745 618,2820 450,2820 450,2765 490,2765"/>
+<path class="sym" transform="translate(668,2745)" d="M-16 0 H-5 M-5 -12 V12 M9 -12 Q1 0 9 12 M16 0 H5"/>
+<text class="val" x="658" y="2729" text-anchor="middle">+</text>
+<text class="lbl" x="668" y="2721" text-anchor="middle">C11</text>
+<text class="val" x="668" y="2777" text-anchor="middle">10µF</text>
+<polyline class="w" points="618,2745 652,2745"/>
+<polyline class="w" points="684,2745 790,2745"/>
+<circle class="jn" cx="790" cy="2745" r="3.4"/>
+<text class="pin" x="668" y="2796" text-anchor="middle">+ 24c · − 21c</text>
+<path class="sym" transform="translate(790,2805) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="776" y="2802" text-anchor="end">R11</text>
+<text class="val" x="776" y="2817" text-anchor="end">100k</text>
+<polyline class="w" points="790,2745 790,2777"/>
+<polyline class="w" points="790,2833 790,2862"/>
+<path class="sym" transform="translate(790,2862)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<rect class="box" x="860" y="2690" width="130" height="92" rx="0"/>
+<text class="lbl" x="925.0" y="2712" text-anchor="middle">J8</text>
+<text class="val" x="925.0" y="2728" text-anchor="middle">AMP OUT</text>
+<text class="note" x="925.0" y="2800" text-anchor="middle">1/4in · model not recorded</text>
+<polyline class="w" points="860,2745 846,2745"/>
+<text class="pin" x="866" y="2749" text-anchor="start">T</text>
+<polyline class="w" points="860,2769 846,2769"/>
+<text class="pin" x="866" y="2773" text-anchor="start">S</text>
+<polyline class="w" points="790,2745 846,2745"/>
+<polyline class="w" points="846,2769 830,2769 830,2802"/>
+<path class="sym" transform="translate(830,2802)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<rect class="box" x="1025" y="2690" width="130" height="62" rx="0"/>
+<text class="lbl" x="1090.0" y="2716" text-anchor="middle">U4</text>
+<text class="val" x="1090.0" y="2734" text-anchor="middle">power pins</text>
+<polyline class="w" points="1090,2690 1090,2656"/>
+<path class="sym" transform="translate(1090,2656)" d="M0 0 V-14 M-15 -14 H15"/>
+<text class="net" x="1090" y="2635" text-anchor="middle">+5V</text>
+<polyline class="w" points="1090,2752 1090,2788"/>
+<path class="sym" transform="translate(1090,2788)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<text class="pin" x="1161" y="2684" text-anchor="start">8</text>
+<text class="pin" x="1161" y="2764" text-anchor="start">4</text>
+<circle class="jn" cx="1090" cy="2674" r="3.4"/>
+<polyline class="w" points="1090,2674 1185,2674"/>
+<path class="sym" transform="translate(1185,2714)" d="M0 -16 V-4 M-11 -4 H11 M-11 4 H11 M0 4 V16"/>
+<text class="lbl" x="1201" y="2712" text-anchor="start">C9</text>
+<text class="val" x="1201" y="2727" text-anchor="start">0.1µF</text>
+<polyline class="w" points="1185,2674 1185,2698"/>
+<polyline class="w" points="1185,2730 1185,2758"/>
+<path class="sym" transform="translate(1185,2758)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<text class="note" x="1025" y="2842" text-anchor="start">C9: col 24 F–J → col 23 F–J → GND</text>
+<polygon class="box" points="490,2973 490,3057 564,3015"/>
+<text class="lbl" x="502" y="2999" text-anchor="start">+</text>
+<text class="lbl" x="502" y="3041" text-anchor="start">−</text>
+<text class="lbl" x="510" y="3020" text-anchor="start">U4B</text>
+<text class="pin" x="485" y="2989" text-anchor="end">5</text>
+<text class="pin" x="485" y="3049" text-anchor="end">6</text>
+<text class="pin" x="570" y="3007" text-anchor="start">7</text>
+<polygon class="tag" points="406.0,2995.0 395.0,2983.0 325.6,2983.0 325.6,3007.0 395.0,3007.0"/>
+<text class="net" x="389" y="2999" text-anchor="end">OPA_BIAS</text>
+<polyline class="w" points="406,2995 490,2995"/>
+<polyline class="w" points="564,3015 618,3015 618,3078 450,3078 450,3035 490,3035"/>
+<text class="note" x="90" y="2984" text-anchor="start">Unused channel B terminated as a</text>
+<text class="note" x="90" y="3000" text-anchor="start">unity follower. Pin 5 lands on col 38 F–J,</text>
+<text class="note" x="90" y="3016" text-anchor="start">U1's pin 5 node. Pin 7 reads 0.872 V.</text>
+<text class="note" x="690" y="2930" text-anchor="start">U4 pins 1 / 2 / 3: 0.876 V.  J8 tip → sleeve: 0.000 V DC.</text>
+<text class="note" x="690" y="2948" text-anchor="start">A guitar through a real rig gives a strum-correlated waveform at</text>
+<text class="note" x="690" y="2966" text-anchor="start">J8 (2026-10-12), audible in an amp. NOT calibrated, and no J8</text>
+<text class="note" x="690" y="2984" text-anchor="start">amplitude is quotable (TODO-75). Opens: TODO-69 steps 0b, 3, 5.</text>
+<text class="note" x="690" y="3012" text-anchor="start">J8 follows K2. The branch is analog, so the amp signal does</text>
+<text class="note" x="690" y="3030" text-anchor="start">not depend on the codec, the firmware or digital latency.</text>
+<text class="note" x="90" y="3108" text-anchor="start">⚠ HAZARD H-2: col 28 A–E is RETURN_NODE and col 27 A–E is U4 pin 4, GND. They are adjacent.</text>
+<text class="note" x="90" y="3126" text-anchor="start">A one-column slip shorts the selected return to ground.</text>
+<text class="note" x="90" y="3152" text-anchor="start">⚠ C10 was first built on pin 1, the OUTPUT. It passed every DC check, because a coupling cap</text>
+<text class="note" x="90" y="3170" text-anchor="start">blocks DC in either position. Moved 2026-10-12. Predicted leak via OPA_BIAS: TODO-70, unmeasured.</text>
+<text class="ttl" x="1300" y="1700" text-anchor="start">VERIFICATION</text>
+<text class="note" x="1300" y="1728" text-anchor="start">TIERS ARE NOT INTERCHANGEABLE. A part's POSITION and its VALUE are separate claims and are tagged separately.</text>
+<text class="note" x="1300" y="1746" text-anchor="start">Strip/column assignments are PHYS. Hole-level row letters are RPT (builder-reported), including every coordinate in blocks E to H.</text>
+<text class="lbl" x="1300" y="1770" text-anchor="start">NYV BY DECISION — open on purpose, not by oversight:</text>
+<text class="note" x="1300" y="1790" text-anchor="start">•  TOP_RED continuity col 5 ↔ col 55 (GAP-5).  A Phase 7 rail check would close it, but top-vs-bottom was never confirmed.</text>
+<text class="note" x="1300" y="1808" text-anchor="start">•  Carrier 5V terminal provenance (X-5)  ·  C3/C4/C5/C7 values (A1)  ·  whether Rev D uses the 5V pad (D2).</text>
+<text class="note" x="1300" y="1826" text-anchor="start">•  K2's and J7's package markings — never read back.  Pole 2 of both relays — wired to nothing, never tested.</text>
+<text class="lbl" x="1300" y="1856" text-anchor="start">BLOCKS E TO H ARE TRANSCRIBED FROM THE BENCH RECORD, NOT FROM A FRESH INSPECTION.</text>
+<text class="note" x="1300" y="1876" text-anchor="start">Blocks A and B were captured against the board and photographs on 2026-09-07. E and F were assembled on 2026-09-22 and C, G</text>
+<text class="note" x="1300" y="1894" text-anchor="start">and H on 2026-10-31 from ai/journal.md, ai/todo.md and ai/evidence/. Nothing was promoted; see netlist.md §14 and §21.</text>
+<text class="lbl" x="1300" y="1924" text-anchor="start">THIS DRAWING REFLECTS THE PHYSICAL BOARD, NOT docs/breadboard_bringup_v3.md.</text>
+<text class="note" x="1300" y="1944" text-anchor="start">The runbook carries documented defects in Phase 6 coil polarity, the transistor pin order and the Phase 7 column siting,</text>
+<text class="note" x="1300" y="1962" text-anchor="start">and has no phase for Amp Out. Where they conflict, the board governs. Construction complete ≠ signed off ≠ validated —</text>
+<text class="note" x="1300" y="1980" text-anchor="start">Phase 9 has not been run, and the instrument is not calibrated.</text>
+<rect class="box" x="1670" y="3080" width="620" height="150" rx="0"/>
+<polyline class="w" points="1670,3126 2290,3126"/>
+<polyline class="w" points="1670,3180 2290,3180"/>
+<polyline class="w" points="2070,3180 2070,3230"/>
+<text class="ttl" x="1684" y="3110" text-anchor="start">GUITAR RIG ANALYZER</text>
+<text class="lbl" x="1684" y="3150" text-anchor="start">As-Built Analyzer - Through Amp Out and the Pi Link</text>
+<text class="note" x="1684" y="3170" text-anchor="start">Single-sheet bench reconstruction reference</text>
+<text class="pin" x="1684" y="3202" text-anchor="start">SOURCE OF TRUTH</text>
+<text class="val" x="1684" y="3220" text-anchor="start">docs/asbuilt/netlist.md</text>
+<text class="pin" x="2084" y="3202" text-anchor="start">REV</text>
+<text class="val" x="2084" y="3220" text-anchor="start">2026-10-31</text>
+<text class="pin" x="2194" y="3202" text-anchor="start">SHEET</text>
+<text class="val" x="2194" y="3220" text-anchor="start">1 of 1</text>
+<text class="val" x="2276" y="3110" text-anchor="end">C. Vidal</text>
 </svg>

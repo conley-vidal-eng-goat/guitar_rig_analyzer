@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+<style>
+    .w{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    .sym{stroke:#111;stroke-width:1.7;fill:none;stroke-linecap:round}
+    .jn{fill:#111}
+    .box{stroke:#111;stroke-width:1.7;fill:#fff}
+    .dash{stroke:#b0b0b0;stroke-width:1.3;fill:none;stroke-dasharray:7 6}
+    .ext{stroke:#8a8a8a;stroke-width:1.4;fill:#f4f4f2;stroke-dasharray:7 6}
+    .tag{stroke:#111;stroke-width:1.2;fill:#eef1f4}
+    .lbl{font:600 13.5px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111}
+    .val{font:12px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#333}
+    .net{font:600 12px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#111}
+    .note{font:11.5px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#5a5a5a}
+    .ttl{font:700 15px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#111;letter-spacing:.07em}
+    .pin{font:10.5px 'DejaVu Sans Mono',Menlo,Consolas,monospace;fill:#666}
+    .gh{font:12px 'DejaVu Sans','Helvetica Neue',Helvetica,Arial,sans-serif;fill:#9a9a9a}</style>
+<rect width="1280" height="800" fill="#ffffff"/>
+<rect class="box" x="18" y="18" width="1244" height="764" fill="none"/>
+<text class="ttl" x="46" y="58" text-anchor="start">SOURCE PATH — WHAT GOES INTO THE RIG</text>
+<text class="ttl" x="46" y="318" text-anchor="start">RETURN PATH — WHAT COMES BACK</text>
+<rect class="box" x="46" y="100" width="96" height="96" rx="0"/>
+<text class="lbl" x="94.0" y="122" text-anchor="middle">J4</text>
+<text class="val" x="94.0" y="138" text-anchor="middle">GUITAR IN</text>
+<polyline class="w" points="142,162 156,162"/>
+<text class="pin" x="136" y="166" text-anchor="end">T</text>
+<polyline class="w" points="142,184 156,184"/>
+<text class="pin" x="136" y="188" text-anchor="end">S</text>
+<path class="sym" transform="translate(190,162)" d="M-16 0 H-4 M-4 -11 V11 M4 -11 V11 M4 0 H16"/>
+<text class="lbl" x="190" y="138" text-anchor="middle">C1</text>
+<text class="val" x="190" y="194" text-anchor="middle">10nF</text>
+<polyline class="w" points="156,162 174,162"/>
+<polyline class="w" points="206,162 250,162"/>
+<circle class="jn" cx="250" cy="162" r="3.4"/>
+<polyline class="w" points="156,184 172,184 172,210"/>
+<path class="sym" transform="translate(172,210)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<path class="sym" transform="translate(250,222) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="236" y="219" text-anchor="end">R5</text>
+<text class="val" x="236" y="234" text-anchor="end">100k</text>
+<polyline class="w" points="250,162 250,194"/>
+<polygon class="tag" points="250.0,262.0 261.0,250.0 330.4,250.0 330.4,274.0 261.0,274.0"/>
+<text class="net" x="267" y="266" text-anchor="start">OPA_BIAS</text>
+<polyline class="w" points="250,250 250,262"/>
+<polygon class="box" points="310,140 310,224 384,182"/>
+<text class="lbl" x="322" y="166" text-anchor="start">+</text>
+<text class="lbl" x="322" y="208" text-anchor="start">−</text>
+<text class="lbl" x="330" y="187" text-anchor="start">U1A</text>
+<text class="pin" x="305" y="156" text-anchor="end">3</text>
+<text class="pin" x="305" y="216" text-anchor="end">2</text>
+<text class="pin" x="390" y="174" text-anchor="start">1</text>
+<polyline class="w" points="250,162 310,162"/>
+<polyline class="w" points="384,182 412,182"/>
+<circle class="jn" cx="412" cy="182" r="3.4"/>
+<polyline class="w" points="412,182 412,246 292,246 292,202 310,202"/>
+<path class="sym" transform="translate(462,182)" d="M-16 0 H-5 M-5 -12 V12 M9 -12 Q1 0 9 12 M16 0 H5"/>
+<text class="val" x="452" y="166" text-anchor="middle">+</text>
+<text class="lbl" x="462" y="158" text-anchor="middle">C2</text>
+<text class="val" x="462" y="214" text-anchor="middle">10µF</text>
+<polyline class="w" points="412,182 446,182"/>
+<polyline class="w" points="478,182 530,182"/>
+<circle class="jn" cx="530" cy="182" r="3.4"/>
+<text class="net" x="538" y="172" text-anchor="start">SOURCE_NODE</text>
+<circle class="jn" cx="650" cy="182" r="3.4"/>
+<circle class="jn" cx="650" cy="238" r="3.4"/>
+<circle class="jn" cx="746" cy="210" r="3.4"/>
+<polyline class="w" points="746,210 654,182"/>
+<polyline class="w" points="530,182 650,182"/>
+<text class="pin" x="650" y="172" text-anchor="middle">NC</text>
+<text class="pin" x="650" y="256" text-anchor="middle">NO</text>
+<text class="pin" x="754" y="200" text-anchor="start">COM</text>
+<rect class="box" x="664" y="84" width="72" height="44" rx="0"/>
+<text class="lbl" x="700" y="103" text-anchor="middle">K1</text>
+<text class="val" x="700" y="119" text-anchor="middle">TQ2-5V</text>
+<polyline class="dash" points="700,128 700,195"/>
+<polygon class="tag" points="664.0,106.0 653.0,94.0 539.8,94.0 539.8,118.0 653.0,118.0"/>
+<text class="net" x="647" y="110" text-anchor="end">TEENSY 14 · Q1</text>
+<rect class="box" x="830" y="164" width="110" height="96" rx="0"/>
+<text class="lbl" x="885.0" y="186" text-anchor="middle">J5</text>
+<text class="val" x="885.0" y="202" text-anchor="middle">RIG SEND</text>
+<polyline class="w" points="830,210 816,210"/>
+<text class="pin" x="836" y="214" text-anchor="start">T</text>
+<polyline class="w" points="830,236 816,236"/>
+<text class="pin" x="836" y="240" text-anchor="start">S</text>
+<polyline class="w" points="746,210 816,210"/>
+<polyline class="w" points="816,236 806,236 806,262"/>
+<path class="sym" transform="translate(806,262)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<rect class="ext" x="1040" y="150" width="200" height="330" rx="6"/>
+<text class="lbl" x="1140" y="298" text-anchor="middle">GUITAR RIG</text>
+<text class="val" x="1140" y="318" text-anchor="middle">device under test</text>
+<text class="note" x="1140" y="336" text-anchor="middle">external</text>
+<polyline class="dash" points="940,210 1040,210"/>
+<circle class="jn" cx="780" cy="366" r="3.4"/>
+<circle class="jn" cx="780" cy="422" r="3.4"/>
+<circle class="jn" cx="684" cy="394" r="3.4"/>
+<polyline class="w" points="684,394 776,366"/>
+<text class="pin" x="780" y="356" text-anchor="middle">NC</text>
+<text class="pin" x="770" y="426" text-anchor="end">NO</text>
+<text class="pin" x="676" y="384" text-anchor="end">COM</text>
+<rect class="box" x="644" y="284" width="72" height="44" rx="0"/>
+<text class="lbl" x="680" y="303" text-anchor="middle">K2</text>
+<text class="val" x="680" y="319" text-anchor="middle">TQ2-5V</text>
+<polyline class="dash" points="680,328 730,379"/>
+<polygon class="tag" points="716.0,306.0 727.0,294.0 840.2,294.0 840.2,318.0 727.0,318.0"/>
+<text class="net" x="733" y="310" text-anchor="start">TEENSY 15 · Q2</text>
+<rect class="box" x="830" y="330" width="110" height="76" rx="0"/>
+<text class="lbl" x="885.0" y="352" text-anchor="middle">J6</text>
+<text class="val" x="885.0" y="368" text-anchor="middle">RTN TS</text>
+<polyline class="w" points="830,366 816,366"/>
+<text class="pin" x="836" y="370" text-anchor="start">T</text>
+<polyline class="w" points="830,388 816,388"/>
+<text class="pin" x="836" y="392" text-anchor="start">S</text>
+<rect class="box" x="830" y="416" width="110" height="76" rx="0"/>
+<text class="lbl" x="885.0" y="438" text-anchor="middle">J7</text>
+<text class="val" x="885.0" y="454" text-anchor="middle">RTN XLR</text>
+<polyline class="w" points="830,452 816,452"/>
+<text class="pin" x="836" y="456" text-anchor="start">2</text>
+<polyline class="w" points="830,474 816,474"/>
+<text class="pin" x="836" y="478" text-anchor="start">1,3</text>
+<polyline class="w" points="816,366 780,366"/>
+<polyline class="w" points="816,452 780,452 780,422"/>
+<polyline class="w" points="816,388 800,388 800,496"/>
+<path class="sym" transform="translate(800,496)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<polyline class="w" points="816,474 800,474"/>
+<circle class="jn" cx="800" cy="474" r="3.4"/>
+<polyline class="dash" points="940,366 1040,366"/>
+<polyline class="dash" points="940,452 1040,452"/>
+<polyline class="w" points="684,394 610,394"/>
+<circle class="jn" cx="610" cy="394" r="3.4"/>
+<text class="net" x="618" y="412" text-anchor="start">RETURN_NODE</text>
+<path class="sym" transform="translate(474,394)" d="M-16 0 H-4 M-4 -11 V11 M4 -11 V11 M4 0 H16"/>
+<text class="lbl" x="474" y="370" text-anchor="middle">C10</text>
+<text class="val" x="474" y="426" text-anchor="middle">0.1µF</text>
+<polyline class="w" points="610,394 490,394"/>
+<polyline class="w" points="458,394 418,394"/>
+<circle class="jn" cx="418" cy="394" r="3.4"/>
+<path class="sym" transform="translate(418,466) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="432" y="463" text-anchor="start">R10</text>
+<text class="val" x="432" y="478" text-anchor="start">100k</text>
+<polyline class="w" points="418,394 418,438"/>
+<polyline class="w" points="418,494 418,506"/>
+<polygon class="tag" points="418.0,506.0 429.0,494.0 498.4,494.0 498.4,518.0 429.0,518.0"/>
+<text class="net" x="435" y="510" text-anchor="start">OPA_BIAS</text>
+<polygon class="box" points="376,372 376,456 302,414"/>
+<text class="lbl" x="364" y="398" text-anchor="end">+</text>
+<text class="lbl" x="364" y="440" text-anchor="end">−</text>
+<text class="lbl" x="356" y="419" text-anchor="end">U4A</text>
+<text class="pin" x="381" y="388" text-anchor="start">3</text>
+<text class="pin" x="381" y="448" text-anchor="start">2</text>
+<text class="pin" x="296" y="406" text-anchor="end">1</text>
+<polyline class="w" points="418,394 376,394"/>
+<polyline class="w" points="302,414 270,414"/>
+<circle class="jn" cx="270" cy="414" r="3.4"/>
+<polyline class="w" points="270,414 270,482 392,482 392,434 376,434"/>
+<path class="sym" transform="translate(226,414)" d="M16 0 H5 M5 -12 V12 M-9 -12 Q-1 0 -9 12 M-16 0 H-5"/>
+<text class="val" x="241" y="398" text-anchor="middle">+</text>
+<text class="lbl" x="226" y="390" text-anchor="middle">C11</text>
+<text class="val" x="226" y="446" text-anchor="middle">10µF</text>
+<polyline class="w" points="270,414 242,414"/>
+<polyline class="w" points="210,414 186,414"/>
+<circle class="jn" cx="186" cy="414" r="3.4"/>
+<path class="sym" transform="translate(186,470) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="200" y="467" text-anchor="start">R11</text>
+<text class="val" x="200" y="482" text-anchor="start">100k</text>
+<polyline class="w" points="186,414 186,442"/>
+<polyline class="w" points="186,498 186,508"/>
+<path class="sym" transform="translate(186,508)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<rect class="box" x="46" y="352" width="96" height="96" rx="0"/>
+<text class="lbl" x="94.0" y="374" text-anchor="middle">J8</text>
+<text class="val" x="94.0" y="390" text-anchor="middle">AMP OUT</text>
+<polyline class="w" points="142,414 156,414"/>
+<text class="pin" x="136" y="418" text-anchor="end">T</text>
+<polyline class="w" points="142,436 156,436"/>
+<text class="pin" x="136" y="440" text-anchor="end">S</text>
+<polyline class="w" points="156,414 186,414"/>
+<polyline class="w" points="156,436 150,436 150,462"/>
+<path class="sym" transform="translate(150,462)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<rect class="box" x="500" y="560" width="190" height="100" rx="0"/>
+<text class="lbl" x="595.0" y="586" text-anchor="middle">U3</text>
+<text class="val" x="595.0" y="604" text-anchor="middle">SGTL5000 codec</text>
+<text class="note" x="595.0" y="620" text-anchor="middle">44.1 kHz stereo</text>
+<polyline class="w" points="530,182 530,560"/>
+<text class="pin" x="530" y="642" text-anchor="middle">IN L</text>
+<polyline class="w" points="610,394 610,560"/>
+<text class="pin" x="610" y="642" text-anchor="middle">IN R</text>
+<polyline class="w" points="650,238 570,238 570,560"/>
+<text class="pin" x="570" y="642" text-anchor="middle">OUT L</text>
+<rect class="box" x="780" y="568" width="150" height="84" rx="0"/>
+<text class="lbl" x="855.0" y="594" text-anchor="middle">U2</text>
+<text class="val" x="855.0" y="612" text-anchor="middle">Teensy 4.1</text>
+<text class="note" x="855.0" y="628" text-anchor="middle">FFT, peaks, TF</text>
+<rect class="box" x="1030" y="568" width="200" height="84" rx="0"/>
+<text class="lbl" x="1130.0" y="594" text-anchor="middle">Pi 5</text>
+<text class="val" x="1130.0" y="612" text-anchor="middle">Raspberry Pi 5</text>
+<text class="note" x="1130.0" y="628" text-anchor="middle">7in touch display</text>
+<polyline class="w" points="690,610 780,610"/>
+<text class="net" x="735" y="602" text-anchor="middle">I²S</text>
+<polygon class="jn" points="768.0,604.5 780.0,610.0 768.0,615.5"/>
+<polyline class="w" points="930,610 1030,610"/>
+<text class="net" x="980" y="602" text-anchor="middle">UART</text>
+<polygon class="jn" points="1018.0,604.5 1030.0,610.0 1018.0,615.5"/>
+<text class="pin" x="980" y="628" text-anchor="middle">TX only</text>
+<path class="sym" transform="translate(100,590)" d="M0 0 V-14 M-15 -14 H15"/>
+<text class="net" x="100" y="569" text-anchor="middle">+5V</text>
+<path class="sym" transform="translate(100,628) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="86" y="625" text-anchor="end">R1</text>
+<text class="val" x="86" y="640" text-anchor="end">47k</text>
+<polyline class="w" points="100,590 100,600"/>
+<path class="sym" transform="translate(100,708) rotate(90)" d="M-28 0 h12 l4 -9 l8 18 l8 -18 l8 18 l4 -9 h12"/>
+<text class="lbl" x="86" y="705" text-anchor="end">R2</text>
+<text class="val" x="86" y="720" text-anchor="end">10k</text>
+<polyline class="w" points="100,656 100,680"/>
+<path class="sym" transform="translate(100,736)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<circle class="jn" cx="100" cy="668" r="3.4"/>
+<polyline class="w" points="100,668 220,668"/>
+<path class="sym" transform="translate(170,700)" d="M0 -16 V-4 M-11 -4 H11 M-11 4 H11 M0 4 V16"/>
+<text class="lbl" x="186" y="698" text-anchor="start">C4</text>
+<text class="val" x="186" y="713" text-anchor="start">0.1µF</text>
+<polyline class="w" points="170,668 170,684"/>
+<circle class="jn" cx="170" cy="668" r="3.4"/>
+<path class="sym" transform="translate(170,716)" d="M0 0 V10 M-13 10 H13 M-8 15 H8 M-3 20 H3"/>
+<polygon class="tag" points="220.0,668.0 231.0,656.0 300.4,656.0 300.4,680.0 231.0,680.0"/>
+<text class="net" x="237" y="672" text-anchor="start">OPA_BIAS</text>
+<text class="note" x="226" y="700" text-anchor="start">0.874 V measured. On a 5 V</text>
+<text class="note" x="226" y="716" text-anchor="start">supply the OPA1642 input must</text>
+<text class="note" x="226" y="732" text-anchor="start">stay below 1.5 V.</text>
+<text class="note" x="440" y="692" text-anchor="start">U1 and U4 are OPA1642 on +5 V. Their channel B halves are terminated as</text>
+<text class="note" x="440" y="708" text-anchor="start">followers on OPA_BIAS. Relays are drawn de-energised, the boot state:</text>
+<text class="note" x="440" y="724" text-anchor="start">buffer → J5 and TS return → U3. U3 is stacked on U2 by soldered headers.</text>
+<text class="note" x="440" y="740" text-anchor="start">Not calibrated. The effect of Amp Out on the RETURN reading is unmeasured.</text>
+<text class="lbl" x="960" y="692" text-anchor="start">GUITAR RIG ANALYZER</text>
+<text class="note" x="960" y="708" text-anchor="start">As-built overview · Rev 2026-10-31</text>
+<text class="note" x="960" y="724" text-anchor="start">Evidence for every value:</text>
+<text class="val" x="960" y="740" text-anchor="start">docs/asbuilt/netlist.md</text>
+</svg>
