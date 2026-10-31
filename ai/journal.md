@@ -12,6 +12,25 @@ How to use this file:
 
 ---
 
+## 2026-10-31 (1) — **The schematics caught up with the board, and the audit found they had been wrong about the interconnect since 2026-09-13**
+
+**What happened.** The operator asked for the schematics to be brought up to date for the repository and the portfolio. The drawings stopped at Phase 8, which was expected. The surprise came from reading the journal against block C: it still showed ten flying leads, labelled "frozen geometry, do not disturb", **and those wires have not existed since 2026-09-13**, when new boards were soldered as a native stack. TODO-41 said to update `netlist.md` §4 and the generator after stacking. It was missed, and §10.0 never recorded the change. Every later Part II edit sat beside the stale section without touching it. The 2026-10-26 top-down photo shows the stack plainly.
+
+**What changed, in the order `SCHEMATIC_EDITING.md` requires.**
+- `netlist.md`: ⛔ markers on the frozen rows, §10.0 rows S-5 to S-8, and a new **Part III** (§16–§21): the stack, repairs since Part II, Amp Out, new hazards and risks, the Pi link. This also pays the Part III debt from TODO-69 and TODO-79, including the col 28/29 hop and the col 27/28 adjacency, entered as **H-2**.
+- `tools/gen_schematic.py`: block C redrawn for the stack, new blocks **G** (Amp Out) and **H** (Pi link), older blocks swept for statements the new hardware made false (the guide's step three), and a new one-page `schematic_overview.svg` drawn to be read at 1280 px.
+- `schematics.html` was a hand-drawn page of the 3.5 mm input circuit that nothing linked to. It is now generated and just shows the four SVGs.
+- The portfolio files outside the repo gained a full schematic page.
+
+**Decisions.**
+- **Nothing was promoted, and the board was not touched.** Part III is a transcription with tiers as recorded, and the drawing says so.
+- **Designators `U4 J8 C9–C11 R10 R11 AMP_OUT` are adopted as a documentation convention**, as proposed on 2026-10-08. J8 matches the builder's own `J8-OUT` panel label. ADR-006 and the runbook phase are still not written.
+- **The netlist's Part I keeps its old text**, including its `config.h` line numbers, which went stale with the firmware. The drawings now cite by name instead.
+
+**Not resolved, and recorded as such.** What the XLR pin 1 repair of 2026-10-11 actually changed was never written down, so §12.3 stands as the last stated landing. J8's jack model is not recorded. R10's intermediate column is not recorded. Risk R5's 33.1 dB predates the stack and has not been re-measured.
+
+**What the next session should know.** When a phase changes the board, update the netlist and the drawing in the same session; a "regenerate afterwards" note in a TODO is how this happened. `overview()` is drawn by hand, so a change to the analog path has to be made there as well as in the blocks. TODO-79's evidence-file correction (§1 row 9) and its provenance question remain open.
+
 ## 2026-10-18 (1) — **The return is back: a wiring fault found by the instrument, and the first level-matched return on the panel**
 
 **What happened.** The 2026-10-16 TONE redesign refused to draw a return because the return was below the floor. The operator's reply was the right challenge: "you must be doing something wrong, or a setting was changed". It was neither, and that took evidence to show:
