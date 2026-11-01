@@ -50,12 +50,19 @@ class State:
         self.results = [f for f in frames if f.get("kind") == "result"]
 
     def bands(self):
-        """band index -> (hz, mean dB, sd dB, n) for bands measured in >= COVER."""
+        """band index -> (hz, mean dB, sd dB, n) for bands measured in >= COVER.
+
+        Bands below the top of a DC bin are left out: bin 0 spans 0-151 Hz and
+        DC, so a band it feeds is not low-frequency data (TODO-92)."""
         out = {}
         n = len(self.live)
         if not n:
             return out
+        geom = self.live[0].get("spectra", {}).get("geometry") or []
+        dc_top = geom[0]["hi_hz"] if geom and geom[0].get("dc") else 0.0
         for i in range(len(self.live[0]["segments"])):
+            if self.live[0]["segments"][i]["hz"] < dc_top:
+                continue
             vals = [f["segments"][i]["value"] for f in self.live
                     if f["segments"][i]["cls"] == MEASURED
                     and f["segments"][i]["value"] is not None]

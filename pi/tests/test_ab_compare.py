@@ -100,6 +100,23 @@ class ABCompareTest(unittest.TestCase):
                                  capture_output=True, text=True, check=True).stdout
         self.assertIn("NO CHANGE DETECTED", out)
 
+    def test_bands_fed_by_the_dc_bin_are_left_out(self):
+        # Bin 0 spans DC to 150.73 Hz; HZ[0..3] lie under it. A "change" there
+        # is not low-frequency data and must not be counted (TODO-92).
+        dc = {"i": 0, "lo_hz": 0.0, "hi_hz": 150.73, "hz": 64.6, "dc": True}
+        low = [6.0 if i == 0 else 0.0 for i in range(NB)]
+        with tempfile.TemporaryDirectory() as t:
+            run = pathlib.Path(t)
+            rng = random.Random(4)
+            for label, tf in (("A1", FLAT), ("B1", low), ("A2", FLAT), ("B2", low)):
+                frames = [frame(tf, rng=rng) for _ in range(40)]
+                for f in frames:
+                    f["spectra"]["geometry"] = [dc]
+                write(run, label, frames)
+            out = subprocess.run([sys.executable, str(TOOLS / "ab_compare.py"), str(run)],
+                                 capture_output=True, text=True, check=True).stdout
+        self.assertIn("NO CHANGE DETECTED in 44 bands", out)
+
     def test_result_frames_are_tabulated(self):
         with tempfile.TemporaryDirectory() as t:
             run = pathlib.Path(t)
