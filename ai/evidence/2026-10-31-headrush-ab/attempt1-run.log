@@ -1,0 +1,85 @@
+[14:51:19] Headrush rig 'Slow Dancing In A Burning Room' (unsaved edits: True); Cab.CabType is 13; A = 13, B = 0
+[14:51:20] Pi link: session 82, decode_errors 0, state IDLE, confidence 100%, 48 bins · 20 measured · 7 clamped · 21 unmeasured, peak in -6.3 / return -14.4 dBFS
+[14:51:20] Teensy console open on /dev/cu.usbmodem192895301
+[14:51:20] waiting for stimulus: need confidence >= 10% and every band with an FFT bin measured, three polls running
+[14:51:21]   ok  confidence 100%, 48 bins · 22 measured · 5 clamped · 21 unmeasured, peak in -4.3 / return -15.3 dBFS
+[14:51:23]   ok  confidence 100%, 48 bins · 22 measured · 5 clamped · 21 unmeasured, peak in -3.6 / return -12.9 dBFS
+[14:51:26]   ok  confidence 100%, 48 bins · 22 measured · 5 clamped · 21 unmeasured, peak in -4.1 / return -14.8 dBFS
+[14:51:26] stimulus is up; settling 30 s
+[14:51:57] A1: Cab.CabType = 13; dwell 30 s
+[14:52:27] A1: recording 60 s LIVE + 20 s RESULT
+[14:53:28] A1: RESULT -> [Main] Quality: POOR, coherence: 0.41, valid bins: 100%
+/Users/conleyvidal/Developer/ab-run/2026-10-31/A1.jsonl: 320 frames
+[14:53:50] B1: Cab.CabType = 0; dwell 30 s
+[14:54:21] B1: recording 60 s LIVE + 20 s RESULT
+[14:55:22] B1: RESULT -> [Main] Quality: POOR, coherence: 0.41, valid bins: 100%
+/Users/conleyvidal/Developer/ab-run/2026-10-31/B1.jsonl: 261 frames
+[14:56:43] A2: Cab.CabType = 13; dwell 30 s
+[14:57:15] A2: recording 60 s LIVE + 20 s RESULT
+[14:58:16] A2: RESULT -> [Main] Quality: POOR, coherence: 0.41, valid bins: 100%
+/Users/conleyvidal/Developer/ab-run/2026-10-31/A2.jsonl: 99 frames
+[14:59:25] !!! COULD NOT RESTORE Cab.CabType to 13: <urlopen error timed out>
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 1321, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              encode_chunked=req.has_header('Transfer-encoding'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1367, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1413, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1362, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1122, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1066, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1032, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socket.py", line 874, in create_connection
+    raise exceptions[0]
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socket.py", line 859, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+TimeoutError: timed out
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/conleyvidal/Developer/guitar_rig_analyzer/pi/tools/ab_run.py", line 311, in <module>
+    main()
+    ~~~~^^
+  File "/Users/conleyvidal/Developer/guitar_rig_analyzer/pi/tools/ab_run.py", line 286, in main
+    "readback_after": hr.props()[a.prop]})
+                      ~~~~~~~~^^
+  File "/Users/conleyvidal/Developer/guitar_rig_analyzer/pi/tools/ab_run.py", line 64, in props
+    return self._req("GET", "/object-properties" + self.path)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/conleyvidal/Developer/guitar_rig_analyzer/pi/tools/ab_run.py", line 59, in _req
+    with urllib.request.urlopen(req, timeout=5) as r:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 487, in open
+    response = self._open(req, data)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 504, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+                              '_open', req)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 464, in _call_chain
+    result = func(*args)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 1350, in http_open
+    return self.do_open(http.client.HTTPConnection, req)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 1324, in do_open
+    raise URLError(err)
+urllib.error.URLError: <urlopen error timed out>

@@ -17,6 +17,22 @@ How to use this file:
 
 The physical device is mid-breadboard. This track leads TODO priority over software-roadmap items until the board is signed off.
 
+### TODO-96 — A RESULT armed and never finished 🔴 [bench] **found 2026-10-31**
+
+**Observed.** In the Headrush A/B, `m` in state B2 printed `[Main] Rig analysis measurement armed.` and then neither a `Quality:` line nor an abort within 15 s; `x` then cancelled it. The three RESULTs before it, same stimulus, same session, completed in under 1 s each. `arm_timeout_ms` is 10 000, so a stall in ARMED should have aborted with `TIMEOUT`; it did not, which suggests the stall was past the trigger, in collection or finalisation, where there is no timeout. Console in [`2026-10-31-headrush-ab/teensy-console.log`](evidence/2026-10-31-headrush-ab/teensy-console.log) from the `>>> m` at `1793486628.738`.
+
+**What.** Find which state the engine sat in (add the state to the `u` diagnostics if needed), and give every non-terminal state a bound so a stall ends in a stated abort rather than silence.
+
+**Proof:** a RESULT that stalls is reproduced or ruled out over ≥ 50 consecutive arms under pink noise, and a forced stall ends in an abort with a reason.
+
+### TODO-97 — `/api/frame` never serves RESULT frames 🔴 **found 2026-10-31**
+
+**Observed.** The Teensy reported `Results: 7 queued, 7 delivered` to the Pi during the A/B, yet all 1 040 captured `/api/frame` responses were `kind: live`, so `ab_compare.py`'s RESULT table was empty and the grades survive only in the USB console. The server's `--prefer auto` logic ([`server.py:68`](../pi/web/server.py#L68)) decides which kind it serves.
+
+**What.** Decide what the endpoint should do while a RESULT is current (serve it, or serve both), and make the capture able to record it.
+
+**Proof:** an armed RESULT appears in a captured frame with the same grade and coherence the console printed.
+
 ### TODO-95 — TONE does not show the clip flags 🔴 **found 2026-10-18**
 
 **Why.** `source_clip` / `return_clip` reach the browser (`payload.live_payload` authority) and LIVE prints them, but TONE ignores them. On 2026-10-18 the return hit 0.0 dBFS with `return_clip` set in 2 of 52 frames, and TONE drew those frames as ordinary measurements, gain and rig-only seats included. A clipped frame is the one case where a reading looks plausible and is wrong.
@@ -71,22 +87,6 @@ Observed 2026-10-15: ring showed `1 MEASURED` band at **68.0 Hz**, value −0.04
 **What.** Decide between the three. If (2), carry the `dc` flag already present in the spectrum geometry ([`payload.py:125`](../pi/web/payload.py#L125)) through to ring segments so the renderer can mark them, and make the legend say what the mark means. If (3), it blocks on an ADR and must not be slipped into a UI change.
 
 **Proof:** the ring and the LIVE spectrum agree about bin 0 — either both exclude it, or both mark it with the same words. Plus a stated, tested rule for what a band fed only by DC-contaminated bins displays.
-
-### TODO-91 — The Headrush A/B: show the instrument detecting a real change in a real rig 🔴 [bench] **procedure written 2026-10-13, NOT executed. This is the portfolio's centrepiece**
-
-**Why.** Everything demonstrated so far is the instrument *working* — a link, a renderer, a panel. None of it is the instrument *measuring something*. The A/B is the first claim that is about the guitar rig rather than about the analyzer.
-
-**What.** [`docs/ab_headrush_procedure.md`](../docs/ab_headrush_procedure.md). Continuous broadband pink noise as a fixed control variable; one Headrush parameter changed and nothing else; LIVE captured plus a `m`-armed RESULT in each state; 30 s dwell after the change because LIVE's EMA is sticky for unenergised bins.
-
-**🛑 Why not a guitar.** `TF_SOURCE_GATE` makes a bin UNMEASURED unless its source is energised, and a plucked note energises a handful of 512 bins (observed: `confidence 4 %`). Two guitar performances energise different bins, so A and B would be compared across different bin sets — a comparison that would look like a result and would not be one.
-
-**🔺 What it may claim: a CHANGE, not a response.** A TF is a ratio and this is a differential comparison on one instrument minutes apart, which is exactly why it survives the uncalibrated state. **It does not close TODO-70, TODO-75 or TODO-78**, and it must not be written up as though it did. The repaired Instrument In short is still `RPT` — reported, never measured.
-
-**🔺 The Pi cannot arm it.** Pi→Teensy is physically disconnected; `m` goes over the Teensy USB console from the Mac.
-
-**It also closes four UI items at no extra cost**, because sustained stimulus is the first condition that populates the TONE bar path for minutes: TODO-90 (emissive, easing), TODO-88 (whether clipping happens under real data — orbit while the bars are up), TODO-87 (scroll during a dwell), TODO-89 (tap through the views and judge 5 Hz). **During the dwells, never during a capture.**
-
-**Proof:** two RESULTs from one session id with their grades and coherences, two LIVE payloads, panel captures of both states, the stimulus level and every Headrush setting recorded — and a stated difference between A and B that is larger than the variation observed within either.
 
 ### TODO-89 — LIVE updates twice a second because the client asks twice a second 🟢 **RESOLVED 2026-10-15 at 20 Hz, matching Tk. Deployed and measured on the panel; open only on the operator's subjective confirmation**
 
@@ -2337,6 +2337,37 @@ locally.
 ---
 
 ## Completed (verified — do not re-report as bugs; see journal.md for the reasoning trail)
+
+### TODO-91 — The Headrush A/B: show the instrument detecting a real change in a real rig 🟢 [bench] **CLOSED 2026-10-31: CHANGE DETECTED in 10 of 19 bands, largest −11.5 dB at 2 866 Hz against a 0.11 dB repeat difference. Proof: [`2026-10-31-headrush-ab/`](evidence/2026-10-31-headrush-ab/README.md)**
+
+**Why.** Everything demonstrated so far is the instrument *working* — a link, a renderer, a panel. None of it is the instrument *measuring something*. The A/B is the first claim that is about the guitar rig rather than about the analyzer.
+
+**What.** [`docs/ab_headrush_procedure.md`](../docs/ab_headrush_procedure.md). Continuous broadband pink noise as a fixed control variable; one Headrush parameter changed and nothing else; LIVE captured plus a `m`-armed RESULT in each state; 30 s dwell after the change because LIVE's EMA is sticky for unenergised bins.
+
+**🛑 Why not a guitar.** `TF_SOURCE_GATE` makes a bin UNMEASURED unless its source is energised, and a plucked note energises a handful of 512 bins (observed: `confidence 4 %`). Two guitar performances energise different bins, so A and B would be compared across different bin sets — a comparison that would look like a result and would not be one.
+
+**🔺 What it may claim: a CHANGE, not a response.** A TF is a ratio and this is a differential comparison on one instrument minutes apart, which is exactly why it survives the uncalibrated state. **It does not close TODO-70, TODO-75 or TODO-78**, and it must not be written up as though it did. The repaired Instrument In short is still `RPT` — reported, never measured.
+
+**🔺 The Pi cannot arm it.** Pi→Teensy is physically disconnected; `m` goes over the Teensy USB console from the Mac.
+
+**It also closes four UI items at no extra cost**, because sustained stimulus is the first condition that populates the TONE bar path for minutes: TODO-90 (emissive, easing), TODO-88 (whether clipping happens under real data — orbit while the bars are up), TODO-87 (scroll during a dwell), TODO-89 (tap through the views and judge 5 Hz). **During the dwells, never during a capture.**
+
+**Proof:** two RESULTs from one session id with their grades and coherences, two LIVE payloads, panel captures of both states, the stimulus level and every Headrush setting recorded — and a stated difference between A and B that is larger than the variation observed within either.
+
+**✅ 2026-10-31 — run, automated, and passed.** `Cab.CabType` 13 (4x12 Green 20W) ↔ 0 (1x8 Custom), A1 → B1 → A2 → B2 under the seeded pink-noise file (sha256 `ad5c3632…` verified on the file played), driven end to end by `pi/tools/ab_run.py`. One Teensy session (82) across 1 040 frames, 0 decode errors, no stale frame, no clipping. Every changed band moved the same way in both cycles (e.g. −11.5 / −11.4 dB at 2 866 Hz).
+
+Proof clause by clause:
+- *two RESULTs from one session id with grades and coherences*: **three**, all **POOR**, coherence 0.41 / 0.40 / 0.41, same session. B2's RESULT never completed (TODO-96). The grade does not gate the verdict, which comes from the LIVE TF.
+- *two LIVE payloads*: four, 260 frames each, archived gzipped.
+- *panel captures of both states*: **not in the archive**. The operator photographed during the run; add them to the evidence folder.
+- *the stimulus level and every Headrush setting*: settings in `run.json` → `block_before`. **Phone volume was not recorded**; input peaked −2.2 to −3.1 dBFS.
+- *a stated difference larger than the variation within either*: yes, change/repeat ≈ 100 at 2 866 Hz; ≥ 3× and > 1 dB in all 10 counted bands.
+
+**The leak check came for free, as predicted.** Input moved A → B by a median 0.30 dB, largest +1.38 dB at 2 304 Hz, inside the region where the return changed most. That is consistent with a small RETURN → SOURCE leak and bounds its effect here at ~1.4 dB. **TODO-70 stays open.**
+
+**The DC band.** The tool's first verdict was 11 of 20; the extra band (68 Hz) is bin 0 (TODO-92). `ab_compare.py` now leaves DC-fed bands out, with a test.
+
+**Not claimed:** a calibrated cab or Headrush response; anything about TODO-75 or -78. Two earlier attempts failed on the Wi-Fi and are recorded in the evidence README. Journal 2026-10-31 (2).
 
 ### TODO-93 — On 2026-10-16 the return channel did not carry the guitar 🟢 [bench] **CLOSED 2026-10-18: return restored after the LINE IN R joint was resoldered and a new jumper fitted to `16a`. Proof: [`2026-10-18-pi-tone-return-restored.md`](evidence/2026-10-18-pi-tone-return-restored.md)**
 

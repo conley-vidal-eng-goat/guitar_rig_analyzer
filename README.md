@@ -37,6 +37,17 @@ capture what comes back, and show what changed at each frequency.
 
 ## What works
 
+- **It detects a deliberate change in a real rig (2026-10-31).** With fixed
+  pink noise going in, one Headrush setting (the cabinet model, 4x12 ↔ 1x8)
+  was switched A → B → A → B by script and nothing else was touched. The
+  analyzer reported the same change in both cycles in 10 of 19 measured bands,
+  largest −11.5 dB at 2.9 kHz, where the two runs of the same setting differed
+  by only 0.11 dB. One Teensy session, no clipping, no decode errors across
+  1,040 frames ([evidence](ai/evidence/2026-10-31-headrush-ab/README.md)).
+  It is a difference between two settings on an uncalibrated instrument, not a
+  calibrated cab response.
+
+  ![Change B − A per band, with the repeat difference as error bars](ai/evidence/2026-10-31-headrush-ab/delta.svg)
 - **A real guitar through a real rig (2026-10-18).** A guitar played through
   the Headrush shows up on the panel as two signals, input and return, with the
   rig's gain computed and the return level-matched on top
@@ -60,16 +71,15 @@ capture what comes back, and show what changed at each frequency.
 
 ## What isn't proven yet
 
-- **A controlled A/B comparison.** The procedure is written
-  ([docs/ab_headrush_procedure.md](docs/ab_headrush_procedure.md)): fixed pink
-  noise in, one Headrush setting changed, everything else held. Until a run is
-  documented here with its settings and results, the 2026-10-18 demo shows a
-  real rig signal on the panel, not a measured difference between two
-  settings.
 - **Accuracy.** The four known-signal checks (flat loopback, channel swap, known
   gain offset, known RC filter) haven't been passed, and the instrument isn't
-  calibrated. The 571 passing tests check software behavior, not measurement
-  accuracy. The next planned check is the known RC filter.
+  calibrated. The A/B above shows a repeatable *difference*, which needs no
+  calibration; it doesn't show the readings are right. The 572 passing tests
+  check software behavior, not measurement accuracy. The next planned check is
+  the known RC filter.
+- **Channel leakage.** In the A/B the input spectrum moved by up to 1.4 dB
+  while only the rig changed, which fits a small leak from the return into the
+  input through the shared bias node. A controlled leak test hasn't been run.
 - **Timing under load.** The requirement that sending data must never disturb
   audio capture is still open. The first run of the timing test found a bug in
   the *test*: a "44,490 skipped blocks" figure that came from mixing up two
@@ -178,7 +188,7 @@ pi/                             Raspberry Pi 5 software (Python + JS)
   analyzer_link/                wire protocol: CRC, framing, packets, state
   web/                          kiosk server and browser UI (production)
   analyzer_ui/                  older Tkinter UI, kept as a test reference
-  tests/                        571 tests, Python standard library only
+  tests/                        572 tests, Python standard library only
   tools/                        capture, replay and byte-audit tools
 
 docs/                           architecture decisions, build procedure,
@@ -212,7 +222,7 @@ Deployment to the Pi is in [pi/deploy/README.md](pi/deploy/README.md).
 
 ## Testing
 
-`sh pi/run_tests.sh` runs 571 tests, and they pass. Two are worth pointing
+`sh pi/run_tests.sh` runs 572 tests, and they pass. Two are worth pointing
 out. One parses the real Teensy headers and fails if the Pi's decoder drifts
 from the firmware's wire format. Another fails if the browser UI ever touches
 the microphone or Web Audio APIs (`getUserMedia`, `AudioContext`), which keeps

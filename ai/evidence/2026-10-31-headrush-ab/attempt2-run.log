@@ -1,0 +1,17 @@
+[15:04:27] Headrush rig 'Slow Dancing In A Burning Room' (unsaved edits: True); Cab.CabType is 13; A = 13, B = 0
+[15:04:31] Pi link: session 82, decode_errors 0, state IDLE, confidence 100%, 48 bins · 22 measured · 5 clamped · 21 unmeasured, peak in -5.7 / return -13.8 dBFS
+[15:04:31] Teensy console open on /dev/cu.usbmodem192895301
+[15:04:31] waiting for stimulus: need confidence >= 10% and every band with an FFT bin measured, three polls running
+[15:04:39]   ok  confidence 100%, 48 bins · 23 measured · 4 clamped · 21 unmeasured, peak in -5.2 / return -15.1 dBFS
+[15:04:44]   ok  confidence 100%, 48 bins · 21 measured · 6 clamped · 21 unmeasured, peak in -5.7 / return -14.4 dBFS
+[15:04:53]   ok  confidence 100%, 48 bins · 21 measured · 6 clamped · 21 unmeasured, peak in -4.6 / return -16.7 dBFS
+[15:04:53] stimulus is up; settling 30 s
+[15:05:24] A1: Cab.CabType = 13; dwell 30 s
+[15:05:56] A1: recording 50 s LIVE + 15 s RESULT
+[15:06:47] A1: RESULT -> [Main] Quality: POOR, coherence: 0.41, valid bins: 100%
+/Users/conleyvidal/Developer/ab-run/2026-10-31-run2/A1.jsonl: 260 frames
+[15:18:20] B1: Cab.CabType = 0; dwell 30 s
+[15:18:54] B1: recording 50 s LIVE + 15 s RESULT
+[15:19:02] STOPPED: interrupted
+[15:19:03] restored Cab.CabType = 13
+/Users/conleyvidal/Developer/ab-run/2026-10-31-run2/B1.jsonl: 260 frames

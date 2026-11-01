@@ -1,8 +1,13 @@
 # The Headrush A/B — showing that the instrument detects a real change in a real rig
 
-**Written 2026-10-13 from the firmware and presentation contracts. Nothing in this
-document has been executed.** It is the procedure for the demonstration the
-portfolio actually needs: change one thing in a guitar rig, and have the
+**Written 2026-10-13 from the firmware and presentation contracts. Executed
+2026-10-31, automated by `pi/tools/ab_run.py`: result and deviations from this
+procedure in [`ai/evidence/2026-10-31-headrush-ab/`](../ai/evidence/2026-10-31-headrush-ab/README.md).**
+The main deviations: the RESULT is armed after the LIVE capture in each state
+rather than in its own step, the run is A → B → A → B rather than A → B, and
+the noise came from a phone, so its level was set by ear and not recorded.
+
+It is the procedure for the demonstration the portfolio actually needs: change one thing in a guitar rig, and have the
 instrument report the difference.
 
 ---

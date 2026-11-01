@@ -12,6 +12,24 @@ How to use this file:
 
 ---
 
+## 2026-10-31 (2) — **The Headrush A/B ran, automated, and the instrument detected the change: 10 of 19 bands, −11.5 dB at 2.9 kHz against a 0.11 dB repeat**
+
+**What happened.** The operator asked for TODO-91 to be run as automatically as possible. Everything except starting the stimulus became one command, `pi/tools/ab_run.py`. It switches the Headrush's `Cab.CabType` over the unit's own REST API (`/api/v1/object-properties/Evil/Engine/Patch/Cab`, the API the `headrush-mcp` project documented) and reads each write back. It arms and clears RESULTs with `m`/`x` on the Teensy USB console, records `/api/frame` on the Pi, runs `ab_compare.py`, and restores the parameter on any exit. The third attempt passed every validity check: one session (82) across 1 040 frames, no decode errors, no stale frames, no clipping. Evidence: [`2026-10-31-headrush-ab/`](evidence/2026-10-31-headrush-ab/README.md).
+
+**Decisions.**
+- **The parameter was the cab, not a tone control.** The cab sits after the amp, so the amp's nonlinearity sees the same input in both states. Amp Treble and the pre-amp Bass EQ were both offered and rejected for that reason.
+- **The script never saves, loads or renames a rig.** The rig was holding unsaved edits. It refuses to start unless the parameter already equals A, and restores the starting value in `finally`.
+- **"Energised" means every band that has an FFT bin is MEASURED or CLAMPED, not a band count.** The first threshold (40 of 48 bands) could never pass: 21 bands below 700 Hz have `sources == 0`, so 27 is the ceiling. This was my mistake, and it was caught on the first attempt from the frame's own `sources` field.
+- **DC-fed bands are excluded in `ab_compare.py`.** The run's own verdict was 11 of 20, and the extra band (68 Hz) is bin 0 (TODO-92). It is now left out, with a test; the report was regenerated from the same frames and the original is kept.
+
+**Two attempts failed on the network, not the instrument.** The Pi's Wi-Fi (signal −56 dBm, ~19 000 retries in `/proc/net/wireless`) fell to ~10–18 kB/s. Attempt 1 lost most of A2's frames to it, then a Headrush read timed out and the script died before restoring. The cab happened to already be at A. Attempt 2 recorded on the Pi but copied each state back before the next; one copy took 11 minutes, the 10-minute stimulus ended, and B1 began in silence. The fixes, in order: retry Headrush calls and turn their failure into a clean stop; keep all frames on the Pi until the run ends and fetch them once, gzipped; check before and after every state that the stimulus is still energising the input. The operator chose not to fix the Wi-Fi. The run no longer depends on it.
+
+**What the result does and doesn't say.** It says the instrument reports a repeatable, setting-specific difference about 100× its repeat noise. It does not say the readings are right: no calibration, no known-signal checks. It does not close TODO-70, -75 or -78. The input moved by up to 1.38 dB at 2 304 Hz while only the rig changed, inside the region where the return fell most. That fits a small RETURN → SOURCE leak, and is the first measured bound on TODO-70's effect. **All RESULTs graded POOR at coherence 0.40–0.41, independent of the cab.** That points at the compressor and driven amp, which is an inference.
+
+**New items.** TODO-96: the B2 RESULT armed and never finished, with no abort. TODO-97: the Teensy delivered 7 RESULTs to the Pi but `/api/frame` served only live frames.
+
+**What the next session should know.** `ab_run.py --check` is a read-only preflight of all three devices. A stimulus from a phone needs Bluetooth off (an AirPods hand-off stole it once) and a recorded volume. Leave ~2 minutes of stimulus headroom beyond the run's length. The frames copy back after the run and can take ten minutes on this Wi-Fi; that is expected.
+
 ## 2026-10-31 (1) — **The schematics caught up with the board, and the audit found they had been wrong about the interconnect since 2026-09-13**
 
 **What happened.** The operator asked for the schematics to be brought up to date for the repository and the portfolio. The drawings stopped at Phase 8, which was expected. The surprise came from reading the journal against block C: it still showed ten flying leads, labelled "frozen geometry, do not disturb", **and those wires have not existed since 2026-09-13**, when new boards were soldered as a native stack. TODO-41 said to update `netlist.md` §4 and the generator after stacking. It was missed, and §10.0 never recorded the change. Every later Part II edit sat beside the stale section without touching it. The 2026-10-26 top-down photo shows the stack plainly.

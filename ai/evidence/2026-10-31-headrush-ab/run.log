@@ -1,0 +1,33 @@
+[15:36:52] Headrush rig 'Slow Dancing In A Burning Room' (unsaved edits: True); Cab.CabType is 13; A = 13, B = 0
+[15:36:53] Pi link: session 82, decode_errors 0, state IDLE, confidence 100%, 48 bins · 21 measured · 6 clamped · 21 unmeasured, peak in -5.1 / return -13.9 dBFS
+[15:36:53] Teensy console open on /dev/cu.usbmodem192895301
+[15:36:53] waiting for stimulus: need confidence >= 10% and every band with an FFT bin measured, three polls running
+[15:36:54]   ok  confidence 100%, 48 bins · 21 measured · 6 clamped · 21 unmeasured, peak in -4.7 / return -14.4 dBFS
+[15:36:56]   ok  confidence 100%, 48 bins · 21 measured · 6 clamped · 21 unmeasured, peak in -4.3 / return -14.0 dBFS
+[15:37:00]   ok  confidence 100%, 48 bins · 21 measured · 6 clamped · 21 unmeasured, peak in -4.7 / return -14.6 dBFS
+[15:37:00] stimulus is up; settling 30 s
+[15:37:31] A1: Cab.CabType = 13; dwell 30 s
+[15:38:02] A1: recording 50 s LIVE + 15 s RESULT
+[15:38:53] A1: RESULT -> [Main] Quality: POOR, coherence: 0.41, valid bins: 100%
+/tmp/ab-run-2026-10-31-run3/A1.jsonl: 260 frames, on the Pi
+[15:39:09] B1: Cab.CabType = 0; dwell 30 s
+[15:39:40] B1: recording 50 s LIVE + 15 s RESULT
+[15:40:31] B1: RESULT -> [Main] Quality: POOR, coherence: 0.40, valid bins: 100%
+/tmp/ab-run-2026-10-31-run3/B1.jsonl: 260 frames, on the Pi
+[15:40:48] A2: Cab.CabType = 13; dwell 30 s
+[15:41:19] A2: recording 50 s LIVE + 15 s RESULT
+[15:42:09] A2: RESULT -> [Main] Quality: POOR, coherence: 0.41, valid bins: 100%
+/tmp/ab-run-2026-10-31-run3/A2.jsonl: 260 frames, on the Pi
+[15:42:27] B2: Cab.CabType = 0; dwell 30 s
+[15:42:58] B2: recording 50 s LIVE + 15 s RESULT
+[15:44:01] B2: RESULT -> no RESULT line within the window
+/tmp/ab-run-2026-10-31-run3/B2.jsonl: 260 frames, on the Pi
+[15:44:06] restored Cab.CabType = 13
+[15:44:06] copying the frames back from conley@guitar-rig-analyzer.local:/tmp/ab-run-2026-10-31-run3 (slow on a busy Wi-Fi)
+[15:53:43] /Users/conleyvidal/Developer/ab-run/2026-10-31-run3/A1.jsonl: 260 frames
+[15:53:43] /Users/conleyvidal/Developer/ab-run/2026-10-31-run3/A2.jsonl: 260 frames
+[15:53:43] /Users/conleyvidal/Developer/ab-run/2026-10-31-run3/B1.jsonl: 260 frames
+[15:53:43] /Users/conleyvidal/Developer/ab-run/2026-10-31-run3/B2.jsonl: 260 frames
+[15:53:43] comparing
+CHANGE DETECTED in 11 of 20 bands; largest -11.5 dB at 2866 Hz, repeat difference there 0.11 dB
+wrote /Users/conleyvidal/Developer/ab-run/2026-10-31-run3/report.md and /Users/conleyvidal/Developer/ab-run/2026-10-31-run3/delta.svg
