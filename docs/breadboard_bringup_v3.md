@@ -4,7 +4,7 @@
 
 *v3.0 (2026-06-01) fixed five critical bugs found in v2: a severed SOURCE tap and inverted relay topology in Phase 7, a stale parts-availability claim in Phase 1, a missing TQ2 pinout in Phase 6, and a draft "Wait — correction:" note in Phase 4.*
 
-*__v3.1 corrects eleven further defects found while actually building the board__, including two that are destructive if followed literally: a Phase 0 → Phase 1 sequence that shorts +5 V to VGND, and two phases that direct a GPIO onto the VGND rail. It also adds a **[Board coordinates](#board-coordinates--read-before-using-any-hole-number)** authority section, which this document had never had — that absence is how three separate phases came to claim the same column. **See [Appendix C.1](#appendix-c1--v31-correction-pass-2026-09-20) for the full table.***
+*__v3.1 corrects thirteen further defects found while actually building the board__, including two that are destructive if followed literally: a Phase 0 → Phase 1 sequence that shorts +5 V to VGND, and two phases that direct a GPIO onto the VGND rail. It also adds a **[Board coordinates](#board-coordinates--read-before-using-any-hole-number)** authority section, which this document had never had — that absence is how three separate phases came to claim the same column. **See [Appendix C.1](#appendix-c1--v31-correction-pass-2026-09-20) for the full table.***
 
 > **⚠️ If you are holding a printed or PDF copy older than v3.1, stop and get the current Markdown.** Several corrected steps are indistinguishable from the originals at a glance — a coordinate, a pin order, a wire direction — and the originals damage hardware.
 

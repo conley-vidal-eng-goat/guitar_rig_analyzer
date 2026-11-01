@@ -5,10 +5,11 @@ through it. Plug a guitar or a test signal in, send it through a pedalboard or
 amp modeler, bring the output back, and the analyzer compares the two frequency
 by frequency on a touchscreen.
 
-A **Teensy 4.1** captures the audio and does all of the measurement math. A
+A **Teensy 4.1** captures the audio and does the core measurement math. A
 **Raspberry Pi 5** draws the results on a 7" touch display. The rule the whole
-design follows: the Teensy decides what is true, and the Pi only displays it.
-The Pi never computes a measurement value or decides whether one is valid.
+design follows: the Teensy decides what is true. It produces the spectra, peaks,
+transfer function and quality grades. The Pi derives descriptive statistics from
+those (TONE gain, LAB) but issues no grades.
 
 ![The assembled analyzer: Teensy 4.1 and Audio Shield in a screw-terminal carrier beside the breadboard front end, with the labeled input, send, return and output jacks](ai/evidence/2026-10-26-assembled-analyzer-top.jpg)
 
@@ -24,7 +25,8 @@ rig send, J6 rig return, J8 amp out, plus the XLR return.
 
 > **About AI use:** I designed the system, bought the parts, built the hardware,
 > and took the bench measurements. Claude wrote most of the firmware and the Pi
-> software. Every commit carries a `Co-Authored-By: Claude` trailer.
+> software. Every commit except the one that added the LICENSE carries a
+> `Co-Authored-By: Claude` trailer.
 > [docs/ai-assistance.md](docs/ai-assistance.md) explains who did what.
 
 ---
@@ -257,7 +259,7 @@ how to read them. Good places to start:
    ([record](ai/evidence/2026-09-29-t1-harness-block-stride-defect.md)).
 
 Architecture decisions are in [docs/adr/](docs/adr/), and the full build
-procedure, including fixes for eleven mistakes found while building, is in
+procedure, including fixes for thirteen mistakes found while building, is in
 [docs/breadboard_bringup_v3.md](docs/breadboard_bringup_v3.md).
 
 ## License

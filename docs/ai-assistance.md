@@ -5,7 +5,8 @@
 I built this instrument's hardware. AI wrote most of its software. This page
 says which parts are which.
 
-Every commit in this repository carries a trailer like:
+Every commit in this repository, except the one that added the LICENSE file,
+carries a trailer like:
 
 ```
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
@@ -36,7 +37,7 @@ interpret the results and write the records. Several times, a reading I took
 was what decided between two competing explanations.
 
 **Checking the procedure against the board.** The bring-up procedure was
-written with AI. Building the board exposed eleven mistakes in it, two of
+written with AI. Building the board exposed thirteen mistakes in it, two of
 which would have damaged hardware if followed exactly. I found those where the
 document didn't match the board in front of me.
 
