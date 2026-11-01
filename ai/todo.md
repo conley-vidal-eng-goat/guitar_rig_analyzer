@@ -2359,7 +2359,7 @@ locally.
 Proof clause by clause:
 - *two RESULTs from one session id with grades and coherences*: **three**, all **POOR**, coherence 0.41 / 0.40 / 0.41, same session. B2's RESULT never completed (TODO-96). The grade does not gate the verdict, which comes from the LIVE TF.
 - *two LIVE payloads*: four, 260 frames each, archived gzipped.
-- *panel captures of both states*: **not in the archive**. The operator photographed during the run; add them to the evidence folder.
+- *panel captures of both states*: **not met.** Nine operator photos are archived, but all are from attempt 1's stimulus check (14:47–14:49, confidence 0 %, state A only); the passing run has no panel capture.
 - *the stimulus level and every Headrush setting*: settings in `run.json` → `block_before`. **Phone volume was not recorded**; input peaked −2.2 to −3.1 dBFS.
 - *a stated difference larger than the variation within either*: yes, change/repeat ≈ 100 at 2 866 Hz; ≥ 3× and > 1 dB in all 10 counted bands.
 

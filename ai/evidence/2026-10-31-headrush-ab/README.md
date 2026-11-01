@@ -75,6 +75,20 @@ repeat difference (A2 vs A1, B2 vs B1).
 - **5 bands above 7.8 kHz were CLAMPED** and 21 below 700 Hz have no FFT bin
   at all; the 19 compared are the ones measured in every state, above the DC bin.
 
+## Photos (`photos/`, operator, iPhone 17 Pro Max)
+
+Nine photos of the bench as the run was set up: the panel on LIVE, the
+breadboard, the phone playing `pink_noise_ab`. Resized to 1600 px for the
+repository; originals on the operator's Desktop as `breadboard1–9.jpeg`.
+
+**🔺 They are from attempt 1's stimulus check, not from the run above.** EXIF
+times are 14:47:09–14:49:03 PDT. The panel in every one shows session 82,
+**transfer-function confidence 0 %**, and input peaks of −31.7 to −34.5 dBFS:
+the noise was reaching the analyzer but too quietly to energise the bins. The
+volume went up at ~14:50, and the cab was first switched at 14:51:57, so
+every photo shows state A (4x12). The passing run was 15:36–15:44 and has no
+photos. Use these as the setup, not as screenshots of the measurement.
+
 ## Two failed attempts, kept
 
 | Attempt | What happened | Why it is not used |
